@@ -1,0 +1,91 @@
+# React Native + Expo Project Rules
+
+## TypeScript & Type Safety
+- Use TypeScript everywhere with strict typing enabled
+- Always define explicit types for function parameters, return values, and component props
+- Use `interface` for object shapes and `type` for unions, intersections, and computed types
+- Avoid `any` - use `unknown` if type is truly unknown, then narrow it
+- Enable strict mode in tsconfig.json (strict: true, noImplicitAny: true, etc.)
+
+## Component Architecture
+- Prefer functional components with hooks over class components
+- Keep components small, modular, and reusable (single responsibility principle)
+- Extract complex logic into custom hooks
+- Use composition over inheritance
+- One component per file, named export matching filename
+
+## Naming Conventions
+- Use camelCase for variables, functions, and hooks (e.g., `userData`, `handleSubmit`, `useAuth`)
+- Use PascalCase for components and types/interfaces (e.g., `UserProfile`, `NavigationProps`)
+- Use UPPER_SNAKE_CASE for constants (e.g., `API_BASE_URL`, `MAX_RETRIES`)
+- Prefix custom hooks with `use` (e.g., `useAuth`, `useNavigation`)
+- Prefix boolean variables with `is`, `has`, `should`, `can` (e.g., `isLoading`, `hasError`)
+
+## File Organization
+- Organize code into `app/` or `src/` directory structure:
+  - `screens/` - Screen components (one per route)
+  - `components/` - Reusable UI components
+  - `hooks/` - Custom React hooks
+  - `services/` - API calls, external services, business logic
+  - `navigation/` - Navigation configuration and types
+  - `types/` - TypeScript type definitions
+  - `utils/` - Utility functions and helpers
+  - `constants/` - App-wide constants
+  - `assets/` - Images, fonts, etc.
+
+## Navigation
+- Keep navigation logic centralized in `navigation/` directory
+- Define route names as constants to avoid duplication
+- Use TypeScript for navigation types (React Navigation type safety)
+- Avoid hardcoding route names - use constants or enums
+- Keep navigation structure flat when possible, use nested navigators only when necessary
+
+## React Native & Expo Best Practices
+- Use Expo managed workflow features when possible
+- Prefer Expo APIs over native modules when available
+- Use `StyleSheet.create()` for styles instead of inline styles
+- Extract complex styles to separate files or use styled-components if needed
+- Use `Platform.OS` for platform-specific code
+- Handle safe areas with `react-native-safe-area-context`
+- Optimize images with Expo's Image component and use appropriate formats
+- Use `expo-constants` for app configuration
+- Handle errors gracefully with try-catch and error boundaries
+
+## Code Quality
+- Write self-documenting code with clear variable and function names
+- Add JSDoc comments for complex functions and public APIs
+- Keep functions pure when possible (no side effects)
+- Use early returns to reduce nesting
+- Extract magic numbers and strings into named constants
+- Avoid deep nesting (max 3-4 levels)
+
+## Performance
+- Use `React.memo()` for expensive components that re-render frequently
+- Use `useMemo()` and `useCallback()` judiciously (not everywhere)
+- Lazy load screens and heavy components when appropriate
+- Optimize list rendering with `FlatList` or `SectionList` instead of `ScrollView` with `map()`
+- Avoid creating functions/objects inside render methods
+
+## State Management
+- Use React hooks (`useState`, `useReducer`) for local component state
+- Use Context API for shared state that doesn't change frequently
+- Consider state management libraries (Zustand, Redux Toolkit) for complex global state
+- Keep state as close to where it's used as possible
+
+## Testing & Error Handling
+- Write unit tests for utility functions and custom hooks
+- Use error boundaries for component error handling
+- Validate user input and API responses
+- Provide meaningful error messages to users
+- Log errors appropriately (use Sentry or similar in production)
+
+## Accessibility
+- Add `accessibilityLabel` and `accessibilityHint` to interactive elements
+- Ensure sufficient color contrast
+- Support screen readers with proper accessibility props
+- Test with accessibility tools
+
+## Git & Code Review
+- Write clear, descriptive commit messages
+- Keep commits focused and atomic
+- Review code for type safety, performance, and maintainability

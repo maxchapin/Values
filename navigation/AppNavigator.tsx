@@ -2,50 +2,33 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { RootStackParamList, TabParamList, ROUTES } from './types';
-import { HomeScreen } from '../screens/HomeScreen';
-import { DetailsScreen } from '../screens/DetailsScreen';
-import { SettingsScreen } from '../screens/SettingsScreen';
+import { RootStackParamList, MainTabParamList, ROUTES } from './types';
+import { useUserStore } from '../store/userStore';
+import { useValuesSelectionStore } from '../store/valuesSelectionStore';
+
+// Auth screens
+import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
+import { SignUpScreen } from '../screens/auth/SignUpScreen';
+import { ProfileSetupScreen } from '../screens/auth/ProfileSetupScreen';
+
+// Values screens
+import { ValuesSelectionScreen } from '../screens/values/ValuesSelectionScreen';
+import { ValuesNarrowScreen } from '../screens/values/ValuesNarrowScreen';
+import { ValuesFinalScreen } from '../screens/values/ValuesFinalScreen';
+
+// Main app screens
+import { DiscoverScreen } from '../screens/DiscoverScreen';
+import { MatchesScreen } from '../screens/MatchesScreen';
+import { ProfileScreen } from '../screens/ProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<TabParamList>();
-
-/**
- * Home Stack Navigator
- * Contains Home and Details screens
- */
-const HomeStackNavigator: React.FC = () => {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: '#007AFF',
-        },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-      }}
-    >
-      <Stack.Screen
-        name={ROUTES.HOME}
-        component={HomeScreen}
-        options={{ title: 'Home' }}
-      />
-      <Stack.Screen
-        name={ROUTES.DETAILS}
-        component={DetailsScreen}
-        options={{ title: 'Details' }}
-      />
-    </Stack.Navigator>
-  );
-};
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
 /**
  * Main Tab Navigator
- * Contains Home stack and Settings screen
+ * Contains Discover, Matches, and Profile tabs
  */
-const TabNavigator: React.FC = () => {
+const MainTabNavigator: React.FC = () => {
   return (
     <Tab.Navigator
       screenOptions={{
@@ -55,27 +38,27 @@ const TabNavigator: React.FC = () => {
       }}
     >
       <Tab.Screen
-        name={ROUTES.HOME_TAB}
-        component={HomeStackNavigator}
+        name={ROUTES.DISCOVER}
+        component={DiscoverScreen}
         options={{
-          title: 'Home',
-          tabBarIcon: () => null, // You can add icons here later
+          title: 'Discover',
+          tabBarIcon: () => null,
         }}
       />
       <Tab.Screen
-        name={ROUTES.SETTINGS_TAB}
-        component={SettingsScreen}
+        name={ROUTES.MATCHES}
+        component={MatchesScreen}
         options={{
-          title: 'Settings',
-          tabBarIcon: () => null, // You can add icons here later
-          headerShown: true,
-          headerStyle: {
-            backgroundColor: '#007AFF',
-          },
-          headerTintColor: '#fff',
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
+          title: 'Matches',
+          tabBarIcon: () => null,
+        }}
+      />
+      <Tab.Screen
+        name={ROUTES.PROFILE}
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          tabBarIcon: () => null,
         }}
       />
     </Tab.Navigator>
@@ -84,12 +67,105 @@ const TabNavigator: React.FC = () => {
 
 /**
  * Root App Navigator
- * Wraps the entire navigation structure
+ * Handles conditional navigation based on onboarding state
+ * Decides which stack to show: Auth → Profile Setup → Values → Main App
  */
 export const AppNavigator: React.FC = () => {
+  const { isAuthenticated, isProfileComplete, isValuesComplete } = useUserStore();
+  const { currentStep } = useValuesSelectionStore();
+
+  // Determine which screen to show based on onboarding state
+  const getInitialRoute = (): keyof RootStackParamList => {
+    // Step 1: Not authenticated - show welcome
+    if (!isAuthenticated) {
+      return ROUTES.WELCOME;
+    }
+
+    // Step 2: Authenticated but profile not complete - show profile setup
+    if (!isProfileComplete) {
+      return ROUTES.PROFILE_SETUP;
+    }
+
+    // Step 3: Profile complete but values not selected - show values flow
+    if (!isValuesComplete) {
+      // Determine which values step based on current step in store
+      if (currentStep === 'initial' || currentStep === 'narrow_20') {
+        return ROUTES.VALUES_SELECTION;
+      }
+      if (currentStep === 'narrow_10') {
+        return ROUTES.VALUES_NARROW_10;
+      }
+      if (currentStep === 'final_5') {
+        return ROUTES.VALUES_FINAL_5;
+      }
+      // Default to initial values selection
+      return ROUTES.VALUES_SELECTION;
+    }
+
+    // Step 4: Everything complete - show main app
+    return ROUTES.MAIN_APP;
+  };
+
   return (
     <NavigationContainer>
-      <TabNavigator />
+      <Stack.Navigator
+        initialRouteName={getInitialRoute()}
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: '#007AFF',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }}
+      >
+        {/* Auth Flow Stack */}
+        <Stack.Screen
+          name={ROUTES.WELCOME}
+          component={WelcomeScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name={ROUTES.SIGN_UP}
+          component={SignUpScreen}
+          options={{ title: 'Sign Up' }}
+        />
+        <Stack.Screen
+          name={ROUTES.PROFILE_SETUP}
+          component={ProfileSetupScreen}
+          options={{ title: 'Profile Setup' }}
+        />
+
+        {/* Values Selection Flow Stack */}
+        <Stack.Screen
+          name={ROUTES.VALUES_SELECTION}
+          component={ValuesSelectionScreen}
+          options={{ title: 'Select Values' }}
+        />
+        <Stack.Screen
+          name={ROUTES.VALUES_NARROW_20}
+          component={ValuesNarrowScreen}
+          options={{ title: 'Narrow to 20' }}
+        />
+        <Stack.Screen
+          name={ROUTES.VALUES_NARROW_10}
+          component={ValuesNarrowScreen}
+          options={{ title: 'Narrow to 10' }}
+        />
+        <Stack.Screen
+          name={ROUTES.VALUES_FINAL_5}
+          component={ValuesFinalScreen}
+          options={{ title: 'Select Top 5' }}
+        />
+
+        {/* Main App - Tab Navigator */}
+        <Stack.Screen
+          name={ROUTES.MAIN_APP}
+          component={MainTabNavigator}
+          options={{ headerShown: false }}
+        />
+      </Stack.Navigator>
     </NavigationContainer>
   );
 };

@@ -1,18 +1,26 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PrimaryButton } from '../../components/PrimaryButton';
+import { ScreenContainer } from '../../components/ScreenContainer';
+import { trackScreenView, trackOnboardingStarted } from '../../services/analytics';
+import { theme } from '../../theme';
 import { RootStackParamList } from '../../navigation/types';
 
 type WelcomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
+  useEffect(() => {
+    trackScreenView('Welcome');
+  }, []);
+
   const handleGetStarted = (): void => {
+    trackOnboardingStarted();
     navigation.navigate('SignUp');
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Welcome to Values</Text>
         <Text style={styles.subtitle}>
@@ -22,17 +30,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
       <View style={styles.footer}>
         <PrimaryButton title="Get Started" onPress={handleGetStarted} />
       </View>
-    </View>
+    </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#fff',
     justifyContent: 'space-between',
-    padding: 20,
-    paddingTop: 100,
+    padding: theme.spacing.lg,
+    paddingTop: theme.spacing['4xl'],
   },
   content: {
     flex: 1,
@@ -40,20 +46,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#333',
+    fontSize: theme.typography.fontSize['4xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    marginBottom: theme.spacing.base,
+    color: theme.colors.text,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 18,
-    color: '#666',
+    fontSize: theme.typography.fontSize.lg,
+    color: theme.colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 26,
-    paddingHorizontal: 20,
+    lineHeight: theme.typography.fontSize.lg * theme.typography.lineHeight.relaxed,
+    paddingHorizontal: theme.spacing.lg,
   },
   footer: {
-    paddingBottom: 40,
+    paddingBottom: theme.spacing['3xl'],
   },
 });

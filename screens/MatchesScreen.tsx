@@ -1,16 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, FlatList, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { useMatchesStore } from '../store/matchesStore';
 import { useUserStore } from '../store/userStore';
+import { LoadingSpinner } from '../components/LoadingSpinner';
+import { EmptyState } from '../components/EmptyState';
+import { trackScreenView } from '../services/analytics';
+import { ScreenContainer } from '../components/ScreenContainer';
 import { getAllValues } from '../services/mockBackend';
 import { Value } from '../types/value';
 import { Match } from '../types/match';
+import { theme } from '../theme';
 
 export const MatchesScreen: React.FC = () => {
   const { currentUser } = useUserStore();
   const { getLikedMatches, isLoading, likedUserIds } = useMatchesStore();
   const [availableValues, setAvailableValues] = useState<Value[]>([]);
   const [likedMatches, setLikedMatches] = useState<Match[]>([]);
+
+  useEffect(() => {
+    trackScreenView('Matches');
+  }, []);
 
   useEffect(() => {
     getAllValues().then(setAvailableValues);
@@ -27,21 +36,47 @@ export const MatchesScreen: React.FC = () => {
     return value?.name || valueId;
   };
 
-  // Render a match card
-  const renderMatchCard = ({ item: match }: { item: Match }): React.ReactElement => {
-    const { user, similarityScore, sharedValues, sharedValuesCount } = match;
-    const top5Values = user.selectedValues.slice(0, 5).map((id) => availableValues.find((v) => v.id === id)).filter((v): v is Value => v !== undefined);
+  // Render a match card with defensive checks
+  const renderMatchCard = ({ item: match }: { item: Match }): React.ReactElement | null => {
+    // Defensive check: ensure match exists
+    if (!match || !match.user) {
+      return null;
+    }
 
+    const { user, similarityScore, sharedValues, sharedValuesCount } = match;
+
+    // Defensive check: ensure user has required fields
+    if (!user.id || !user.name) {
+      return null;
+    }
+
+    // Safely get top 5 values with type guards
+    const top5Values: Value[] = [];
+    if (user.selectedValues && Array.isArray(user.selectedValues)) {
+      const top5Ids = user.selectedValues.slice(0, 5);
+      for (const id of top5Ids) {
+        if (id) {
+          const value = availableValues.find((v) => v && v.id === id);
+          if (value) {
+            top5Values.push(value);
+          }
+        }
+      }
+    }
 
     return (
       <View style={styles.matchCard}>
         <View style={styles.matchHeader}>
           <View>
             <Text style={styles.matchName}>{user.name}</Text>
-            <Text style={styles.matchAge}>{user.age} • {user.location}</Text>
+            <Text style={styles.matchAge}>
+              {user.age || '?'} • {user.location || 'Location not set'}
+            </Text>
           </View>
           <View style={styles.matchScoreContainer}>
-            <Text style={styles.matchScore}>{similarityScore}%</Text>
+            <Text style={styles.matchScore}>
+              {typeof similarityScore === 'number' ? similarityScore : 0}%
+            </Text>
             <Text style={styles.matchScoreLabel}>Match</Text>
           </View>
         </View>
@@ -52,40 +87,55 @@ export const MatchesScreen: React.FC = () => {
           </Text>
         )}
 
-        <View style={styles.sharedValuesSection}>
-          <Text style={styles.sharedValuesTitle}>
-            {sharedValuesCount} Shared Value{sharedValuesCount !== 1 ? 's' : ''}
-          </Text>
-          <View style={styles.sharedValuesChips}>
-            {sharedValues.slice(0, 5).map((valueId) => (
-              <View key={valueId} style={styles.sharedValueChip}>
-                <Text style={styles.sharedValueChipText}>{getValueName(valueId)}</Text>
-              </View>
-            ))}
+        {sharedValues && Array.isArray(sharedValues) && sharedValues.length > 0 && (
+          <View style={styles.sharedValuesSection}>
+            <Text style={styles.sharedValuesTitle}>
+              {sharedValuesCount || 0} Shared Value{(sharedValuesCount || 0) !== 1 ? 's' : ''}
+            </Text>
+            <View style={styles.sharedValuesChips}>
+              {sharedValues.slice(0, 5).map((valueId) => {
+                if (!valueId) return null;
+                return (
+                  <View key={valueId} style={styles.sharedValueChip}>
+                    <Text style={styles.sharedValueChipText}>{getValueName(valueId)}</Text>
+                  </View>
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
 
-        <View style={styles.topValuesSection}>
-          <Text style={styles.topValuesTitle}>Their Top 5 Values</Text>
-          <View style={styles.topValuesChips}>
-            {top5Values.map((value) => (
-              <View key={value.id} style={styles.topValueChip}>
-                <Text style={styles.topValueChipText}>{value.name}</Text>
-              </View>
-            ))}
+        {top5Values.length > 0 && (
+          <View style={styles.topValuesSection}>
+            <Text style={styles.topValuesTitle}>Their Top 5 Values</Text>
+            <View style={styles.topValuesChips}>
+              {top5Values.map((value) => {
+                if (!value || !value.id) return null;
+                return (
+                  <View key={value.id} style={styles.topValueChip}>
+                    <Text style={styles.topValueChipText}>{value.name || 'Unknown'}</Text>
+                  </View>
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
 
-        {user.prompts.length > 0 && (
+        {user.prompts && Array.isArray(user.prompts) && user.prompts.length > 0 && (
           <View style={styles.promptsSection}>
-            {user.prompts.slice(0, 2).map((prompt) => (
-              <View key={prompt.id} style={styles.promptItem}>
-                <Text style={styles.promptQuestion}>{prompt.question}</Text>
-                <Text style={styles.promptAnswer} numberOfLines={1}>
-                  {prompt.answer}
-                </Text>
-              </View>
-            ))}
+            {user.prompts.slice(0, 2).map((prompt) => {
+              if (!prompt || !prompt.id) return null;
+              return (
+                <View key={prompt.id} style={styles.promptItem}>
+                  <Text style={styles.promptQuestion}>
+                    {prompt.question || 'Question'}
+                  </Text>
+                  <Text style={styles.promptAnswer} numberOfLines={1}>
+                    {prompt.answer || 'No answer provided'}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         )}
       </View>
@@ -93,30 +143,31 @@ export const MatchesScreen: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading matches...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading matches..." />;
   }
 
   if (likedMatches.length === 0) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>No Matches Yet</Text>
-        <Text style={styles.subtitle}>
-          Start swiping in Discover to find people you like. Your matches will appear here!
-        </Text>
-      </View>
+      <EmptyState
+        icon="💕"
+        title="No Matches Yet"
+        message="Start swiping in Discover to find people you like. Your matches will appear here!"
+        actionLabel="Go to Discover"
+        onAction={() => {
+          // Navigation would be handled by tab navigator
+          // This is just a placeholder for the action
+        }}
+      />
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Your Matches</Text>
-        <Text style={styles.headerSubtitle}>{likedMatches.length} match{likedMatches.length !== 1 ? 'es' : ''}</Text>
+        <Text style={styles.headerSubtitle}>
+          {likedMatches.length} match{likedMatches.length !== 1 ? 'es' : ''}
+        </Text>
       </View>
       <FlatList
         data={likedMatches}
@@ -125,42 +176,38 @@ export const MatchesScreen: React.FC = () => {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
-    </View>
+    </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   header: {
-    padding: 20,
-    paddingTop: 60,
-    backgroundColor: '#f5f5f5',
+    padding: theme.spacing.lg,
+    paddingTop: theme.spacing['4xl'],
+    backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.border,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: theme.typography.fontSize['3xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
   },
   listContent: {
-    padding: 16,
+    padding: theme.spacing.base,
   },
   matchCard: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: theme.colors.backgroundTertiary,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.base,
+    marginBottom: theme.spacing.base,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.colors.border,
   },
   matchHeader: {
     flexDirection: 'row',
@@ -169,130 +216,110 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   matchName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: theme.typography.fontSize['2xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   matchAge: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
   },
   matchScoreContainer: {
     alignItems: 'flex-end',
   },
   matchScore: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#007AFF',
+    fontSize: theme.typography.fontSize['2xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.primary,
     marginBottom: 2,
   },
   matchScoreLabel: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textSecondary,
     textTransform: 'uppercase',
   },
   matchBio: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-    marginBottom: 16,
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.normal,
+    marginBottom: theme.spacing.base,
   },
   sharedValuesSection: {
-    marginBottom: 16,
-    paddingTop: 16,
+    marginBottom: theme.spacing.base,
+    paddingTop: theme.spacing.base,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: theme.colors.border,
   },
   sharedValuesTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#007AFF',
-    marginBottom: 8,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.sm,
   },
   sharedValuesChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
   sharedValueChip: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 6,
-    marginBottom: 6,
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: theme.spacing.sm + 2,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.md,
+    marginRight: theme.spacing.xs + 2,
+    marginBottom: theme.spacing.xs + 2,
   },
   sharedValueChipText: {
-    fontSize: 11,
-    color: '#fff',
-    fontWeight: '600',
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textInverse,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   topValuesSection: {
-    marginBottom: 16,
-    paddingTop: 16,
+    marginBottom: theme.spacing.base,
+    paddingTop: theme.spacing.base,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: theme.colors.border,
   },
   topValuesTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
   topValuesChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
   topValueChip: {
-    backgroundColor: '#e3f2fd',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 6,
-    marginBottom: 6,
+    backgroundColor: theme.colors.backgroundSecondary,
+    paddingHorizontal: theme.spacing.sm + 2,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.md,
+    marginRight: theme.spacing.xs + 2,
+    marginBottom: theme.spacing.xs + 2,
   },
   topValueChipText: {
-    fontSize: 11,
-    color: '#007AFF',
-    fontWeight: '500',
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   promptsSection: {
-    paddingTop: 16,
+    paddingTop: theme.spacing.base,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: theme.colors.border,
   },
   promptItem: {
-    marginBottom: 12,
+    marginBottom: theme.spacing.md,
   },
   promptQuestion: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   promptAnswer: {
-    fontSize: 12,
-    color: '#666',
-    lineHeight: 16,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 24,
-    paddingHorizontal: 40,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.xs * theme.typography.lineHeight.normal,
   },
 });

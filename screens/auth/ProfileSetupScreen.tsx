@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PrimaryButton } from '../../components/PrimaryButton';
+import { ScreenContainer } from '../../components/ScreenContainer';
+import { TextInputField } from '../../components/TextInputField';
+import { trackScreenView, trackProfileCompleted, setUserProperties } from '../../services/analytics';
+import { theme } from '../../theme';
 import { useUserStore } from '../../store/userStore';
+import { useForm, validators } from '../../hooks/useForm';
 import { RootStackParamList } from '../../navigation/types';
 import { Gender, Prompt } from '../../types/user';
 import { AVAILABLE_PROMPTS } from '../../constants/prompts';
@@ -15,20 +20,78 @@ interface PromptAnswer {
   answer: string;
 }
 
+interface ProfileFormData {
+  name: string;
+  age: string;
+  location: string;
+  job: string;
+  education: string;
+  bio: string;
+}
+
 export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation }) => {
   const { currentUser, createOrUpdateUser, isLoading } = useUserStore();
 
-  // Form state
-  const [name, setName] = useState(currentUser?.name || '');
-  const [age, setAge] = useState(currentUser?.age.toString() || '');
+  useEffect(() => {
+    trackScreenView('ProfileSetup');
+  }, []);
+
+  // Form state using useForm hook
+  const {
+    values,
+    errors,
+    touched,
+    setValue,
+    setFieldTouched,
+    handleSubmit,
+  } = useForm<ProfileFormData>(
+    {
+      name: currentUser?.name || '',
+      age: currentUser?.age.toString() || '',
+      location: currentUser?.location || '',
+      job: currentUser?.job || '',
+      education: currentUser?.education || '',
+      bio: currentUser?.bio || '',
+    },
+    {
+      name: [
+        validators.required('Name is required'),
+        validators.minLength(2, 'Name must be at least 2 characters'),
+      ],
+      age: [
+        validators.required('Age is required'),
+        (value: string) => {
+          if (!value.trim()) {
+            return undefined; // Let required handle empty
+          }
+          const ageNum = parseInt(value, 10);
+          if (isNaN(ageNum)) {
+            return 'Age must be a number';
+          }
+          if (ageNum < 18 || ageNum > 100) {
+            return 'Age must be between 18 and 100';
+          }
+          return undefined;
+        },
+      ],
+      location: [
+        validators.required('Location is required'),
+        validators.minLength(2, 'Location must be at least 2 characters'),
+      ],
+      job: [],
+      education: [],
+      bio: [
+        validators.required('Bio is required'),
+        validators.minLength(10, 'Bio must be at least 10 characters'),
+      ],
+    }
+  );
+
+  // Separate state for complex fields
   const [gender, setGender] = useState<Gender>(currentUser?.gender || 'prefer-not-to-say');
   const [showGenderPicker, setShowGenderPicker] = useState(false);
   const [showPromptPicker, setShowPromptPicker] = useState(false);
   const [selectedPromptIndex, setSelectedPromptIndex] = useState<number | null>(null);
-  const [location, setLocation] = useState(currentUser?.location || '');
-  const [job, setJob] = useState(currentUser?.job || '');
-  const [education, setEducation] = useState(currentUser?.education || '');
-  const [bio, setBio] = useState(currentUser?.bio || '');
   const [promptAnswers, setPromptAnswers] = useState<PromptAnswer[]>(
     currentUser?.prompts.map((p) => ({
       promptId: p.id,
@@ -76,20 +139,18 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     setPromptAnswers(updated);
   };
 
-  // Validation
-  const isValid = (): boolean => {
-    const ageNum = parseInt(age, 10);
-    const hasValidAge = ageNum >= 18 && ageNum <= 100;
-    const hasRequiredFields = name.trim().length > 0 && location.trim().length > 0 && bio.trim().length > 0;
-    const hasAtLeastOnePrompt = promptAnswers.length >= 1 && promptAnswers.every((pa) => pa.answer.trim().length > 0);
-
-    return hasValidAge && hasRequiredFields && hasAtLeastOnePrompt;
+  // Validation for prompts (separate from form validation)
+  const hasValidPrompts = (): boolean => {
+    return promptAnswers.length >= 1 && promptAnswers.every((pa) => pa.answer.trim().length > 0);
   };
 
-  const handleSubmit = async (): Promise<void> => {
-    if (!isValid()) return;
+  const onSubmit = async (formValues: ProfileFormData): Promise<void> => {
+    // Additional validation for prompts
+    if (!hasValidPrompts()) {
+      return;
+    }
 
-    const ageNum = parseInt(age, 10);
+    const ageNum = parseInt(formValues.age, 10);
     const prompts: Prompt[] = promptAnswers.map((pa) => ({
       id: pa.promptId,
       question: pa.question,
@@ -98,24 +159,39 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
 
     const profileData = {
       email: currentUser?.email || '',
-      name: name.trim(),
+      name: formValues.name.trim(),
       age: ageNum,
       gender,
-      location: location.trim(),
-      job: job.trim() || undefined,
-      education: education.trim() || undefined,
-      bio: bio.trim(),
+      location: formValues.location.trim(),
+      job: formValues.job.trim() || undefined,
+      education: formValues.education.trim() || undefined,
+      bio: formValues.bio.trim(),
       prompts,
     };
 
     await createOrUpdateUser(profileData);
+
+    // Track profile completion
+    trackProfileCompleted({
+      age: ageNum,
+      hasJob: !!profileData.job,
+      hasEducation: !!profileData.education,
+      promptsCount: prompts.length,
+    });
+
+    // Set user properties for analytics
+    setUserProperties({
+      age: ageNum,
+      gender,
+      location: profileData.location,
+    });
 
     // Navigate to values selection flow
     navigation.navigate('ValuesSelection');
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScreenContainer scrollable scrollViewProps={{ contentContainerStyle: styles.contentContainer }}>
       <View style={styles.header}>
         <Text style={styles.title}>Complete Your Profile</Text>
         <Text style={styles.subtitle}>Tell us about yourself to help us find your perfect match</Text>
@@ -123,31 +199,30 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
 
       <View style={styles.form}>
         {/* Name */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Name *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your name"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-          />
-        </View>
+        <TextInputField
+          label="Name *"
+          placeholder="Enter your name"
+          value={values.name}
+          onChangeText={(text) => {
+            setValue('name', text, true);
+          }}
+          onBlur={() => setFieldTouched('name')}
+          error={touched.name ? errors.name : undefined}
+          autoCapitalize="words"
+        />
 
         {/* Age */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Age *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your age"
-            value={age}
-            onChangeText={setAge}
-            keyboardType="number-pad"
-          />
-          {age && (parseInt(age, 10) < 18 || parseInt(age, 10) > 100) && (
-            <Text style={styles.errorText}>Age must be between 18 and 100</Text>
-          )}
-        </View>
+        <TextInputField
+          label="Age *"
+          placeholder="Enter your age"
+          value={values.age}
+          onChangeText={(text) => {
+            setValue('age', text, true);
+          }}
+          onBlur={() => setFieldTouched('age')}
+          error={touched.age ? errors.age : undefined}
+          keyboardType="number-pad"
+        />
 
         {/* Gender */}
         <View style={styles.inputGroup}>
@@ -201,53 +276,67 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
         </View>
 
         {/* Location */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Location *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="City, State"
-            value={location}
-            onChangeText={setLocation}
-            autoCapitalize="words"
-          />
-        </View>
+        <TextInputField
+          label="Location *"
+          placeholder="City, State"
+          value={values.location}
+          onChangeText={(text) => {
+            setValue('location', text, true);
+          }}
+          onBlur={() => setFieldTouched('location')}
+          error={touched.location ? errors.location : undefined}
+          autoCapitalize="words"
+        />
 
         {/* Job */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Job</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="What do you do?"
-            value={job}
-            onChangeText={setJob}
-            autoCapitalize="words"
-          />
-        </View>
+        <TextInputField
+          label="Job"
+          placeholder="What do you do?"
+          value={values.job}
+          onChangeText={(text) => {
+            setValue('job', text, true);
+          }}
+          onBlur={() => setFieldTouched('job')}
+          error={touched.job ? errors.job : undefined}
+          autoCapitalize="words"
+        />
 
         {/* Education */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Education</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Your education level or degree"
-            value={education}
-            onChangeText={setEducation}
-            autoCapitalize="words"
-          />
-        </View>
+        <TextInputField
+          label="Education"
+          placeholder="Your education level or degree"
+          value={values.education}
+          onChangeText={(text) => {
+            setValue('education', text, true);
+          }}
+          onBlur={() => setFieldTouched('education')}
+          error={touched.education ? errors.education : undefined}
+          autoCapitalize="words"
+        />
 
         {/* Bio */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Bio *</Text>
           <TextInput
-            style={[styles.input, styles.textArea]}
+            style={[
+              styles.input,
+              styles.textArea,
+              touched.bio && errors.bio && styles.inputError,
+            ]}
             placeholder="Tell us about yourself..."
-            value={bio}
-            onChangeText={setBio}
+            value={values.bio}
+            onChangeText={(text) => {
+              setValue('bio', text, true);
+            }}
+            onBlur={() => setFieldTouched('bio')}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
+            placeholderTextColor={theme.colors.textTertiary}
           />
+          {touched.bio && errors.bio && (
+            <Text style={styles.errorText}>{errors.bio}</Text>
+          )}
         </View>
 
         {/* Prompts Section */}
@@ -354,197 +443,197 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       <View style={styles.footer}>
         <PrimaryButton
           title="Continue"
-          onPress={handleSubmit}
-          disabled={!isValid() || isLoading}
+          onPress={handleSubmit(onSubmit)}
+          disabled={isLoading}
           loading={isLoading}
         />
-        {!isValid() && (
+        {(!hasValidPrompts() || Object.keys(errors).length > 0) && (
           <Text style={styles.hint}>
             Please fill in all required fields (*). Age must be between 18 and 100. Add at least one prompt.
           </Text>
         )}
       </View>
-    </ScrollView>
+    </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   contentContainer: {
-    padding: 20,
-    paddingTop: 60,
+    padding: theme.spacing.lg,
+    paddingTop: theme.spacing['4xl'],
   },
   header: {
-    marginBottom: 32,
+    marginBottom: theme.spacing['2xl'],
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#333',
+    fontSize: theme.typography.fontSize['3xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    marginBottom: theme.spacing.sm,
+    color: theme.colors.text,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 22,
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.relaxed,
   },
   form: {
-    marginBottom: 32,
+    marginBottom: theme.spacing['2xl'],
   },
   inputGroup: {
-    marginBottom: 24,
+    marginBottom: theme.spacing.xl,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.semibold,
+    marginBottom: theme.spacing.sm,
+    color: theme.colors.text,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.base,
+    padding: theme.spacing.base,
+    fontSize: theme.typography.fontSize.base,
+    backgroundColor: theme.colors.backgroundTertiary,
+    color: theme.colors.text,
+  },
+  inputError: {
+    borderColor: theme.colors.error,
   },
   textArea: {
     minHeight: 100,
-    paddingTop: 16,
+    paddingTop: theme.spacing.base,
   },
   pickerText: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.text,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: theme.colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.xl,
+    borderTopRightRadius: theme.borderRadius.xl,
+    padding: theme.spacing.lg,
     maxHeight: '80%',
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#333',
+    fontSize: theme.typography.fontSize.xl,
+    fontWeight: theme.typography.fontWeight.bold,
+    marginBottom: theme.spacing.base,
+    color: theme.colors.text,
   },
   modalScrollView: {
     maxHeight: 400,
   },
   modalOption: {
-    padding: 16,
+    padding: theme.spacing.base,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.border,
   },
   modalOptionSelected: {
-    backgroundColor: '#f0f8ff',
+    backgroundColor: theme.colors.backgroundSecondary,
   },
   modalOptionDisabled: {
     opacity: 0.5,
   },
   modalOptionText: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.text,
   },
   modalOptionTextSelected: {
-    color: '#007AFF',
-    fontWeight: '600',
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   modalOptionTextDisabled: {
-    color: '#999',
+    color: theme.colors.textTertiary,
   },
   modalCancel: {
-    marginTop: 16,
-    padding: 16,
+    marginTop: theme.spacing.base,
+    padding: theme.spacing.base,
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: theme.colors.border,
   },
   modalCancelText: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   promptsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: theme.spacing.sm,
   },
   addButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#007AFF',
-    borderRadius: 6,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs + 2,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.sm + 2,
   },
   addButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    color: theme.colors.textInverse,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   promptContainer: {
-    marginBottom: 16,
-    padding: 16,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+    marginBottom: theme.spacing.base,
+    padding: theme.spacing.base,
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: theme.borderRadius.base,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.colors.border,
   },
   promptHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: theme.spacing.md,
   },
   promptAnswer: {
     minHeight: 60,
   },
   removeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#ff3b30',
-    borderRadius: 6,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs + 2,
+    backgroundColor: theme.colors.error,
+    borderRadius: theme.borderRadius.sm + 2,
   },
   removeButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: theme.colors.textInverse,
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   addFirstPromptButton: {
-    padding: 16,
+    padding: theme.spacing.base,
     borderWidth: 2,
-    borderColor: '#007AFF',
+    borderColor: theme.colors.primary,
     borderStyle: 'dashed',
-    borderRadius: 8,
+    borderRadius: theme.borderRadius.base,
     alignItems: 'center',
-    backgroundColor: '#f9f9f9',
+    backgroundColor: theme.colors.backgroundTertiary,
   },
   addFirstPromptText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: theme.colors.primary,
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   footer: {
     marginTop: 'auto',
-    paddingBottom: 40,
+    paddingBottom: theme.spacing['3xl'],
   },
   hint: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 8,
+    marginTop: theme.spacing.xs,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textTertiary,
+    marginBottom: theme.spacing.sm,
   },
   errorText: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#ff3b30',
+    marginTop: theme.spacing.xs,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.error,
   },
 });

@@ -1,9 +1,14 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
 import { ValueCard } from '../../components/ValueCard';
 import { PrimaryButton } from '../../components/PrimaryButton';
+import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { EmptyState } from '../../components/EmptyState';
+import { trackScreenView, trackValueSelection } from '../../services/analytics';
+import { ScreenContainer } from '../../components/ScreenContainer';
+import { theme } from '../../theme';
 import { RootStackParamList } from '../../navigation/types';
 
 type ValuesSelectionScreenProps = NativeStackScreenProps<RootStackParamList, 'ValuesSelection'>;
@@ -21,12 +26,24 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
     proceedToNextStep,
   } = useValuesSelectionStore();
 
+  // Track screen view
+  useEffect(() => {
+    trackScreenView('ValuesSelection');
+  }, []);
+
   // Load values on mount
   useEffect(() => {
     if (availableValues.length === 0) {
       loadValues();
     }
   }, [availableValues.length, loadValues]);
+
+  // Track value selection changes
+  useEffect(() => {
+    if (selectedAny.length > 0) {
+      trackValueSelection('initial', selectedAny.length);
+    }
+  }, [selectedAny.length]);
 
   const handleValuePress = (valueId: string): void => {
     if (selectedAny.includes(valueId)) {
@@ -44,24 +61,31 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
   };
 
   if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading values...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading values..." />;
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Error: {error}</Text>
-      </View>
+      <EmptyState
+        icon="⚠️"
+        title="Something went wrong"
+        message={error}
+      />
+    );
+  }
+
+  if (availableValues.length === 0) {
+    return (
+      <EmptyState
+        icon="📋"
+        title="No Values Available"
+        message="There are no values to select at the moment. Please try again later."
+      />
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer>
       <View style={styles.header}>
         <Text style={styles.title}>Select Your Values</Text>
         <Text style={styles.subtitle}>
@@ -93,66 +117,51 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
           <Text style={styles.hint}>Select at least one value to continue</Text>
         )}
       </View>
-    </View>
+    </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   header: {
-    padding: 20,
-    paddingTop: 60,
-    backgroundColor: '#f5f5f5',
+    padding: theme.spacing.lg,
+    paddingTop: theme.spacing['4xl'],
+    backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.border,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#333',
+    fontSize: theme.typography.fontSize['3xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    marginBottom: theme.spacing.sm,
+    color: theme.colors.text,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 12,
-    lineHeight: 22,
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+    lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.relaxed,
   },
   count: {
-    fontSize: 14,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: theme.spacing.base,
   },
   footer: {
-    padding: 20,
+    padding: theme.spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    backgroundColor: '#fff',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#ff3b30',
-    textAlign: 'center',
-    padding: 20,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
   },
   hint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#999',
+    marginTop: theme.spacing.sm,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textTertiary,
     textAlign: 'center',
   },
 });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Value } from '../types/value';
+import { theme } from '../theme';
 
 interface ValueCardProps {
   value: Value;
@@ -43,36 +44,36 @@ export const ValueCard: React.FC<ValueCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.base,
+    marginBottom: theme.spacing.md,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
+    borderColor: theme.colors.border,
   },
   cardSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
   },
   cardDisabled: {
     opacity: 0.5,
   },
   name: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   nameSelected: {
-    color: '#fff',
+    color: theme.colors.textInverse,
   },
   description: {
-    fontSize: 12,
-    color: '#666',
-    lineHeight: 16,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.xs * theme.typography.lineHeight.normal,
   },
   descriptionSelected: {
-    color: '#fff',
+    color: theme.colors.textInverse,
     opacity: 0.9,
   },
 });

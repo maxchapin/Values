@@ -51,15 +51,22 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
     try {
       const { findMatches } = await import('../services/mockBackend');
       const matches = await findMatches(userId, filters);
+      
+      // Ensure matches is always an array (defensive check)
+      const safeMatches = Array.isArray(matches) ? matches : [];
+      
       set({
-        availableMatches: matches,
-        currentMatchIndex: 0,
+        availableMatches: safeMatches,
+        currentMatchIndex: 0, // Always reset to beginning when loading new matches
         filters: filters || {},
         isLoading: false,
+        error: null,
       });
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to load matches',
+        availableMatches: [], // Clear matches on error
+        currentMatchIndex: 0,
         isLoading: false,
       });
     }
@@ -70,7 +77,8 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
     const { loadMatches } = get();
     const currentUser = getCurrentUser();
     if (currentUser) {
-      set({ filters });
+      // Reset index before loading with new filters
+      set({ filters, currentMatchIndex: 0 });
       await loadMatches(currentUser.id, filters);
     }
   },
@@ -79,41 +87,68 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
   likeUser: (userId: string): void => {
     const { likedUserIds, availableMatches, currentMatchIndex } = get();
     
+    // Defensive check: ensure we have matches
+    if (availableMatches.length === 0) {
+      return;
+    }
+
     // Add to liked list if not already there
     if (!likedUserIds.includes(userId)) {
       set({ likedUserIds: [...likedUserIds, userId] });
     }
 
-    // Move to next match
-    if (currentMatchIndex < availableMatches.length - 1) {
-      set({ currentMatchIndex: currentMatchIndex + 1 });
-    } else {
-      set({ currentMatchIndex: availableMatches.length });
-    }
+    // Move to next match, ensuring index stays within bounds
+    const nextIndex = Math.min(currentMatchIndex + 1, availableMatches.length);
+    set({ currentMatchIndex: nextIndex });
   },
 
   // Pass on a user
   passUser: (userId: string): void => {
     const { availableMatches, currentMatchIndex } = get();
     
-    // Move to next match (don't add to liked list)
-    if (currentMatchIndex < availableMatches.length - 1) {
-      set({ currentMatchIndex: currentMatchIndex + 1 });
-    } else {
-      set({ currentMatchIndex: availableMatches.length });
+    // Defensive check: ensure we have matches
+    if (availableMatches.length === 0) {
+      return;
     }
+
+    // Move to next match, ensuring index stays within bounds
+    const nextIndex = Math.min(currentMatchIndex + 1, availableMatches.length);
+    set({ currentMatchIndex: nextIndex });
   },
 
-  // Get current match
+  // Get current match with defensive checks
   getCurrentMatch: (): Match | null => {
     const { availableMatches, currentMatchIndex } = get();
-    return availableMatches[currentMatchIndex] || null;
+    
+    // Defensive checks: ensure index is valid and match exists
+    if (
+      availableMatches.length === 0 ||
+      currentMatchIndex < 0 ||
+      currentMatchIndex >= availableMatches.length
+    ) {
+      return null;
+    }
+
+    const match = availableMatches[currentMatchIndex];
+    return match || null;
   },
 
   // Get matches for users that were liked
   getLikedMatches: (): Match[] => {
     const { availableMatches, likedUserIds } = get();
-    return availableMatches.filter((match) => likedUserIds.includes(match.user.id));
+    
+    // Defensive check: ensure we have matches
+    if (availableMatches.length === 0 || likedUserIds.length === 0) {
+      return [];
+    }
+
+    return availableMatches.filter((match) => {
+      // Defensive check: ensure match and user exist
+      if (!match || !match.user || !match.user.id) {
+        return false;
+      }
+      return likedUserIds.includes(match.user.id);
+    });
   },
 
   // Reset store

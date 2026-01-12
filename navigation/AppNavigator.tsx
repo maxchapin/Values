@@ -21,6 +21,9 @@ import { DiscoverScreen } from '../screens/DiscoverScreen';
 import { MatchesScreen } from '../screens/MatchesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 
+// Debug screen (dev mode only)
+import { DebugScreen } from '../screens/DebugScreen';
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -165,6 +168,18 @@ export const AppNavigator: React.FC = () => {
           component={MainTabNavigator}
           options={{ headerShown: false }}
         />
+
+        {/* Debug Screen (dev mode only) */}
+        {__DEV__ && (
+          <Stack.Screen
+            name={ROUTES.DEBUG}
+            component={DebugScreen}
+            options={{
+              title: 'Debug Panel',
+              presentation: 'modal',
+            }}
+          />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

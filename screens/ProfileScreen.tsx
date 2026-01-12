@@ -1,7 +1,13 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useUserStore } from '../store/userStore';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { EmptyState } from '../components/EmptyState';
+import { useDebugAccess } from '../hooks/useDebugAccess';
+import { trackScreenView } from '../services/analytics';
+import { ScreenContainer } from '../components/ScreenContainer';
+import { theme } from '../theme';
 
 /**
  * Profile Screen - Placeholder
@@ -9,19 +15,36 @@ import { PrimaryButton } from '../components/PrimaryButton';
  */
 export const ProfileScreen: React.FC = () => {
   const { currentUser, logout } = useUserStore();
+  const navigation = useNavigation();
+  const { handlePress: handleTitlePress, isDebugMode } = useDebugAccess();
+
+  useEffect(() => {
+    trackScreenView('Profile');
+  }, []);
+
+  useEffect(() => {
+    if (isDebugMode && navigation) {
+      (navigation as any).navigate('Debug');
+    }
+  }, [isDebugMode, navigation]);
 
   if (!currentUser) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>No Profile</Text>
-      </View>
+      <EmptyState
+        icon="👤"
+        title="No Profile"
+        message="Please complete your profile setup to view your profile."
+      />
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScreenContainer>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
-        <Text style={styles.title}>Profile</Text>
+        <TouchableOpacity onPress={handleTitlePress} activeOpacity={0.7}>
+          <Text style={styles.title}>Profile</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -53,52 +76,52 @@ export const ProfileScreen: React.FC = () => {
         <PrimaryButton
           title="Logout"
           onPress={logout}
-          style={{ backgroundColor: '#ff3b30' }}
+          style={{ backgroundColor: theme.colors.error }}
         />
       </View>
-    </ScrollView>
+      </ScrollView>
+    </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   contentContainer: {
-    padding: 20,
-    paddingTop: 60,
+    padding: theme.spacing.lg,
+    paddingTop: theme.spacing['4xl'],
   },
   header: {
-    marginBottom: 32,
+    marginBottom: theme.spacing['2xl'],
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: theme.typography.fontSize['3xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.text,
   },
   section: {
-    marginBottom: 24,
-    paddingBottom: 16,
+    marginBottom: theme.spacing.xl,
+    paddingBottom: theme.spacing.base,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.border,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
     textTransform: 'uppercase',
   },
   value: {
-    fontSize: 16,
-    color: '#333',
-    lineHeight: 24,
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.text,
+    lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.normal,
   },
   footer: {
-    marginTop: 32,
-    paddingTop: 32,
+    marginTop: theme.spacing['2xl'],
+    paddingTop: theme.spacing['2xl'],
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: theme.colors.border,
   },
 });

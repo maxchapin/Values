@@ -1,8 +1,14 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useItemsStore } from '../store/itemsStore';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { LoadingSpinner } from '../components/LoadingSpinner';
+import { EmptyState } from '../components/EmptyState';
+import { useDebugAccess } from '../hooks/useDebugAccess';
+import { trackScreenView } from '../services/analytics';
+import { ScreenContainer } from '../components/ScreenContainer';
+import { theme } from '../theme';
 import { RootStackParamList } from '../navigation/types';
 import { ExampleItem } from '../services/api';
 
@@ -10,6 +16,17 @@ type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const { items, isLoading, error, fetchItems } = useItemsStore();
+  const { handlePress: handleTitlePress, isDebugMode } = useDebugAccess();
+
+  useEffect(() => {
+    trackScreenView('Home');
+  }, []);
+
+  useEffect(() => {
+    if (isDebugMode) {
+      navigation.navigate('Debug');
+    }
+  }, [isDebugMode, navigation]);
 
   useEffect(() => {
     // Fetch items when component mounts
@@ -39,29 +56,38 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   };
 
   if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading items...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading items..." />;
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Error: {error}</Text>
-        <PrimaryButton
-          title="Retry"
-          onPress={fetchItems}
-        />
-      </View>
+      <EmptyState
+        icon="⚠️"
+        title="Something went wrong"
+        message={error}
+        actionLabel="Try Again"
+        onAction={fetchItems}
+      />
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        icon="📋"
+        title="No Items"
+        message="There are no items to display at the moment."
+      />
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Example Items</Text>
+    <ScreenContainer>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleTitlePress} activeOpacity={0.7}>
+          <Text style={styles.headerText}>Example Items</Text>
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={items}
         renderItem={renderItem}
@@ -69,60 +95,48 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
-    </View>
+    </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: 60,
-  },
   header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#f5f5f5',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.base,
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  headerText: {
+    fontSize: theme.typography.fontSize['2xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.text,
   },
   listContent: {
-    padding: 16,
+    padding: theme.spacing.base,
   },
   itemContainer: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: theme.colors.backgroundTertiary,
+    borderRadius: theme.borderRadius.base,
+    padding: theme.spacing.base,
+    marginBottom: theme.spacing.md,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.colors.border,
   },
   itemTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: theme.typography.fontWeight.semibold,
+    marginBottom: theme.spacing.sm,
+    color: theme.colors.text,
   },
   itemDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-    lineHeight: 20,
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.normal,
   },
   itemDate: {
-    fontSize: 12,
-    color: '#999',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#ff3b30',
-    textAlign: 'center',
-    padding: 20,
-    marginBottom: 16,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textTertiary,
   },
 });

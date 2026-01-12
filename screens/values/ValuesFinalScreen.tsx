@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
 import { useUserStore } from '../../store/userStore';
 import { ValueCard } from '../../components/ValueCard';
 import { PrimaryButton } from '../../components/PrimaryButton';
+import { SecondaryButton } from '../../components/SecondaryButton';
+import { trackScreenView, trackValueSelection, trackOnboardingCompleted } from '../../services/analytics';
+import { ScreenContainer } from '../../components/ScreenContainer';
+import { theme } from '../../theme';
 import { RootStackParamList } from '../../navigation/types';
 import { ValuesSelectionStep } from '../../types/value';
 
@@ -56,6 +60,14 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
     const finalValues = useValuesSelectionStore.getState().top5;
     await updateValues(finalValues);
 
+    // Track onboarding completion
+    trackOnboardingCompleted({
+      finalValuesCount: finalValues.length,
+    });
+
+    // Track final value selection
+    trackValueSelection('final_5', finalValues.length);
+
     // Navigate to main app
     navigation.reset({
       index: 0,
@@ -69,7 +81,7 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer>
       <View style={styles.header}>
         <Text style={styles.title}>Select Your Top 5 Values</Text>
         <Text style={styles.subtitle}>
@@ -101,11 +113,10 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
 
       <View style={styles.footer}>
         <View style={styles.buttonRow}>
-          <PrimaryButton
+          <SecondaryButton
             title="Back"
             onPress={handleBack}
-            style={[styles.backButton, { backgroundColor: '#ccc' }]}
-            textStyle={{ color: '#333' }}
+            style={styles.backButton}
           />
           <PrimaryButton
             title="Complete"
@@ -122,33 +133,29 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
           </Text>
         )}
       </View>
-    </View>
+    </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   header: {
-    padding: 20,
-    paddingTop: 60,
-    backgroundColor: '#f5f5f5',
+    padding: theme.spacing.lg,
+    paddingTop: theme.spacing['4xl'],
+    backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.border,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#333',
+    fontSize: theme.typography.fontSize['3xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    marginBottom: theme.spacing.sm,
+    color: theme.colors.text,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 12,
-    lineHeight: 22,
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+    lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.relaxed,
   },
   countContainer: {
     flexDirection: 'row',
@@ -156,33 +163,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   count: {
-    fontSize: 18,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: theme.typography.fontSize.lg,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   countExact: {
-    color: '#34C759',
+    color: theme.colors.success,
   },
   remaining: {
-    fontSize: 14,
-    color: '#ff3b30',
-    fontWeight: '500',
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.error,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: theme.spacing.base,
   },
   footer: {
-    padding: 20,
+    padding: theme.spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    backgroundColor: '#fff',
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
   },
   buttonRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: theme.spacing.md,
   },
   backButton: {
     flex: 1,
@@ -191,9 +198,9 @@ const styles = StyleSheet.create({
     flex: 2,
   },
   hint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#ff3b30',
+    marginTop: theme.spacing.sm,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.error,
     textAlign: 'center',
   },
 });

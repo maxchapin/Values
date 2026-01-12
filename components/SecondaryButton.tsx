@@ -2,7 +2,7 @@ import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
 import { theme } from '../theme';
 
-interface PrimaryButtonProps {
+interface SecondaryButtonProps {
   title: string;
   onPress: () => void;
   disabled?: boolean;
@@ -11,7 +11,7 @@ interface PrimaryButtonProps {
   textStyle?: TextStyle;
 }
 
-export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
+export const SecondaryButton: React.FC<SecondaryButtonProps> = ({
   title,
   onPress,
   disabled = false,
@@ -27,9 +27,11 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       activeOpacity={0.7}
     >
       {loading ? (
-        <ActivityIndicator color={theme.colors.textInverse} />
+        <ActivityIndicator color={theme.colors.primary} />
       ) : (
-        <Text style={[styles.buttonText, textStyle]}>{title}</Text>
+        <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled, textStyle]}>
+          {title}
+        </Text>
       )}
     </TouchableOpacity>
   );
@@ -37,21 +39,26 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.background,
     paddingVertical: theme.spacing.md + 2, // 14px
     paddingHorizontal: theme.spacing.xl, // 24px
     borderRadius: theme.borderRadius.base,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
   },
   buttonDisabled: {
-    backgroundColor: theme.colors.disabled,
+    borderColor: theme.colors.disabled,
     opacity: 0.6,
   },
   buttonText: {
-    color: theme.colors.textInverse,
+    color: theme.colors.primary,
     fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.semibold,
+  },
+  buttonTextDisabled: {
+    color: theme.colors.disabledText,
   },
 });

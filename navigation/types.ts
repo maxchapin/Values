@@ -38,6 +38,8 @@ export type RootStackParamList = {
   ValuesFinal5: undefined;
   // Main app (tabs)
   MainApp: undefined;
+  // Debug (dev mode only)
+  Debug: undefined;
   // Legacy (can be removed later)
   Home: undefined;
   Details: { itemId: string };
@@ -59,6 +61,8 @@ export const ROUTES = {
   DISCOVER: 'Discover',
   MATCHES: 'Matches',
   PROFILE: 'Profile',
+  // Debug
+  DEBUG: 'Debug',
   // Legacy
   HOME: 'Home',
   DETAILS: 'Details',

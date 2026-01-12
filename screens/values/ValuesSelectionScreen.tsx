@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
 import { ValueCard } from '../../components/ValueCard';
 import { PrimaryButton } from '../../components/PrimaryButton';
@@ -10,13 +11,13 @@ import { trackScreenView, trackValueSelection } from '../../services/analytics';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { theme } from '../../theme';
 import { RootStackParamList } from '../../navigation/types';
+import { ValuesSelectionStep } from '../../types/value';
 
 type ValuesSelectionScreenProps = NativeStackScreenProps<RootStackParamList, 'ValuesSelection'>;
 
 export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ navigation }) => {
   const {
     availableValues,
-    selectedAny,
     isLoading,
     error,
     loadValues,
@@ -24,12 +25,35 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
     removeValue,
     canProceedToNextStep,
     proceedToNextStep,
+    getCurrentSelections,
+    setCurrentStep,
+    validateState,
   } = useValuesSelectionStore();
 
-  // Track screen view
+  // Get current selections (source of truth)
+  const currentSelections = getCurrentSelections();
+
+  // Track screen view and sync step on mount
   useEffect(() => {
     trackScreenView('ValuesSelection');
   }, []);
+
+  // Sync step when screen comes into focus (handles back navigation)
+  useFocusEffect(
+    useCallback(() => {
+      // Ensure store step matches this screen
+      setCurrentStep(ValuesSelectionStep.INITIAL);
+      
+      // Validate state in dev mode
+      if (__DEV__) {
+        const validation = validateState();
+        if (!validation.isValid) {
+          console.warn('[ValuesSelectionScreen] State validation failed:', validation.errors);
+        }
+        console.log('[ValuesSelectionScreen] Screen focused, current selections:', getCurrentSelections().length);
+      }
+    }, [setCurrentStep, validateState, getCurrentSelections])
+  );
 
   // Load values on mount
   useEffect(() => {
@@ -40,13 +64,14 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
 
   // Track value selection changes
   useEffect(() => {
-    if (selectedAny.length > 0) {
-      trackValueSelection('initial', selectedAny.length);
+    if (currentSelections.length > 0) {
+      trackValueSelection('initial', currentSelections.length);
     }
-  }, [selectedAny.length]);
+  }, [currentSelections.length]);
 
   const handleValuePress = (valueId: string): void => {
-    if (selectedAny.includes(valueId)) {
+    // Use currentSelections as source of truth
+    if (currentSelections.includes(valueId)) {
       removeValue(valueId);
     } else {
       addValue(valueId);
@@ -92,7 +117,7 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
           Choose any values that matter to you. You'll narrow them down in the next steps.
         </Text>
         <Text style={styles.count}>
-          Selected: {selectedAny.length}
+          Selected: {currentSelections.length}
         </Text>
       </View>
 
@@ -101,7 +126,7 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
           <ValueCard
             key={value.id}
             value={value}
-            isSelected={selectedAny.includes(value.id)}
+            isSelected={currentSelections.includes(value.id)}
             onPress={() => handleValuePress(value.id)}
           />
         ))}
@@ -113,7 +138,7 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
           onPress={handleContinue}
           disabled={!canProceedToNextStep()}
         />
-        {selectedAny.length === 0 && (
+        {currentSelections.length === 0 && (
           <Text style={styles.hint}>Select at least one value to continue</Text>
         )}
       </View>

@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
 import { ValueCard } from '../../components/ValueCard';
 import { PrimaryButton } from '../../components/PrimaryButton';
@@ -21,6 +22,7 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
     selectedAny,
     top20,
     availableValues,
+    currentStep: storeStep,
     canProceedToNextStep,
     proceedToNextStep,
     addValue,
@@ -28,16 +30,51 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
     getRequiredCountForStep,
     goToPreviousStep,
     getCurrentSelections,
+    setCurrentStep,
+    validateState,
   } = useValuesSelectionStore();
 
-  // Determine current step from route name
-  const getCurrentStep = (): ValuesSelectionStep => {
+  // Determine expected step from route name
+  const getExpectedStep = (): ValuesSelectionStep => {
     if (route.name === 'ValuesNarrow20') return ValuesSelectionStep.NARROW_20;
     if (route.name === 'ValuesNarrow10') return ValuesSelectionStep.NARROW_10;
     return ValuesSelectionStep.NARROW_20;
   };
 
-  const currentStep = getCurrentStep();
+  const expectedStep = getExpectedStep();
+  
+  // Track screen view
+  useEffect(() => {
+    const screenName = expectedStep === ValuesSelectionStep.NARROW_20
+      ? 'ValuesNarrow20'
+      : 'ValuesNarrow10';
+    trackScreenView(screenName);
+  }, [expectedStep]);
+
+  // Sync store step with route when screen comes into focus (handles back navigation)
+  useFocusEffect(
+    useCallback(() => {
+      if (storeStep !== expectedStep) {
+        if (__DEV__) {
+          console.log(`[ValuesNarrowScreen] Syncing step: ${storeStep} → ${expectedStep} (route: ${route.name})`);
+        }
+        setCurrentStep(expectedStep);
+      }
+
+      // Validate state in dev mode
+      if (__DEV__) {
+        const validation = validateState();
+        if (!validation.isValid) {
+          console.warn(`[ValuesNarrowScreen] State validation failed at step ${expectedStep}:`, validation.errors);
+        }
+        const currentSelections = getCurrentSelections();
+        console.log(`[ValuesNarrowScreen] Screen focused (${route.name}), selections: ${currentSelections.length}`);
+      }
+    }, [route.name, expectedStep, storeStep, setCurrentStep, validateState, getCurrentSelections])
+  );
+
+  // Use store's current step as source of truth
+  const currentStep = storeStep;
   const requiredCount = getRequiredCountForStep(currentStep);
   const currentSelections = getCurrentSelections();
   const currentCount = currentSelections.length;
@@ -53,7 +90,7 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
 
   // Track value selection changes
   useEffect(() => {
-    if (currentCount > 0) {
+    if (currentCount > 0 && (currentStep === ValuesSelectionStep.NARROW_20 || currentStep === ValuesSelectionStep.NARROW_10)) {
       const stepName = currentStep === ValuesSelectionStep.NARROW_20
         ? 'narrow_20'
         : 'narrow_10';
@@ -67,11 +104,27 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
     : availableValues.filter((v) => top20.includes(v.id));
 
   const handleValuePress = (valueId: string): void => {
+    // Defensive check: ensure we're on the right step
+    if (currentStep !== expectedStep) {
+      if (__DEV__) {
+        console.warn(`[ValuesNarrowScreen] Step mismatch: currentStep=${currentStep}, expectedStep=${expectedStep}`);
+      }
+      // Sync step if mismatch
+      setCurrentStep(expectedStep);
+      return;
+    }
+
+    // Use currentSelections as source of truth
     if (currentSelections.includes(valueId)) {
       removeValue(valueId);
     } else {
-      if (requiredCount && currentCount < requiredCount) {
+      // Can add if we haven't reached the required count
+      if (requiredCount === null || currentCount < requiredCount) {
         addValue(valueId);
+      } else {
+        if (__DEV__) {
+          console.log(`[ValuesNarrowScreen] Cannot add ${valueId}: already at max (${requiredCount})`);
+        }
       }
     }
   };

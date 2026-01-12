@@ -61,9 +61,8 @@ export const DiscoverScreen: React.FC = () => {
     getAllValues().then(setAvailableValues);
   }, []);
 
-  const currentMatch = getCurrentMatch();
-
   const handleLike = (): void => {
+    const currentMatch = getCurrentMatch();
     if (currentMatch) {
       const { user, similarityScore, sharedValuesCount } = currentMatch;
       trackMatchLiked(user.id, {
@@ -75,6 +74,7 @@ export const DiscoverScreen: React.FC = () => {
   };
 
   const handlePass = (): void => {
+    const currentMatch = getCurrentMatch();
     if (currentMatch) {
       const { user, similarityScore } = currentMatch;
       trackMatchPassed(user.id, {

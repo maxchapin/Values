@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
 import { useUserStore } from '../../store/userStore';
 import { ValueCard } from '../../components/ValueCard';
@@ -16,9 +17,9 @@ type ValuesFinalScreenProps = NativeStackScreenProps<RootStackParamList, 'Values
 
 export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation }) => {
   const {
-    top5,
     top10,
     availableValues,
+    currentStep: storeStep,
     canProceedToNextStep,
     proceedToNextStep,
     addValue,
@@ -26,25 +27,91 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
     getRequiredCountForStep,
     goToPreviousStep,
     getCurrentSelections,
+    setCurrentStep,
+    validateState,
   } = useValuesSelectionStore();
 
   const { updateValues } = useUserStore();
 
-  const currentStep = ValuesSelectionStep.FINAL_5;
+  const expectedStep = ValuesSelectionStep.FINAL_5;
+
+  // Track screen view
+  useEffect(() => {
+    trackScreenView('ValuesFinal5');
+  }, []);
+
+  // Sync step when screen comes into focus (handles back navigation)
+  useFocusEffect(
+    useCallback(() => {
+      // Ensure store step matches this screen
+      if (storeStep !== expectedStep) {
+        if (__DEV__) {
+          console.log(`[ValuesFinalScreen] Syncing step: ${storeStep} → ${expectedStep}`);
+        }
+        setCurrentStep(expectedStep);
+      }
+
+      // Validate state in dev mode
+      if (__DEV__) {
+        const validation = validateState();
+        if (!validation.isValid) {
+          console.warn(`[ValuesFinalScreen] State validation failed:`, validation.errors);
+        }
+        const currentSelections = getCurrentSelections();
+        console.log(`[ValuesFinalScreen] Screen focused, selections: ${currentSelections.length}`);
+      }
+    }, [storeStep, expectedStep, setCurrentStep, validateState, getCurrentSelections])
+  );
+
+  // Use store's current step as source of truth
+  const currentStep = storeStep;
   const requiredCount = getRequiredCountForStep(currentStep);
   const currentSelections = getCurrentSelections();
   const currentCount = currentSelections.length;
   const remaining = requiredCount ? requiredCount - currentCount : 0;
 
+  // Track value selection changes
+  useEffect(() => {
+    if (currentCount > 0 && currentStep === ValuesSelectionStep.FINAL_5) {
+      trackValueSelection('final_5', currentCount);
+    }
+  }, [currentCount, currentStep]);
+
+  // Validate state in dev mode
+  useEffect(() => {
+    if (__DEV__) {
+      const validation = validateState();
+      if (!validation.isValid) {
+        console.warn(`[ValuesFinalScreen] State validation failed:`, validation.errors);
+      }
+      console.log(`[ValuesFinalScreen] Step: ${currentStep}, Selections: ${currentCount}/${requiredCount || 'any'}`);
+    }
+  }, [currentStep, currentCount, requiredCount, validateState]);
+
   // Show values from top10 for final selection
   const valuesToShow = availableValues.filter((v) => top10.includes(v.id));
 
   const handleValuePress = (valueId: string): void => {
+    // Defensive check: ensure we're on the right step
+    if (currentStep !== expectedStep) {
+      if (__DEV__) {
+        console.warn(`[ValuesFinalScreen] Step mismatch: currentStep=${currentStep}, expectedStep=${expectedStep}`);
+      }
+      setCurrentStep(expectedStep);
+      return;
+    }
+
+    // Use currentSelections as source of truth
     if (currentSelections.includes(valueId)) {
       removeValue(valueId);
     } else {
-      if (requiredCount && currentCount < requiredCount) {
+      // Can add if we haven't reached the required count
+      if (requiredCount === null || currentCount < requiredCount) {
         addValue(valueId);
+      } else {
+        if (__DEV__) {
+          console.log(`[ValuesFinalScreen] Cannot add ${valueId}: already at max (${requiredCount})`);
+        }
       }
     }
   };

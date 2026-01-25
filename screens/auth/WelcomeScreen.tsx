@@ -38,7 +38,6 @@ const styles = StyleSheet.create({
   container: {
     justifyContent: 'space-between',
     padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
   },
   content: {
     flex: 1,

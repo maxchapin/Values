@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { Match } from '../types/match';
+import { saveMatchesState } from '../services/persistence';
 
 interface MatchFilters {
   ageRange?: [number, number]; // [minAge, maxAge]
@@ -19,15 +20,17 @@ interface MatchesStore {
   currentMatchIndex: number;
   isLoading: boolean;
   error: string | null;
+  isHydrated: boolean; // Track if store has been hydrated from storage
 
   // Actions
   loadMatches: (userId: string, filters?: MatchFilters) => Promise<void>;
   setFilters: (filters: MatchFilters) => Promise<void>;
-  likeUser: (userId: string) => void;
+  likeUser: (userId: string) => Promise<void>;
   passUser: (userId: string) => void;
   getCurrentMatch: () => Match | null;
   getLikedMatches: () => Match[];
   reset: () => void;
+  rehydrate: (likedUserIds: string[], filters: MatchFilters) => void;
 }
 
 // Helper to get current user (avoid circular dependency)
@@ -44,9 +47,14 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
   currentMatchIndex: 0,
   isLoading: false,
   error: null,
+  isHydrated: false,
 
   // Load matches for a user
   loadMatches: async (userId: string, filters?: MatchFilters): Promise<void> => {
+    if (!userId || typeof userId !== 'string') {
+      set({ isLoading: false, error: 'Missing user id', availableMatches: [], currentMatchIndex: 0 });
+      return;
+    }
     set({ isLoading: true, error: null });
     try {
       const { findMatches } = await import('../services/mockBackend');
@@ -74,18 +82,27 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
 
   // Set filters and reload matches
   setFilters: async (filters: MatchFilters): Promise<void> => {
-    const { loadMatches } = get();
+    const { loadMatches, likedUserIds } = get();
     const currentUser = getCurrentUser();
     if (currentUser) {
       // Reset index before loading with new filters
       set({ filters, currentMatchIndex: 0 });
       await loadMatches(currentUser.id, filters);
+      
+      // Persist matches state with updated filters
+      try {
+        await saveMatchesState(likedUserIds, filters);
+      } catch (error) {
+        if (__DEV__) {
+          console.error('[MatchesStore] Error persisting matches state:', error);
+        }
+      }
     }
   },
 
   // Like a user
-  likeUser: (userId: string): void => {
-    const { likedUserIds, availableMatches, currentMatchIndex } = get();
+  likeUser: async (userId: string): Promise<void> => {
+    const { likedUserIds, availableMatches, currentMatchIndex, filters } = get();
     
     // Defensive check: ensure we have matches
     if (availableMatches.length === 0) {
@@ -94,7 +111,17 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
 
     // Add to liked list if not already there
     if (!likedUserIds.includes(userId)) {
-      set({ likedUserIds: [...likedUserIds, userId] });
+      const newLikedUserIds = [...likedUserIds, userId];
+      set({ likedUserIds: newLikedUserIds });
+      
+      // Persist matches state
+      try {
+        await saveMatchesState(newLikedUserIds, filters);
+      } catch (error) {
+        if (__DEV__) {
+          console.error('[MatchesStore] Error persisting matches state:', error);
+        }
+      }
     }
 
     // Move to next match, ensuring index stays within bounds
@@ -158,6 +185,19 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
       likedUserIds: [],
       currentMatchIndex: 0,
       filters: {},
+      error: null,
+      isLoading: false,
+      isHydrated: false,
+    });
+  },
+
+  // Rehydrate store from persisted data
+  rehydrate: (likedUserIds: string[], filters: MatchFilters): void => {
+    set({
+      likedUserIds,
+      filters,
+      isHydrated: true,
+      isLoading: false,
       error: null,
     });
   },

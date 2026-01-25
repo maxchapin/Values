@@ -6,6 +6,7 @@ import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
 import { ValueCard } from '../../components/ValueCard';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { SecondaryButton } from '../../components/SecondaryButton';
+import { EmptyState } from '../../components/EmptyState';
 import { trackScreenView, trackValueSelection } from '../../services/analytics';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { theme } from '../../theme';
@@ -80,13 +81,8 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
   const currentCount = currentSelections.length;
   const remaining = requiredCount ? requiredCount - currentCount : 0;
 
-  // Track screen view
-  useEffect(() => {
-    const screenName = currentStep === ValuesSelectionStep.NARROW_20
-      ? 'ValuesNarrow20'
-      : 'ValuesNarrow10';
-    trackScreenView(screenName);
-  }, [currentStep]);
+  // (Stabilization) Avoid duplicate screen view tracking.
+  // We track based on `expectedStep` above.
 
   // Track value selection changes
   useEffect(() => {
@@ -102,6 +98,18 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
   const valuesToShow = currentStep === ValuesSelectionStep.NARROW_20
     ? availableValues.filter((v) => selectedAny.includes(v.id))
     : availableValues.filter((v) => top20.includes(v.id));
+
+  if (valuesToShow.length === 0) {
+    return (
+      <EmptyState
+        icon="📋"
+        title="No values to narrow"
+        message="We couldn't load your previous selections. Go back and try again."
+        actionLabel="Go Back"
+        onAction={() => navigation.goBack()}
+      />
+    );
+  }
 
   const handleValuePress = (valueId: string): void => {
     // Defensive check: ensure we're on the right step
@@ -168,7 +176,7 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer contentPadding={false}>
       <View style={styles.header}>
         <Text style={styles.title}>{getStepTitle()}</Text>
         <Text style={styles.subtitle}>{getStepDescription()}</Text>
@@ -225,7 +233,7 @@ export const ValuesNarrowScreen: React.FC<ValuesNarrowScreenProps> = ({ route, n
 const styles = StyleSheet.create({
   header: {
     padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
+    paddingTop: theme.spacing.xl,
     backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,

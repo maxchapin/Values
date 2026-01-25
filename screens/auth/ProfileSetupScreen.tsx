@@ -1,29 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import React, { useRef, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { TextInputField } from '../../components/TextInputField';
+import { TagPill } from '../../components/TagPill';
+import { ProfilePhotosPicker } from '../../components/ProfilePhotosPicker';
+import { ProfilePromptsEditor } from '../../components/ProfilePromptsEditor';
 import { trackScreenView, trackProfileCompleted, setUserProperties } from '../../services/analytics';
 import { theme } from '../../theme';
 import { useUserStore } from '../../store/userStore';
 import { useForm, validators } from '../../hooks/useForm';
 import { RootStackParamList } from '../../navigation/types';
-import { Gender, Prompt } from '../../types/user';
-import { AVAILABLE_PROMPTS } from '../../constants/prompts';
+import { Gender, InterestedIn, Prompt } from '../../types/user';
 
 type ProfileSetupScreenProps = NativeStackScreenProps<RootStackParamList, 'ProfileSetup'>;
-
-interface PromptAnswer {
-  promptId: string;
-  question: string;
-  answer: string;
-}
 
 interface ProfileFormData {
   name: string;
   age: string;
   location: string;
+  hometown: string;
   job: string;
   education: string;
   bio: string;
@@ -31,6 +28,12 @@ interface ProfileFormData {
 
 export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation }) => {
   const { currentUser, createOrUpdateUser, isLoading } = useUserStore();
+  const ageRef = useRef<TextInput>(null);
+  const locationRef = useRef<TextInput>(null);
+  const hometownRef = useRef<TextInput>(null);
+  const jobRef = useRef<TextInput>(null);
+  const educationRef = useRef<TextInput>(null);
+  const bioRef = useRef<TextInput>(null);
 
   useEffect(() => {
     trackScreenView('ProfileSetup');
@@ -49,14 +52,15 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       name: currentUser?.name || '',
       age: currentUser?.age.toString() || '',
       location: currentUser?.location || '',
+      hometown: currentUser?.hometown || '',
       job: currentUser?.job || '',
       education: currentUser?.education || '',
       bio: currentUser?.bio || '',
     },
     {
       name: [
-        validators.required('Name is required'),
-        validators.minLength(2, 'Name must be at least 2 characters'),
+        validators.required('First name is required'),
+        validators.minLength(2, 'First name must be at least 2 characters'),
       ],
       age: [
         validators.required('Age is required'),
@@ -78,6 +82,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
         validators.required('Location is required'),
         validators.minLength(2, 'Location must be at least 2 characters'),
       ],
+      hometown: [
+        validators.required('Where you are from is required'),
+        validators.minLength(2, 'Please enter where you are from'),
+      ],
       job: [],
       education: [],
       bio: [
@@ -89,84 +97,76 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
 
   // Separate state for complex fields
   const [gender, setGender] = useState<Gender>(currentUser?.gender || 'prefer-not-to-say');
-  const [showGenderPicker, setShowGenderPicker] = useState(false);
-  const [showPromptPicker, setShowPromptPicker] = useState(false);
-  const [selectedPromptIndex, setSelectedPromptIndex] = useState<number | null>(null);
-  const [promptAnswers, setPromptAnswers] = useState<PromptAnswer[]>(
-    currentUser?.prompts.map((p) => ({
-      promptId: p.id,
-      question: p.question,
-      answer: p.answer,
-    })) || []
+  const [interestedIn, setInterestedIn] = useState<InterestedIn | null>(
+    currentUser?.interestedIn ?? null
   );
-
-  // Add a prompt answer
-  const addPrompt = (): void => {
-    if (promptAnswers.length >= 3) return;
-
-    // Find first available prompt not already selected
-    const usedPromptIds = promptAnswers.map((pa) => pa.promptId);
-    const availablePrompt = AVAILABLE_PROMPTS.find((p) => !usedPromptIds.includes(p.id));
-
-    if (availablePrompt) {
-      setPromptAnswers([
-        ...promptAnswers,
-        { promptId: availablePrompt.id, question: availablePrompt.question, answer: '' },
-      ]);
-    }
-  };
-
-  // Remove a prompt answer
-  const removePrompt = (index: number): void => {
-    setPromptAnswers(promptAnswers.filter((_, i) => i !== index));
-  };
-
-  // Update prompt answer
-  const updatePromptAnswer = (index: number, answer: string): void => {
-    const updated = [...promptAnswers];
-    updated[index].answer = answer;
-    setPromptAnswers(updated);
-  };
-
-  // Change prompt question
-  const changePromptQuestion = (index: number, promptId: string): void => {
-    const selectedPrompt = AVAILABLE_PROMPTS.find((p) => p.id === promptId);
-    if (!selectedPrompt) return;
-
-    const updated = [...promptAnswers];
-    updated[index].promptId = promptId;
-    updated[index].question = selectedPrompt.question;
-    setPromptAnswers(updated);
-  };
+  const [interestedInError, setInterestedInError] = useState<string | null>(null);
+  const [promptsError, setPromptsError] = useState<string | null>(null);
+  const [showGenderPicker, setShowGenderPicker] = useState(false);
+  const [photos, setPhotos] = useState<string[]>(
+    Array.isArray(currentUser?.photos) ? currentUser!.photos : []
+  );
+  const [prompts, setPrompts] = useState<Prompt[]>(() => {
+    const makeLocalId = (): string =>
+      `prompt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const mapped = (currentUser?.prompts ?? []).map((p) => ({
+      id: p.id,
+      question: p.question ?? '',
+      answer: p.answer ?? '',
+      isCustom: typeof (p as any).isCustom === 'boolean' ? (p as any).isCustom : false,
+    }));
+    return mapped.length > 0 ? mapped : [{ id: makeLocalId(), question: '', answer: '', isCustom: false }];
+  });
 
   // Validation for prompts (separate from form validation)
-  const hasValidPrompts = (): boolean => {
-    return promptAnswers.length >= 1 && promptAnswers.every((pa) => pa.answer.trim().length > 0);
+  const getValidPrompts = (): Prompt[] => {
+    const safe = Array.isArray(prompts) ? prompts : [];
+    const cleaned = safe
+      .map((p) => ({
+        id: p.id,
+        question: (p.question ?? '').trim(),
+        answer: (p.answer ?? '').trim(),
+        isCustom: !!p.isCustom,
+      }))
+      // ignore fully empty rows
+      .filter((p) => p.question.length > 0 || p.answer.length > 0);
+
+    return cleaned.filter((p) => p.question.length > 0 && p.answer.length > 0).slice(0, 3);
   };
 
+  const hasValidPrompts = (): boolean => getValidPrompts().length >= 1;
+
   const onSubmit = async (formValues: ProfileFormData): Promise<void> => {
-    // Additional validation for prompts
-    if (!hasValidPrompts()) {
+    // Validate interestedIn (non-text field)
+    if (!interestedIn) {
+      setInterestedInError('Please select who you are interested in');
       return;
     }
+    setInterestedInError(null);
+
+    // Additional validation for prompts
+    const validPrompts = getValidPrompts();
+    if (validPrompts.length < 1) {
+      setPromptsError('Please add at least one prompt and answer');
+      return;
+    }
+    setPromptsError(null);
 
     const ageNum = parseInt(formValues.age, 10);
-    const prompts: Prompt[] = promptAnswers.map((pa) => ({
-      id: pa.promptId,
-      question: pa.question,
-      answer: pa.answer.trim(),
-    }));
 
     const profileData = {
       email: currentUser?.email || '',
       name: formValues.name.trim(),
       age: ageNum,
       gender,
+      interestedIn,
       location: formValues.location.trim(),
+      hometown: formValues.hometown.trim(),
       job: formValues.job.trim() || undefined,
       education: formValues.education.trim() || undefined,
       bio: formValues.bio.trim(),
-      prompts,
+      photos,
+      prompts: validPrompts,
     };
 
     await createOrUpdateUser(profileData);
@@ -176,7 +176,8 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       age: ageNum,
       hasJob: !!profileData.job,
       hasEducation: !!profileData.education,
-      promptsCount: prompts.length,
+      promptsCount: validPrompts.length,
+      photosCount: Array.isArray(photos) ? photos.length : 0,
     });
 
     // Set user properties for analytics
@@ -184,6 +185,8 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       age: ageNum,
       gender,
       location: profileData.location,
+      interestedIn,
+      hometown: profileData.hometown,
     });
 
     // Navigate to values selection flow
@@ -191,17 +194,24 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
   };
 
   return (
-    <ScreenContainer scrollable scrollViewProps={{ contentContainerStyle: styles.contentContainer }}>
+    <ScreenContainer
+      scrollable
+      keyboardAvoiding
+      scrollViewProps={{ contentContainerStyle: styles.contentContainer }}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Complete Your Profile</Text>
         <Text style={styles.subtitle}>Tell us about yourself to help us find your perfect match</Text>
       </View>
 
       <View style={styles.form}>
-        {/* Name */}
+        {/* Photos */}
+        <ProfilePhotosPicker photos={photos} onChange={setPhotos} />
+
+        {/* First Name */}
         <TextInputField
-          label="Name *"
-          placeholder="Enter your name"
+          label="First Name *"
+          placeholder="Enter your first name"
           value={values.name}
           onChangeText={(text) => {
             setValue('name', text, true);
@@ -209,10 +219,14 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           onBlur={() => setFieldTouched('name')}
           error={touched.name ? errors.name : undefined}
           autoCapitalize="words"
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => ageRef.current?.focus()}
         />
 
         {/* Age */}
         <TextInputField
+          ref={ageRef}
           label="Age *"
           placeholder="Enter your age"
           value={values.age}
@@ -222,6 +236,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           onBlur={() => setFieldTouched('age')}
           error={touched.age ? errors.age : undefined}
           keyboardType="number-pad"
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => locationRef.current?.focus()}
         />
 
         {/* Gender */}
@@ -275,6 +292,40 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           </Modal>
         </View>
 
+        {/* Interested In */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>I am interested in *</Text>
+          <View style={styles.pillRow}>
+            <TagPill
+              label="Men"
+              selected={interestedIn === 'men'}
+              onPress={() => {
+                setInterestedIn('men');
+                setInterestedInError(null);
+              }}
+            />
+            <TagPill
+              label="Women"
+              selected={interestedIn === 'women'}
+              onPress={() => {
+                setInterestedIn('women');
+                setInterestedInError(null);
+              }}
+              style={{ marginLeft: theme.spacing.sm }}
+            />
+            <TagPill
+              label="Everyone"
+              selected={interestedIn === 'everyone'}
+              onPress={() => {
+                setInterestedIn('everyone');
+                setInterestedInError(null);
+              }}
+              style={{ marginLeft: theme.spacing.sm }}
+            />
+          </View>
+          {interestedInError && <Text style={styles.errorText}>{interestedInError}</Text>}
+        </View>
+
         {/* Location */}
         <TextInputField
           label="Location *"
@@ -286,6 +337,27 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           onBlur={() => setFieldTouched('location')}
           error={touched.location ? errors.location : undefined}
           autoCapitalize="words"
+          ref={locationRef}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => hometownRef.current?.focus()}
+        />
+
+        {/* Where are you from? */}
+        <TextInputField
+          label="Where are you from? *"
+          placeholder="Hometown (e.g., Chicago, IL)"
+          value={values.hometown}
+          onChangeText={(text) => {
+            setValue('hometown', text, true);
+          }}
+          onBlur={() => setFieldTouched('hometown')}
+          error={touched.hometown ? errors.hometown : undefined}
+          autoCapitalize="words"
+          ref={hometownRef}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => jobRef.current?.focus()}
         />
 
         {/* Job */}
@@ -299,6 +371,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           onBlur={() => setFieldTouched('job')}
           error={touched.job ? errors.job : undefined}
           autoCapitalize="words"
+          ref={jobRef}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => educationRef.current?.focus()}
         />
 
         {/* Education */}
@@ -312,12 +388,17 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           onBlur={() => setFieldTouched('education')}
           error={touched.education ? errors.education : undefined}
           autoCapitalize="words"
+          ref={educationRef}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => bioRef.current?.focus()}
         />
 
         {/* Bio */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Bio *</Text>
           <TextInput
+            ref={bioRef}
             style={[
               styles.input,
               styles.textArea,
@@ -333,111 +414,19 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
             numberOfLines={4}
             textAlignVertical="top"
             placeholderTextColor={theme.colors.textTertiary}
+            returnKeyType="done"
           />
           {touched.bio && errors.bio && (
             <Text style={styles.errorText}>{errors.bio}</Text>
           )}
         </View>
 
-        {/* Prompts Section */}
-        <View style={styles.inputGroup}>
-          <View style={styles.promptsHeader}>
-            <Text style={styles.label}>Prompts *</Text>
-            {promptAnswers.length < 3 && (
-              <TouchableOpacity onPress={addPrompt} style={styles.addButton}>
-                <Text style={styles.addButtonText}>+ Add Prompt</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <Text style={styles.hint}>Add 1-3 prompts to help others get to know you</Text>
-
-          {promptAnswers.map((promptAnswer, index) => (
-            <View key={index} style={styles.promptContainer}>
-              <View style={styles.promptHeader}>
-                <TouchableOpacity
-                  style={[styles.input, { flex: 1, marginRight: 12 }]}
-                  onPress={() => {
-                    setSelectedPromptIndex(index);
-                    setShowPromptPicker(true);
-                  }}
-                >
-                  <Text style={styles.pickerText} numberOfLines={1}>
-                    {promptAnswer.question}
-                  </Text>
-                </TouchableOpacity>
-                {promptAnswers.length > 1 && (
-                  <TouchableOpacity onPress={() => removePrompt(index)} style={styles.removeButton}>
-                    <Text style={styles.removeButtonText}>Remove</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={[styles.input, styles.promptAnswer]}
-                placeholder="Your answer..."
-                value={promptAnswer.answer}
-                onChangeText={(text) => updatePromptAnswer(index, text)}
-                multiline
-                numberOfLines={2}
-                textAlignVertical="top"
-              />
-            </View>
-          ))}
-
-          {/* Prompt Picker Modal */}
-          <Modal
-            visible={showPromptPicker}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setShowPromptPicker(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Select Prompt</Text>
-                <ScrollView style={styles.modalScrollView}>
-                  {AVAILABLE_PROMPTS.map((prompt) => {
-                    const isUsed = promptAnswers.some((pa) => pa.promptId === prompt.id && selectedPromptIndex !== null && promptAnswers[selectedPromptIndex!]?.promptId !== prompt.id);
-                    return (
-                      <TouchableOpacity
-                        key={prompt.id}
-                        style={[
-                          styles.modalOption,
-                          isUsed && styles.modalOptionDisabled,
-                        ]}
-                        onPress={() => {
-                          if (!isUsed && selectedPromptIndex !== null) {
-                            changePromptQuestion(selectedPromptIndex, prompt.id);
-                            setShowPromptPicker(false);
-                            setSelectedPromptIndex(null);
-                          }
-                        }}
-                        disabled={isUsed}
-                      >
-                        <Text style={[styles.modalOptionText, isUsed && styles.modalOptionTextDisabled]}>
-                          {prompt.question}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-                <TouchableOpacity
-                  style={styles.modalCancel}
-                  onPress={() => {
-                    setShowPromptPicker(false);
-                    setSelectedPromptIndex(null);
-                  }}
-                >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-
-          {promptAnswers.length === 0 && (
-            <TouchableOpacity onPress={addPrompt} style={styles.addFirstPromptButton}>
-              <Text style={styles.addFirstPromptText}>+ Add Your First Prompt</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* Prompts */}
+        <ProfilePromptsEditor
+          prompts={prompts}
+          onChange={setPrompts}
+          error={promptsError}
+        />
       </View>
 
       <View style={styles.footer}>
@@ -449,7 +438,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
         />
         {(!hasValidPrompts() || Object.keys(errors).length > 0) && (
           <Text style={styles.hint}>
-            Please fill in all required fields (*). Age must be between 18 and 100. Add at least one prompt.
+            Please fill in all required fields (*). Age must be between 18 and 100. Add at least one prompt + answer.
           </Text>
         )}
       </View>
@@ -460,7 +449,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
 const styles = StyleSheet.create({
   contentContainer: {
     padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
+    paddingTop: theme.spacing.xl,
   },
   header: {
     marginBottom: theme.spacing['2xl'],
@@ -481,6 +470,11 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: theme.spacing.xl,
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
   },
   label: {
     fontSize: theme.typography.fontSize.base,

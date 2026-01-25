@@ -1,21 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useMatchesStore } from '../store/matchesStore';
 import { useUserStore } from '../store/userStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
+import { ProfileMainPhoto } from '../components/ProfileMainPhoto';
 import { trackScreenView } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { getAllValues } from '../services/mockBackend';
 import { Value } from '../types/value';
 import { Match } from '../types/match';
 import { theme } from '../theme';
+import { ROUTES } from '../navigation/types';
 
 export const MatchesScreen: React.FC = () => {
-  const { currentUser } = useUserStore();
-  const { getLikedMatches, isLoading, likedUserIds } = useMatchesStore();
+  const navigation = useNavigation();
+  const currentUserId = useUserStore((s) => s.currentUser?.id ?? null);
+  const availableMatches = useMatchesStore((s) => s.availableMatches);
+  const likedUserIds = useMatchesStore((s) => s.likedUserIds);
+  const isLoading = useMatchesStore((s) => s.isLoading);
+  const error = useMatchesStore((s) => s.error);
+  const loadMatches = useMatchesStore((s) => s.loadMatches);
   const [availableValues, setAvailableValues] = useState<Value[]>([]);
-  const [likedMatches, setLikedMatches] = useState<Match[]>([]);
+  const didLoadRef = useRef(false);
 
   useEffect(() => {
     trackScreenView('Matches');
@@ -25,10 +34,28 @@ export const MatchesScreen: React.FC = () => {
     getAllValues().then(setAvailableValues);
   }, []);
 
+  // Ensure matches are loaded even if user lands on Matches tab first
   useEffect(() => {
-    const matches = getLikedMatches();
-    setLikedMatches(matches);
-  }, [likedUserIds, getLikedMatches]);
+    if (!currentUserId) {
+      didLoadRef.current = false;
+      return;
+    }
+
+    if (!didLoadRef.current && availableMatches.length === 0 && !isLoading) {
+      didLoadRef.current = true;
+      loadMatches(currentUserId);
+    }
+  }, [currentUserId, availableMatches.length, isLoading, loadMatches]);
+
+  const likedMatches = useMemo<Match[]>(() => {
+    if (!Array.isArray(availableMatches) || availableMatches.length === 0) return [];
+    if (!Array.isArray(likedUserIds) || likedUserIds.length === 0) return [];
+
+    return availableMatches.filter((match) => {
+      const id = match?.user?.id;
+      return !!id && likedUserIds.includes(id);
+    });
+  }, [availableMatches, likedUserIds]);
 
   // Get value name by ID
   const getValueName = (valueId: string): string => {
@@ -66,6 +93,12 @@ export const MatchesScreen: React.FC = () => {
 
     return (
       <View style={styles.matchCard}>
+        <ProfileMainPhoto
+          uri={Array.isArray(user.photos) ? user.photos[0] : undefined}
+          name={user.name}
+          height={220}
+          style={styles.matchPhoto}
+        />
         <View style={styles.matchHeader}>
           <View>
             <Text style={styles.matchName}>{user.name}</Text>
@@ -142,8 +175,28 @@ export const MatchesScreen: React.FC = () => {
     );
   };
 
+  if (!currentUserId) {
+    return (
+      <EmptyState
+        icon="🔒"
+        title="Not signed in"
+        message="Please sign up or log in to view matches."
+      />
+    );
+  }
+
   if (isLoading) {
     return <LoadingSpinner message="Loading matches..." />;
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        message={error}
+        actionLabel="Try Again"
+        onAction={() => loadMatches(currentUserId)}
+      />
+    );
   }
 
   if (likedMatches.length === 0) {
@@ -154,15 +207,14 @@ export const MatchesScreen: React.FC = () => {
         message="Start swiping in Discover to find people you like. Your matches will appear here!"
         actionLabel="Go to Discover"
         onAction={() => {
-          // Navigation would be handled by tab navigator
-          // This is just a placeholder for the action
+          (navigation as any).navigate(ROUTES.DISCOVER);
         }}
       />
     );
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer contentPadding={false}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Your Matches</Text>
         <Text style={styles.headerSubtitle}>
@@ -183,7 +235,7 @@ export const MatchesScreen: React.FC = () => {
 const styles = StyleSheet.create({
   header: {
     padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
+    paddingTop: theme.spacing.xl,
     backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -208,6 +260,11 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.base,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    overflow: 'hidden',
+  },
+  matchPhoto: {
+    borderRadius: 0,
+    marginBottom: theme.spacing.base,
   },
   matchHeader: {
     flexDirection: 'row',

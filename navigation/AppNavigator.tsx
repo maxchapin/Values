@@ -1,10 +1,11 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { RootStackParamList, MainTabParamList, ROUTES } from './types';
 import { useUserStore } from '../store/userStore';
 import { useValuesSelectionStore } from '../store/valuesSelectionStore';
+import { theme } from '../theme';
 
 // Auth screens
 import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
@@ -26,6 +27,7 @@ import { DebugScreen } from '../screens/DebugScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 /**
  * Main Tab Navigator
@@ -74,52 +76,77 @@ const MainTabNavigator: React.FC = () => {
  * Decides which stack to show: Auth → Profile Setup → Values → Main App
  */
 export const AppNavigator: React.FC = () => {
-  const { isAuthenticated, isProfileComplete, isValuesComplete } = useUserStore();
-  const { currentStep } = useValuesSelectionStore();
+  // Use selector to prevent unnecessary re-renders
+  const isAuthenticated = useUserStore((state) => state.isAuthenticated);
+  const isProfileComplete = useUserStore((state) => state.isProfileComplete);
+  const isValuesComplete = useUserStore((state) => state.isValuesComplete);
+  const currentStep = useValuesSelectionStore((state) => state.currentStep);
+  
+  // Decide which "phase" the app is in. We only reset navigation when the phase changes
+  // (avoids fighting in-stack navigation / back gestures).
+  const phase = useMemo<'auth' | 'profile' | 'values' | 'main'>(() => {
+    if (!isAuthenticated) return 'auth';
+    if (!isProfileComplete) return 'profile';
+    if (!isValuesComplete) return 'values';
+    return 'main';
+  }, [isAuthenticated, isProfileComplete, isValuesComplete]);
 
-  // Determine which screen to show based on onboarding state
-  const getInitialRoute = (): keyof RootStackParamList => {
-    // Step 1: Not authenticated - show welcome
-    if (!isAuthenticated) {
-      return ROUTES.WELCOME;
-    }
-
-    // Step 2: Authenticated but profile not complete - show profile setup
-    if (!isProfileComplete) {
-      return ROUTES.PROFILE_SETUP;
-    }
-
-    // Step 3: Profile complete but values not selected - show values flow
-    if (!isValuesComplete) {
-      // Determine which values step based on current step in store
-      if (currentStep === 'initial' || currentStep === 'narrow_20') {
+  const phaseRootRoute = useMemo<keyof RootStackParamList>(() => {
+    switch (phase) {
+      case 'auth':
+        return ROUTES.WELCOME;
+      case 'profile':
+        return ROUTES.PROFILE_SETUP;
+      case 'values':
+        if (currentStep === 'narrow_10') return ROUTES.VALUES_NARROW_10;
+        if (currentStep === 'final_5') return ROUTES.VALUES_FINAL_5;
         return ROUTES.VALUES_SELECTION;
-      }
-      if (currentStep === 'narrow_10') {
-        return ROUTES.VALUES_NARROW_10;
-      }
-      if (currentStep === 'final_5') {
-        return ROUTES.VALUES_FINAL_5;
-      }
-      // Default to initial values selection
-      return ROUTES.VALUES_SELECTION;
+      case 'main':
+      default:
+        return ROUTES.MAIN_APP;
+    }
+  }, [phase, currentStep]);
+
+  const previousPhaseRef = useRef<typeof phase | null>(null);
+
+  useEffect(() => {
+    if (!navigationRef.isReady()) return;
+
+    const previousPhase = previousPhaseRef.current;
+    if (previousPhase === phase) return;
+
+    previousPhaseRef.current = phase;
+
+    const currentRoute = navigationRef.getCurrentRoute()?.name;
+    if (currentRoute === phaseRootRoute) return;
+
+    if (__DEV__) {
+      console.log('[AppNavigator] Resetting root due to phase change:', {
+        from: previousPhase,
+        to: phase,
+        currentRoute,
+        targetRoute: phaseRootRoute,
+      });
     }
 
-    // Step 4: Everything complete - show main app
-    return ROUTES.MAIN_APP;
-  };
+    navigationRef.resetRoot({
+      index: 0,
+      routes: [{ name: phaseRootRoute }],
+    });
+  }, [phase, phaseRootRoute]);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
-        initialRouteName={getInitialRoute()}
+        initialRouteName={ROUTES.WELCOME}
         screenOptions={{
           headerStyle: {
-            backgroundColor: '#007AFF',
+            backgroundColor: theme.colors.primary,
           },
-          headerTintColor: '#fff',
+          headerTintColor: theme.colors.textInverse,
           headerTitleStyle: {
-            fontWeight: 'bold',
+            fontWeight: theme.typography.fontWeight.bold,
+            fontSize: theme.typography.fontSize.lg,
           },
         }}
       >

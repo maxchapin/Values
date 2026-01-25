@@ -23,17 +23,19 @@ const MOCK_USERS: User[] = [
     gender: 'non-binary',
     location: 'New York, NY',
     bio: 'Love hiking, reading, and deep conversations. Looking for someone who values growth and adventure.',
-    photos: [],
+    photos: ['https://picsum.photos/seed/values-u1/900/1200'],
     prompts: [
       {
         id: 'p1',
         question: 'I\'m looking for',
         answer: 'Someone who loves nature and meaningful conversations',
+        isCustom: false,
       },
       {
         id: 'p2',
         question: 'My simple pleasures',
         answer: 'Morning coffee, sunset hikes, and a good book',
+        isCustom: false,
       },
     ],
     selectedValues: ['v1', 'v5', 'v7', 'v14', 'v15', 'v19', 'v23', 'v25', 'v28', 'v32'],
@@ -47,17 +49,19 @@ const MOCK_USERS: User[] = [
     gender: 'male',
     location: 'San Francisco, CA',
     bio: 'Tech enthusiast, coffee lover, and weekend adventurer. Passionate about sustainability and innovation.',
-    photos: [],
+    photos: ['https://picsum.photos/seed/values-u2/900/1200'],
     prompts: [
       {
         id: 'p1',
         question: 'I\'m looking for',
         answer: 'A partner who shares my passion for tech and the environment',
+        isCustom: false,
       },
       {
         id: 'p2',
         question: 'My simple pleasures',
         answer: 'Building side projects, trying new coffee shops, weekend hikes',
+        isCustom: false,
       },
     ],
     selectedValues: ['v2', 'v10', 'v11', 'v13', 'v16', 'v17', 'v20', 'v22', 'v26', 'v31'],
@@ -71,17 +75,19 @@ const MOCK_USERS: User[] = [
     gender: 'female',
     location: 'Austin, TX',
     bio: 'Yoga instructor, plant parent, and aspiring chef. I value mindfulness, wellness, and authentic connections.',
-    photos: [],
+    photos: ['https://picsum.photos/seed/values-u3/900/1200'],
     prompts: [
       {
         id: 'p1',
         question: 'I\'m looking for',
         answer: 'Someone who values self-care and personal growth',
+        isCustom: false,
       },
       {
         id: 'p2',
         question: 'My simple pleasures',
         answer: 'Morning yoga, cooking new recipes, tending to my plants',
+        isCustom: false,
       },
     ],
     selectedValues: ['v3', 'v4', 'v6', 'v9', 'v14', 'v18', 'v23', 'v24', 'v27', 'v33'],
@@ -95,17 +101,19 @@ const MOCK_USERS: User[] = [
     gender: 'female',
     location: 'Seattle, WA',
     bio: 'Bookworm, nature photographer, and sustainability advocate. Looking for someone who cares about the planet and loves to read.',
-    photos: [],
+    photos: ['https://picsum.photos/seed/values-u4/900/1200'],
     prompts: [
       {
         id: 'p1',
         question: 'I\'m looking for',
         answer: 'A fellow book lover who shares my environmental values',
+        isCustom: false,
       },
       {
         id: 'p2',
         question: 'My simple pleasures',
         answer: 'Reading in coffee shops, capturing nature through my lens, farmers markets',
+        isCustom: false,
       },
     ],
     selectedValues: ['v1', 'v2', 'v5', 'v7', 'v15', 'v17', 'v19', 'v25', 'v28', 'v34'],
@@ -119,17 +127,19 @@ const MOCK_USERS: User[] = [
     gender: 'male',
     location: 'Portland, OR',
     bio: 'Musician, foodie, and community organizer. I believe in giving back and building strong connections.',
-    photos: [],
+    photos: ['https://picsum.photos/seed/values-u5/900/1200'],
     prompts: [
       {
         id: 'p1',
         question: 'I\'m looking for',
         answer: 'Someone who values community and creativity',
+        isCustom: false,
       },
       {
         id: 'p2',
         question: 'My simple pleasures',
         answer: 'Playing guitar, trying new restaurants, organizing community events',
+        isCustom: false,
       },
     ],
     selectedValues: ['v6', 'v8', 'v12', 'v13', 'v16', 'v21', 'v22', 'v29', 'v30', 'v35'],
@@ -143,17 +153,19 @@ const MOCK_USERS: User[] = [
     gender: 'non-binary',
     location: 'Denver, CO',
     bio: 'Outdoor enthusiast, artist, and social justice advocate. Looking for someone who shares my values and sense of adventure.',
-    photos: [],
+    photos: ['https://picsum.photos/seed/values-u6/900/1200'],
     prompts: [
       {
         id: 'p1',
         question: 'I\'m looking for',
         answer: 'A partner who is passionate about social justice and loves the outdoors',
+        isCustom: false,
       },
       {
         id: 'p2',
         question: 'My simple pleasures',
         answer: 'Rock climbing, painting, attending community events',
+        isCustom: false,
       },
     ],
     selectedValues: ['v15', 'v20', 'v25', 'v26', 'v34', 'v35', 'v36', 'v37', 'v38', 'v39'],
@@ -316,6 +328,21 @@ export function getUserById(userId: string): Promise<User | null> {
 }
 
 /**
+ * Upsert a user into the in-memory mock DB.
+ * Important for cold starts: persisted users (e.g. u8) won't exist in MOCK_USERS
+ * unless we add them back in.
+ */
+export function upsertMockUser(user: User): void {
+  const existing = MOCK_USERS.find((u) => u.id === user.id);
+  if (existing) {
+    Object.assign(existing, user);
+    return;
+  }
+
+  MOCK_USERS.push(user);
+}
+
+/**
  * Create a new user
  */
 export function createUser(userData: Omit<User, 'id' | 'createdAt'>): Promise<User> {
@@ -355,13 +382,17 @@ export function createOrUpdateUser(
       }
 
       // Create new user
+      // If a userId was provided but not found, preserve that id to keep persistence consistent.
+      const resolvedId = userId ?? `u${MOCK_USERS.length + 1}`;
       const newUser: User = {
-        id: `u${MOCK_USERS.length + 1}`,
+        id: resolvedId,
         email: profileData.email,
         name: profileData.name,
         age: profileData.age || 25,
         gender: profileData.gender || 'prefer-not-to-say',
         location: profileData.location || '',
+        interestedIn: profileData.interestedIn,
+        hometown: profileData.hometown,
         job: profileData.job,
         education: profileData.education,
         bio: profileData.bio || '',

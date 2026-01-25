@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Switch, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { ScreenContainer } from '../../components/ScreenContainer';
@@ -19,6 +19,8 @@ interface SignUpFormData {
 
 export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   const { createUser, isLoading } = useUserStore();
+  const [keepSignedIn, setKeepSignedIn] = useState<boolean>(true);
+  const emailRef = useRef<TextInput>(null);
 
   useEffect(() => {
     trackScreenView('SignUp');
@@ -49,26 +51,45 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   );
 
   const onSubmit = async (formValues: SignUpFormData): Promise<void> => {
-    const user = await createUser({
-      email: formValues.email.trim(),
-      name: formValues.name.trim(),
-      age: 25, // Default, will be updated in profile setup
-      location: '',
-      bio: '',
-      photos: [],
-      selectedValues: [],
-    });
+    if (__DEV__) {
+      console.log('[SignUpScreen] Submitting form with keepSignedIn:', keepSignedIn);
+    }
+    
+    await createUser(
+      {
+        email: formValues.email.trim(),
+        name: formValues.name.trim(),
+        age: 25, // Default, will be updated in profile setup
+        gender: 'prefer-not-to-say', // Default, will be updated in profile setup
+        location: '',
+        bio: '',
+        photos: [],
+        prompts: [], // Will be updated in profile setup
+        selectedValues: [],
+      },
+      keepSignedIn
+    );
+    
+    if (__DEV__) {
+      const { keepSignedIn: storeKeepSignedIn } = useUserStore.getState();
+      console.log('[SignUpScreen] After createUser, store keepSignedIn:', storeKeepSignedIn);
+    }
 
+    const { currentUser } = useUserStore.getState();
     trackSignUp({ method: 'email' });
-    if (user?.id) {
-      setUserId(user.id);
+    if (currentUser?.id) {
+      setUserId(currentUser.id);
     }
 
     navigation.navigate('ProfileSetup');
   };
 
   return (
-    <ScreenContainer scrollable scrollViewProps={{ contentContainerStyle: styles.contentContainer }}>
+    <ScreenContainer
+      scrollable
+      keyboardAvoiding
+      scrollViewProps={{ contentContainerStyle: styles.contentContainer }}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>Let's get started with your profile</Text>
@@ -76,8 +97,8 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
 
       <View style={styles.form}>
         <TextInputField
-          label="Name"
-          placeholder="Enter your name"
+          label="First Name"
+          placeholder="Enter your first name"
           value={values.name}
           onChangeText={(text) => {
             setValue('name', text, true);
@@ -85,9 +106,13 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
           onBlur={() => setFieldTouched('name')}
           error={touched.name ? errors.name : undefined}
           autoCapitalize="words"
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => emailRef.current?.focus()}
         />
 
         <TextInputField
+          ref={emailRef}
           label="Email"
           placeholder="Enter your email"
           value={values.email}
@@ -99,7 +124,22 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
+          returnKeyType="done"
+          onSubmitEditing={handleSubmit(onSubmit)}
         />
+      </View>
+
+      <View style={styles.keepSignedInContainer}>
+        <Switch
+          value={keepSignedIn}
+          onValueChange={setKeepSignedIn}
+          trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+          thumbColor={theme.colors.background}
+        />
+        <View style={styles.keepSignedInText}>
+          <Text style={styles.keepSignedInLabel}>Keep me signed in</Text>
+          <Text style={styles.keepSignedInHint}>Stay signed in on this device until you log out</Text>
+        </View>
       </View>
 
       <View style={styles.footer}>
@@ -117,7 +157,7 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   contentContainer: {
     padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
+    paddingTop: theme.spacing.xl,
   },
   header: {
     marginBottom: theme.spacing['2xl'],
@@ -135,6 +175,27 @@ const styles = StyleSheet.create({
   },
   form: {
     marginBottom: theme.spacing['2xl'],
+  },
+  keepSignedInContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xl,
+    paddingVertical: theme.spacing.sm,
+  },
+  keepSignedInLabel: {
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.md,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  keepSignedInText: {
+    flex: 1,
+  },
+  keepSignedInHint: {
+    marginLeft: theme.spacing.md,
+    marginTop: theme.spacing.xs,
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
   },
   footer: {
     marginTop: 'auto',

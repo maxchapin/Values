@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useUserStore } from '../store/userStore';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { EmptyState } from '../components/EmptyState';
+import { ProfileMainPhoto } from '../components/ProfileMainPhoto';
 import { useDebugAccess } from '../hooks/useDebugAccess';
 import { trackScreenView } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
@@ -39,8 +40,13 @@ export const ProfileScreen: React.FC = () => {
   }
 
   return (
-    <ScreenContainer>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
+    <ScreenContainer scrollable>
+      <ProfileMainPhoto
+        uri={Array.isArray(currentUser.photos) ? currentUser.photos[0] : undefined}
+        name={currentUser.name}
+        height={360}
+        style={styles.mainPhoto}
+      />
       <View style={styles.header}>
         <TouchableOpacity onPress={handleTitlePress} activeOpacity={0.7}>
           <Text style={styles.title}>Profile</Text>
@@ -48,7 +54,7 @@ export const ProfileScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.label}>Name</Text>
+        <Text style={styles.label}>First Name</Text>
         <Text style={styles.value}>{currentUser.name}</Text>
       </View>
 
@@ -63,9 +69,39 @@ export const ProfileScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.label}>Where are you from?</Text>
+        <Text style={styles.value}>{currentUser.hometown || '—'}</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.label}>Interested In</Text>
+        <Text style={styles.value}>
+          {currentUser.interestedIn === 'men'
+            ? 'Men'
+            : currentUser.interestedIn === 'women'
+              ? 'Women'
+              : currentUser.interestedIn === 'everyone'
+                ? 'Everyone'
+                : '—'}
+        </Text>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.label}>Bio</Text>
         <Text style={styles.value}>{currentUser.bio}</Text>
       </View>
+
+      {currentUser.prompts && Array.isArray(currentUser.prompts) && currentUser.prompts.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.label}>Prompts</Text>
+          {currentUser.prompts.slice(0, 3).map((p) => (
+            <View key={p.id} style={styles.promptItem}>
+              <Text style={styles.promptQuestion}>{p.question}</Text>
+              <Text style={styles.promptAnswer}>{p.answer}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.label}>Selected Values</Text>
@@ -75,22 +111,20 @@ export const ProfileScreen: React.FC = () => {
       <View style={styles.footer}>
         <PrimaryButton
           title="Logout"
-          onPress={logout}
+          onPress={async () => {
+            await logout();
+            // Navigation will automatically update based on isAuthenticated state
+          }}
           style={{ backgroundColor: theme.colors.error }}
         />
       </View>
-      </ScrollView>
     </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
+  mainPhoto: {
+    marginBottom: theme.spacing.lg,
   },
   header: {
     marginBottom: theme.spacing['2xl'],
@@ -123,5 +157,19 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing['2xl'],
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  promptItem: {
+    marginTop: theme.spacing.base,
+  },
+  promptQuestion: {
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  promptAnswer: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.normal,
   },
 });

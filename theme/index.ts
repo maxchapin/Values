@@ -21,6 +21,8 @@ export const theme = {
     background: '#FFFFFF',
     backgroundSecondary: '#F5F5F5',
     backgroundTertiary: '#F9F9F9',
+    surface: '#FFFFFF', // Card/surface background
+    surfaceSecondary: '#F9F9F9', // Secondary surface (e.g., modals)
     
     // Text colors
     text: '#333333',
@@ -38,6 +40,7 @@ export const theme = {
     error: '#FF3B30',
     warning: '#FF9500',
     info: '#007AFF',
+    danger: '#FF3B30', // Alias for error, for semantic clarity
     
     // Disabled state
     disabled: '#CCCCCC',

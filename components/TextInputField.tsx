@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TextInput, StyleSheet, TextInputProps, ViewStyle, TextStyle } from 'react-native';
 import { theme } from '../theme';
 
-interface TextInputFieldProps extends TextInputProps {
+export interface TextInputFieldProps extends TextInputProps {
   label?: string;
   error?: string;
   containerStyle?: ViewStyle;
@@ -12,7 +12,7 @@ interface TextInputFieldProps extends TextInputProps {
   onBlur?: () => void;
 }
 
-export const TextInputField: React.FC<TextInputFieldProps> = ({
+export const TextInputField = React.forwardRef<TextInput, TextInputFieldProps>(({
   label,
   error,
   containerStyle,
@@ -21,13 +21,14 @@ export const TextInputField: React.FC<TextInputFieldProps> = ({
   errorStyle,
   style,
   ...textInputProps
-}) => {
+}, ref) => {
   return (
     <View style={[styles.container, containerStyle]}>
       {label && (
         <Text style={[styles.label, labelStyle]}>{label}</Text>
       )}
       <TextInput
+        ref={ref}
         style={[
           styles.input,
           error && styles.inputError,
@@ -42,7 +43,9 @@ export const TextInputField: React.FC<TextInputFieldProps> = ({
       )}
     </View>
   );
-};
+});
+
+TextInputField.displayName = 'TextInputField';
 
 const styles = StyleSheet.create({
   container: {

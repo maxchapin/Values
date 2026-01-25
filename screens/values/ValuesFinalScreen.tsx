@@ -7,6 +7,7 @@ import { useUserStore } from '../../store/userStore';
 import { ValueCard } from '../../components/ValueCard';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { SecondaryButton } from '../../components/SecondaryButton';
+import { EmptyState } from '../../components/EmptyState';
 import { trackScreenView, trackValueSelection, trackOnboardingCompleted } from '../../services/analytics';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { theme } from '../../theme';
@@ -91,6 +92,18 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
   // Show values from top10 for final selection
   const valuesToShow = availableValues.filter((v) => top10.includes(v.id));
 
+  if (valuesToShow.length === 0) {
+    return (
+      <EmptyState
+        icon="📋"
+        title="No values to finalize"
+        message="We couldn't load your Top 10 values. Go back and try again."
+        actionLabel="Go Back"
+        onAction={() => navigation.goBack()}
+      />
+    );
+  }
+
   const handleValuePress = (valueId: string): void => {
     // Defensive check: ensure we're on the right step
     if (currentStep !== expectedStep) {
@@ -123,9 +136,9 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
 
     proceedToNextStep();
 
-    // Save final values to user store
+    // Save final values to user store (defensive)
     const finalValues = useValuesSelectionStore.getState().top5;
-    await updateValues(finalValues);
+    await updateValues(Array.isArray(finalValues) ? finalValues : []);
 
     // Track onboarding completion
     trackOnboardingCompleted({
@@ -148,7 +161,7 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer contentPadding={false}>
       <View style={styles.header}>
         <Text style={styles.title}>Select Your Top 5 Values</Text>
         <Text style={styles.subtitle}>
@@ -207,7 +220,7 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
 const styles = StyleSheet.create({
   header: {
     padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
+    paddingTop: theme.spacing.xl,
     backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,

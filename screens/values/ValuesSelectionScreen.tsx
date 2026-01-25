@@ -110,7 +110,7 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer contentPadding={false}>
       <View style={styles.header}>
         <Text style={styles.title}>Select Your Values</Text>
         <Text style={styles.subtitle}>
@@ -149,7 +149,7 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
 const styles = StyleSheet.create({
   header: {
     padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
+    paddingTop: theme.spacing.xl,
     backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,

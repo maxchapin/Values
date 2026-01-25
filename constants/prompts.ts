@@ -49,4 +49,24 @@ export const AVAILABLE_PROMPTS: PromptOption[] = [
     id: 'p10',
     question: 'I\'m the type of person who',
   },
+  {
+    id: 'p11',
+    question: 'Two truths and a lie',
+  },
+  {
+    id: 'p12',
+    question: 'A value I won’t compromise on',
+  },
+  {
+    id: 'p13',
+    question: 'The last time I laughed really hard was',
+  },
+  {
+    id: 'p14',
+    question: 'Green flags I look for',
+  },
+  {
+    id: 'p15',
+    question: 'My perfect Sunday looks like',
+  },
 ];

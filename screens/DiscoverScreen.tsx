@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useMatchesStore } from '../store/matchesStore';
@@ -10,6 +10,8 @@ import { ErrorState } from '../components/ErrorState';
 import { useDebugAccess } from '../hooks/useDebugAccess';
 import { trackScreenView, trackMatchLiked, trackMatchPassed } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
+import { Card } from '../components/Card';
+import { ProfileMainPhoto } from '../components/ProfileMainPhoto';
 import { getAllValues } from '../services/mockBackend';
 import { Value } from '../types/value';
 import { theme } from '../theme';
@@ -27,6 +29,7 @@ export const DiscoverScreen: React.FC = () => {
     likeUser,
     passUser,
     setFilters,
+    reset,
   } = useMatchesStore();
 
   const [showFilters, setShowFilters] = useState(false);
@@ -34,6 +37,8 @@ export const DiscoverScreen: React.FC = () => {
   const [maxAge, setMaxAge] = useState(filters.ageRange?.[1]?.toString() || '100');
   const [locationFilter, setLocationFilter] = useState(filters.location || '');
   const [availableValues, setAvailableValues] = useState<Value[]>([]);
+  const lastLoadedUserIdRef = useRef<string | null>(null);
+  const didInitialLoadRef = useRef(false);
   const navigation = useNavigation();
   const { handlePress: handleFilterPress, isDebugMode } = useDebugAccess();
 
@@ -51,10 +56,21 @@ export const DiscoverScreen: React.FC = () => {
 
   // Load matches on mount
   useEffect(() => {
-    if (currentUser && availableMatches.length === 0 && !isLoading) {
-      loadMatches(currentUser.id);
+    const userId = currentUser?.id ?? null;
+
+    // Reset guard when user changes
+    if (userId && lastLoadedUserIdRef.current !== userId) {
+      lastLoadedUserIdRef.current = userId;
+      didInitialLoadRef.current = false;
     }
-  }, [currentUser, availableMatches.length, isLoading, loadMatches]);
+
+    // Prevent infinite retry loops when backend returns [] (e.g. user not found)
+    if (userId && !didInitialLoadRef.current && availableMatches.length === 0 && !isLoading) {
+      didInitialLoadRef.current = true;
+      loadMatches(userId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, availableMatches.length, isLoading]);
 
   // Load values for display
   useEffect(() => {
@@ -156,7 +172,6 @@ export const DiscoverScreen: React.FC = () => {
         actionLabel="Refresh Matches"
         onAction={() => {
           if (currentUser) {
-            const { reset } = useMatchesStore.getState();
             reset();
             loadMatches(currentUser.id, filters);
           }
@@ -182,8 +197,7 @@ export const DiscoverScreen: React.FC = () => {
   const top5Values = getTop5Values(user.selectedValues);
 
   return (
-    <ScreenContainer>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
+    <ScreenContainer scrollable>
       {/* Filter Button */}
       <TouchableOpacity
         style={styles.filterButton}
@@ -194,7 +208,13 @@ export const DiscoverScreen: React.FC = () => {
       </TouchableOpacity>
 
       {/* Profile Card */}
-      <View style={styles.card}>
+      <Card variant="elevated" style={styles.card}>
+        <ProfileMainPhoto
+          uri={Array.isArray(user.photos) ? user.photos[0] : undefined}
+          name={user.name}
+          height={360}
+          style={styles.mainPhoto}
+        />
         <View style={styles.header}>
           <View>
             <Text style={styles.name}>{user.name || 'Unknown'}</Text>
@@ -277,7 +297,7 @@ export const DiscoverScreen: React.FC = () => {
             title="Pass"
             onPress={handlePass}
             style={[styles.actionButton, styles.passButton]}
-            textStyle={{ color: '#333' }}
+            textStyle={styles.passButtonText}
           />
           <PrimaryButton
             title="Like"
@@ -285,7 +305,7 @@ export const DiscoverScreen: React.FC = () => {
             style={[styles.actionButton, styles.likeButton]}
           />
         </View>
-      </View>
+      </Card>
 
       <Text style={styles.matchCounter}>
         {Math.min(currentMatchIndex + 1, availableMatches.length)} of {availableMatches.length}
@@ -343,8 +363,8 @@ export const DiscoverScreen: React.FC = () => {
               <PrimaryButton
                 title="Clear"
                 onPress={handleClearFilters}
-                style={[styles.modalButton, { backgroundColor: '#ccc' }]}
-                textStyle={{ color: '#333' }}
+                style={[styles.modalButton, styles.modalClearButton]}
+                textStyle={styles.modalClearButtonText}
               />
               <PrimaryButton
                 title="Apply"
@@ -362,26 +382,20 @@ export const DiscoverScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
-      </ScrollView>
     </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: theme.spacing.lg,
-    paddingTop: theme.spacing['4xl'],
-  },
   filterButton: {
     alignSelf: 'flex-end',
     paddingHorizontal: theme.spacing.base,
     paddingVertical: theme.spacing.sm,
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: theme.borderRadius.full,
-    marginBottom: theme.spacing.base,
+    marginBottom: theme.spacing.lg,
+    marginHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.base,
   },
   filterButtonText: {
     color: theme.colors.primary,
@@ -389,15 +403,16 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.semibold,
   },
   card: {
-    backgroundColor: theme.colors.backgroundTertiary,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.xl,
+    marginHorizontal: theme.spacing.lg,
     marginBottom: theme.spacing.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    overflow: 'hidden',
+  },
+  mainPhoto: {
+    borderRadius: 0,
+    marginBottom: theme.spacing.base,
   },
   header: {
-    marginBottom: 16,
+    marginBottom: theme.spacing.base,
   },
   name: {
     fontSize: theme.typography.fontSize['3xl'],
@@ -509,15 +524,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   promptQuestion: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   promptAnswer: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.normal,
   },
   actions: {
     flexDirection: 'row',
@@ -527,7 +542,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   passButton: {
-    backgroundColor: theme.colors.disabled,
+    backgroundColor: theme.colors.backgroundSecondary,
+  },
+  passButtonText: {
+    color: theme.colors.text,
   },
   likeButton: {
     backgroundColor: theme.colors.primary,
@@ -537,7 +555,8 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     color: theme.colors.textTertiary,
     marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.base,
+    marginBottom: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
   },
   modalOverlay: {
     flex: 1,
@@ -545,7 +564,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surface,
     borderTopLeftRadius: theme.borderRadius.xl,
     borderTopRightRadius: theme.borderRadius.xl,
     padding: theme.spacing.lg,
@@ -593,6 +612,12 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
+  },
+  modalClearButton: {
+    backgroundColor: theme.colors.backgroundSecondary,
+  },
+  modalClearButtonText: {
+    color: theme.colors.text,
   },
   modalCancel: {
     padding: theme.spacing.base,

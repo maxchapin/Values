@@ -7,9 +7,10 @@ import { create } from 'zustand';
 import { Match } from '../types/match';
 import { saveMatchesState } from '../services/persistence';
 
-interface MatchFilters {
+export interface MatchFilters {
   ageRange?: [number, number]; // [minAge, maxAge]
   location?: string;
+  radiusKm?: number;
 }
 
 interface MatchesStore {
@@ -66,7 +67,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
       set({
         availableMatches: safeMatches,
         currentMatchIndex: 0, // Always reset to beginning when loading new matches
-        filters: filters || {},
+        filters: filters ?? get().filters ?? {},
         isLoading: false,
         error: null,
       });

@@ -1,17 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useMatchesStore } from '../store/matchesStore';
 import { useUserStore } from '../store/userStore';
-import { PrimaryButton } from '../components/PrimaryButton';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { useDebugAccess } from '../hooks/useDebugAccess';
 import { trackScreenView, trackMatchLiked, trackMatchPassed } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
-import { Card } from '../components/Card';
-import { ProfileMainPhoto } from '../components/ProfileMainPhoto';
+import { DiscoverActionBar } from '../components/DiscoverActionBar';
+import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
+import { FiltersSheet } from '../components/FiltersSheet';
 import { getAllValues } from '../services/mockBackend';
 import { Value } from '../types/value';
 import { theme } from '../theme';
@@ -33,12 +33,10 @@ export const DiscoverScreen: React.FC = () => {
   } = useMatchesStore();
 
   const [showFilters, setShowFilters] = useState(false);
-  const [minAge, setMinAge] = useState(filters.ageRange?.[0]?.toString() || '18');
-  const [maxAge, setMaxAge] = useState(filters.ageRange?.[1]?.toString() || '100');
-  const [locationFilter, setLocationFilter] = useState(filters.location || '');
   const [availableValues, setAvailableValues] = useState<Value[]>([]);
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const didInitialLoadRef = useRef(false);
+  const cardScrollRef = useRef<ScrollView>(null);
   const navigation = useNavigation();
   const { handlePress: handleFilterPress, isDebugMode } = useDebugAccess();
 
@@ -100,27 +98,16 @@ export const DiscoverScreen: React.FC = () => {
     }
   };
 
-  const handleApplyFilters = async (): Promise<void> => {
-    const min = parseInt(minAge, 10);
-    const max = parseInt(maxAge, 10);
-    
-    if (min && max && min <= max && currentUser) {
-      await setFilters({
-        ageRange: [min, max],
-        location: locationFilter.trim() || undefined,
-      });
-      setShowFilters(false);
-    }
+  const handleApplyFilters = async (nextFilters: typeof filters): Promise<void> => {
+    await setFilters(nextFilters);
   };
 
-  const handleClearFilters = async (): Promise<void> => {
-    setMinAge('18');
-    setMaxAge('100');
-    setLocationFilter('');
-    if (currentUser) {
-      await setFilters({});
-      setShowFilters(false);
-    }
+  const handleResetFilters = async (): Promise<void> => {
+    await setFilters({
+      ageRange: [18, 99],
+      location: undefined,
+      radiusKm: 200,
+    });
   };
 
   // Get top 5 values for display with defensive checks
@@ -131,6 +118,36 @@ export const DiscoverScreen: React.FC = () => {
     const top5Ids = valueIds.slice(0, 5);
     return availableValues.filter((v) => v && v.id && top5Ids.includes(v.id));
   };
+
+  const currentMatch = getCurrentMatch();
+  const candidate = currentMatch?.user ?? null;
+
+  const currentUserTopValues = useMemo<Value[]>(() => {
+    return getTop5Values(currentUser?.selectedValues);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.selectedValues, availableValues.length]);
+
+  const candidateTopValues = useMemo<Value[]>(() => {
+    return candidate ? getTop5Values(candidate.selectedValues) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate?.selectedValues, availableValues.length]);
+
+  const sharedValueIds = useMemo<Set<string>>(() => {
+    const a = new Set((currentUser?.selectedValues ?? []).slice(0, 5));
+    const b = new Set((candidate?.selectedValues ?? []).slice(0, 5));
+    const shared = new Set<string>();
+    a.forEach((id) => {
+      if (b.has(id)) shared.add(id);
+    });
+    return shared;
+  }, [currentUser?.selectedValues, candidate?.selectedValues]);
+
+  // Reset scroll position whenever we advance to a new candidate
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      cardScrollRef.current?.scrollTo({ y: 0, animated: false });
+    });
+  }, [currentMatchIndex]);
 
   // Loading state
   if (isLoading) {
@@ -162,8 +179,7 @@ export const DiscoverScreen: React.FC = () => {
   }
 
   // Reached end of queue (seen all matches)
-  const currentMatch = getCurrentMatch();
-  if (!currentMatch) {
+  if (!currentMatch || !candidate) {
     return (
       <EmptyState
         icon="💫"
@@ -180,454 +196,103 @@ export const DiscoverScreen: React.FC = () => {
     );
   }
 
-  // Defensive checks for current match
-  if (!currentMatch.user) {
-    return (
-      <EmptyState
-        icon="⚠️"
-        title="Invalid Match Data"
-        message="There was an issue loading this match. Please try again."
-        actionLabel="Reload"
-        onAction={() => currentUser && loadMatches(currentUser.id, filters)}
-      />
-    );
-  }
-
-  const { user, similarityScore, sharedValues, sharedValuesCount } = currentMatch;
-  const top5Values = getTop5Values(user.selectedValues);
+  const { similarityScore, sharedValuesCount } = currentMatch;
 
   return (
-    <ScreenContainer scrollable>
-      {/* Filter Button */}
-      <TouchableOpacity
-        style={styles.filterButton}
-        onPress={() => setShowFilters(true)}
-        onLongPress={handleFilterPress}
-      >
-        <Text style={styles.filterButtonText}>Filters</Text>
-      </TouchableOpacity>
-
-      {/* Profile Card */}
-      <Card variant="elevated" style={styles.card}>
-        <ProfileMainPhoto
-          uri={Array.isArray(user.photos) ? user.photos[0] : undefined}
-          name={user.name}
-          height={360}
-          style={styles.mainPhoto}
-        />
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.name}>{user.name || 'Unknown'}</Text>
-            <Text style={styles.age}>
-              {user.age || '?'} • {user.location || 'Location not set'}
-            </Text>
-          </View>
-          {user.job && (
-            <Text style={styles.job}>{user.job}</Text>
-          )}
-        </View>
-
-        {user.bio && (
-          <View style={styles.bioContainer}>
-            <Text style={styles.bio}>{user.bio}</Text>
-          </View>
-        )}
-
-        {/* Similarity Score */}
-        <View style={styles.similarityContainer}>
-          <View style={styles.similarityHeader}>
-            <Text style={styles.similarityLabel}>Match Score</Text>
-            <Text style={styles.similarityScore}>
-              {typeof similarityScore === 'number' ? similarityScore : 0}%
-            </Text>
-          </View>
-          <View style={styles.progressBarContainer}>
-            <View
-              style={[
-                styles.progressBar,
-                { width: `${Math.min(Math.max(similarityScore || 0, 0), 100)}%` },
-              ]}
-            />
-          </View>
-          <Text style={styles.sharedValuesText}>
-            {sharedValuesCount || 0} shared value{(sharedValuesCount || 0) !== 1 ? 's' : ''}
+    <ScreenContainer contentPadding={false}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.headerBar}>
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowFilters(true)}
+            onLongPress={handleFilterPress}
+          >
+            <Text style={styles.filterButtonText}>Filters</Text>
+          </TouchableOpacity>
+          <Text style={styles.counterText}>
+            {Math.min(currentMatchIndex + 1, availableMatches.length)} / {availableMatches.length}
           </Text>
         </View>
 
-        {/* Top 5 Values */}
-        {top5Values.length > 0 && (
-          <View style={styles.valuesContainer}>
-            <Text style={styles.valuesTitle}>Their Top 5 Values</Text>
-            <View style={styles.valuesChipsContainer}>
-              {top5Values.map((value) => {
-                if (!value || !value.id) return null;
-                return (
-                  <View key={value.id} style={styles.valueChip}>
-                    <Text style={styles.valueChipText}>{value.name || 'Unknown'}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {/* Prompts */}
-        {user.prompts && Array.isArray(user.prompts) && user.prompts.length > 0 && (
-          <View style={styles.promptsContainer}>
-            <Text style={styles.promptsTitle}>Prompts</Text>
-            {user.prompts.map((prompt) => {
-              if (!prompt || !prompt.id) return null;
-              return (
-                <View key={prompt.id} style={styles.promptItem}>
-                  <Text style={styles.promptQuestion}>
-                    {prompt.question || 'Question'}
-                  </Text>
-                  <Text style={styles.promptAnswer}>
-                    {prompt.answer || 'No answer provided'}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          <PrimaryButton
-            title="Pass"
-            onPress={handlePass}
-            style={[styles.actionButton, styles.passButton]}
-            textStyle={styles.passButtonText}
-          />
-          <PrimaryButton
-            title="Like"
-            onPress={handleLike}
-            style={[styles.actionButton, styles.likeButton]}
+        {/* Card + fixed action bar */}
+        <View style={styles.cardArea}>
+          <DiscoverProfileCard
+            ref={cardScrollRef}
+            candidate={candidate}
+            currentUserTopValues={currentUserTopValues}
+            candidateTopValues={candidateTopValues}
+            sharedValueIds={sharedValueIds}
+            scrollViewProps={{
+              contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
+            }}
           />
         </View>
-      </Card>
 
-      <Text style={styles.matchCounter}>
-        {Math.min(currentMatchIndex + 1, availableMatches.length)} of {availableMatches.length}
-      </Text>
+        {/* Match score (optional, subtle) */}
+        <Text style={styles.subtleMeta}>
+          Match score: {typeof similarityScore === 'number' ? similarityScore : 0}% • {sharedValuesCount || 0} shared value{(sharedValuesCount || 0) !== 1 ? 's' : ''}
+        </Text>
 
-      {/* Filters Modal */}
-      <Modal
+        <DiscoverActionBar
+          onPass={handlePass}
+          onLike={handleLike}
+          disabled={!candidate}
+        />
+      </View>
+
+      <FiltersSheet
         visible={showFilters}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowFilters(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Filters</Text>
-
-            <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>Age Range</Text>
-              <View style={styles.ageInputs}>
-                <View style={styles.ageInput}>
-                  <Text style={styles.ageInputLabel}>Min</Text>
-                  <TextInput
-                    style={styles.filterInput}
-                    placeholder="18"
-                    value={minAge}
-                    onChangeText={setMinAge}
-                    keyboardType="number-pad"
-                  />
-                </View>
-                <View style={styles.ageInput}>
-                  <Text style={styles.ageInputLabel}>Max</Text>
-                  <TextInput
-                    style={styles.filterInput}
-                    placeholder="100"
-                    value={maxAge}
-                    onChangeText={setMaxAge}
-                    keyboardType="number-pad"
-                  />
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>Location</Text>
-              <TextInput
-                style={styles.filterInput}
-                placeholder="City, State (optional)"
-                value={locationFilter}
-                onChangeText={setLocationFilter}
-                autoCapitalize="words"
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <PrimaryButton
-                title="Clear"
-                onPress={handleClearFilters}
-                style={[styles.modalButton, styles.modalClearButton]}
-                textStyle={styles.modalClearButtonText}
-              />
-              <PrimaryButton
-                title="Apply"
-                onPress={handleApplyFilters}
-                style={styles.modalButton}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => setShowFilters(false)}
-            >
-              <Text style={styles.modalCancelText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        filters={filters}
+        onClose={() => setShowFilters(false)}
+        onApply={handleApplyFilters}
+        onReset={handleResetFilters}
+      />
     </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  headerBar: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+  },
   filterButton: {
-    alignSelf: 'flex-end',
     paddingHorizontal: theme.spacing.base,
     paddingVertical: theme.spacing.sm,
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: theme.borderRadius.full,
-    marginBottom: theme.spacing.lg,
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.base,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   filterButtonText: {
     color: theme.colors.primary,
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
   },
-  card: {
-    marginHorizontal: theme.spacing.lg,
-    marginBottom: theme.spacing.lg,
-    overflow: 'hidden',
-  },
-  mainPhoto: {
-    borderRadius: 0,
-    marginBottom: theme.spacing.base,
-  },
-  header: {
-    marginBottom: theme.spacing.base,
-  },
-  name: {
-    fontSize: theme.typography.fontSize['3xl'],
-    fontWeight: theme.typography.fontWeight.bold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
-  },
-  age: {
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.sm,
-  },
-  job: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.primary,
-    fontWeight: theme.typography.fontWeight.medium,
-  },
-  bioContainer: {
-    marginBottom: theme.spacing.lg,
-    paddingTop: theme.spacing.base,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  bio: {
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.normal,
-  },
-  similarityContainer: {
-    marginBottom: theme.spacing.lg,
-    padding: theme.spacing.base,
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.md,
-  },
-  similarityHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  similarityLabel: {
+  counterText: {
     fontSize: theme.typography.fontSize.sm,
     color: theme.colors.textSecondary,
     fontWeight: theme.typography.fontWeight.semibold,
   },
-  similarityScore: {
-    fontSize: theme.typography.fontSize['2xl'],
-    fontWeight: theme.typography.fontWeight.bold,
-    color: theme.colors.primary,
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: theme.colors.border,
-    borderRadius: theme.borderRadius.sm,
-    overflow: 'hidden',
-    marginBottom: theme.spacing.sm,
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.sm,
-  },
-  sharedValuesText: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.textSecondary,
-  },
-  valuesContainer: {
-    marginBottom: theme.spacing.lg,
-    paddingTop: theme.spacing.base,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  valuesTitle: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
-  },
-  valuesChipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  valueChip: {
-    backgroundColor: theme.colors.backgroundSecondary,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs + 2,
-    borderRadius: theme.borderRadius.full,
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-  },
-  valueChipText: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.primary,
-    fontWeight: theme.typography.fontWeight.medium,
-  },
-  promptsContainer: {
-    marginBottom: theme.spacing.lg,
-    paddingTop: theme.spacing.base,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  promptsTitle: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
-  },
-  promptItem: {
-    marginBottom: 16,
-  },
-  promptQuestion: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
-  },
-  promptAnswer: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.normal,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-  },
-  actionButton: {
+  cardArea: {
     flex: 1,
-  },
-  passButton: {
-    backgroundColor: theme.colors.backgroundSecondary,
-  },
-  passButtonText: {
-    color: theme.colors.text,
-  },
-  likeButton: {
-    backgroundColor: theme.colors.primary,
-  },
-  matchCounter: {
-    textAlign: 'center',
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textTertiary,
-    marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.lg,
     paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.base,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: theme.colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: theme.borderRadius.xl,
-    borderTopRightRadius: theme.borderRadius.xl,
-    padding: theme.spacing.lg,
-    maxHeight: '80%',
-  },
-  modalTitle: {
-    fontSize: theme.typography.fontSize['2xl'],
-    fontWeight: theme.typography.fontWeight.bold,
-    marginBottom: theme.spacing.xl,
-    color: theme.colors.text,
-  },
-  filterGroup: {
-    marginBottom: theme.spacing.xl,
-  },
-  filterLabel: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.semibold,
-    marginBottom: theme.spacing.sm,
-    color: theme.colors.text,
-  },
-  ageInputs: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-  },
-  ageInput: {
-    flex: 1,
-  },
-  ageInputLabel: {
+  subtleMeta: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.sm,
     fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
+    color: theme.colors.textTertiary,
   },
-  filterInput: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.base,
-    padding: theme.spacing.md,
-    fontSize: theme.typography.fontSize.base,
-    backgroundColor: theme.colors.backgroundTertiary,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.base,
-  },
-  modalButton: {
-    flex: 1,
-  },
-  modalClearButton: {
-    backgroundColor: theme.colors.backgroundSecondary,
-  },
-  modalClearButtonText: {
-    color: theme.colors.text,
-  },
-  modalCancel: {
-    padding: theme.spacing.base,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  modalCancelText: {
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.primary,
-    fontWeight: theme.typography.fontWeight.semibold,
-  },
+  // Filters styles moved into `FiltersSheet`
 });

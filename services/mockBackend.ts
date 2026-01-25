@@ -267,6 +267,7 @@ export function findMatches(
   filters?: {
     ageRange?: [number, number]; // [minAge, maxAge]
     location?: string;
+    radiusKm?: number;
   }
 ): Promise<Match[]> {
   return new Promise((resolve) => {
@@ -288,8 +289,19 @@ export function findMatches(
         }
 
         // Apply location filter
-        if (filters?.location && user.location !== filters.location) {
-          return false;
+        if (filters?.location) {
+          const want = filters.location.trim().toLowerCase();
+          const have = (user.location || '').trim().toLowerCase();
+          if (!want) return true;
+
+          // Since we don't have geo coordinates, treat radius as "strictness":
+          // small radius => strict match, large radius => loose match.
+          const strict = typeof filters.radiusKm === 'number' ? filters.radiusKm <= 25 : false;
+          if (strict) {
+            if (have !== want) return false;
+          } else {
+            if (!have.includes(want)) return false;
+          }
         }
 
         return true;

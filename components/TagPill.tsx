@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle, View } from 'react-native';
 import { theme } from '../theme';
 
 interface TagPillProps {
@@ -33,45 +33,42 @@ export const TagPill: React.FC<TagPillProps> = ({
     lg: styles.sizeTextLg,
   };
 
-  const Component = onPress ? TouchableOpacity : React.Fragment;
-  const componentProps = onPress
-    ? {
-        onPress,
-        disabled,
-        activeOpacity: 0.7,
-        style: [
-          styles.pill,
-          sizeStyles[size],
-          selected && styles.pillSelected,
-          disabled && styles.pillDisabled,
-          style,
-        ],
-      }
-    : {
-        style: [
-          styles.pill,
-          sizeStyles[size],
-          selected && styles.pillSelected,
-          disabled && styles.pillDisabled,
-          style,
-        ],
-      };
+  const pillStyle = [
+    styles.pill,
+    sizeStyles[size],
+    selected && styles.pillSelected,
+    disabled && styles.pillDisabled,
+    style,
+  ];
 
-  return (
-    <Component {...componentProps}>
-      <Text
-        style={[
-          styles.text,
-          sizeTextStyles[size],
-          selected && styles.textSelected,
-          disabled && styles.textDisabled,
-          textStyle,
-        ]}
-      >
-        {label}
-      </Text>
-    </Component>
+  const text = (
+    <Text
+      style={[
+        styles.text,
+        sizeTextStyles[size],
+        selected && styles.textSelected,
+        disabled && styles.textDisabled,
+        textStyle,
+      ]}
+    >
+      {label}
+    </Text>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.7}
+        style={pillStyle}
+      >
+        {text}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={pillStyle}>{text}</View>;
 };
 
 const styles = StyleSheet.create({

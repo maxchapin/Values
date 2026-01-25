@@ -59,6 +59,7 @@ export interface PersistedMatchesState {
   filters: {
     ageRange?: [number, number];
     location?: string;
+    radiusKm?: number;
   };
 }
 

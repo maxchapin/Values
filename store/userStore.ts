@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { User, UserProfile } from '../types/user';
 import { saveUserData, saveAuthState, clearPersistedData } from '../services/persistence';
+import { MAX_PROFILE_PHOTOS } from '../constants/profile';
 
 interface UserStore {
   currentUser: User | null;
@@ -51,14 +52,19 @@ export const useUserStore = create<UserStore>((set, get) => ({
   // Helper to check if profile is complete
   checkProfileComplete: (user: User | null): boolean => {
     if (!user) return false;
+    const hasLocationPin = !!(
+      user.locationCoordinates &&
+      typeof user.locationCoordinates.latitude === 'number' &&
+      typeof user.locationCoordinates.longitude === 'number'
+    );
     const hasRequiredFields = !!(
       user.name &&
       user.age &&
-      user.location &&
       user.bio &&
       user.gender &&
       user.hometown &&
-      user.interestedIn
+      user.interestedIn &&
+      hasLocationPin
     );
     const hasAtLeastOnePrompt =
       Array.isArray(user.prompts) &&
@@ -205,8 +211,10 @@ export const useUserStore = create<UserStore>((set, get) => ({
         console.log('[UserStore] createOrUpdateUser - final keepSignedIn value to use:', keepSignedIn);
       }
       
+      const photos = (profileData.photos ?? []).slice(0, MAX_PROFILE_PHOTOS);
       const updatedUser = await createOrUpdateUserBackend(userId, {
         ...profileData,
+        photos,
         email: profileData.email || get().currentUser?.email || '',
       });
       const isProfileComplete = get().checkProfileComplete(updatedUser);
@@ -256,9 +264,14 @@ export const useUserStore = create<UserStore>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
+      const photos =
+        profile.photos !== undefined
+          ? profile.photos.slice(0, MAX_PROFILE_PHOTOS)
+          : currentUser.photos;
       const updatedUser: User = {
         ...currentUser,
         ...profile,
+        photos,
       };
       const isProfileComplete = get().checkProfileComplete(updatedUser);
       const isValuesComplete = get().checkValuesComplete(updatedUser);

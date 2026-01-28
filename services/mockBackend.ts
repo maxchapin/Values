@@ -5,7 +5,7 @@
  * Can be easily swapped out for a real API later
  */
 
-import { User } from '../types/user';
+import { User, LocationCoordinates } from '../types/user';
 import { Value } from '../types/value';
 import { Match } from '../types/match';
 import { EXAMPLE_VALUES } from '../data/values';
@@ -13,7 +13,19 @@ import { EXAMPLE_VALUES } from '../data/values';
 // Use values from data file
 const PREDEFINED_VALUES: Value[] = EXAMPLE_VALUES;
 
-// Mock users database with realistic dating profiles
+/** Haversine distance in km between two points. */
+function haversineKm(a: LocationCoordinates, b: LocationCoordinates): number {
+  const R = 6371; // Earth radius km
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  return R * c;
+}
+
+// Mock users database with realistic dating profiles (approximate city coords)
 const MOCK_USERS: User[] = [
   {
     id: 'u1',
@@ -21,7 +33,8 @@ const MOCK_USERS: User[] = [
     name: 'Alex',
     age: 28,
     gender: 'non-binary',
-    location: 'New York, NY',
+    locationCoordinates: { latitude: 40.7128, longitude: -74.006 },
+    locationLabel: 'New York, NY, USA',
     bio: 'Love hiking, reading, and deep conversations. Looking for someone who values growth and adventure.',
     photos: ['https://picsum.photos/seed/values-u1/900/1200'],
     prompts: [
@@ -47,7 +60,8 @@ const MOCK_USERS: User[] = [
     name: 'Sam',
     age: 32,
     gender: 'male',
-    location: 'San Francisco, CA',
+    locationCoordinates: { latitude: 37.7749, longitude: -122.4194 },
+    locationLabel: 'San Francisco, CA, USA',
     bio: 'Tech enthusiast, coffee lover, and weekend adventurer. Passionate about sustainability and innovation.',
     photos: ['https://picsum.photos/seed/values-u2/900/1200'],
     prompts: [
@@ -73,7 +87,8 @@ const MOCK_USERS: User[] = [
     name: 'Jordan',
     age: 26,
     gender: 'female',
-    location: 'Austin, TX',
+    locationCoordinates: { latitude: 30.2672, longitude: -97.7431 },
+    locationLabel: 'Austin, TX, USA',
     bio: 'Yoga instructor, plant parent, and aspiring chef. I value mindfulness, wellness, and authentic connections.',
     photos: ['https://picsum.photos/seed/values-u3/900/1200'],
     prompts: [
@@ -99,7 +114,8 @@ const MOCK_USERS: User[] = [
     name: 'Taylor',
     age: 30,
     gender: 'female',
-    location: 'Seattle, WA',
+    locationCoordinates: { latitude: 47.6062, longitude: -122.3321 },
+    locationLabel: 'Seattle, WA, USA',
     bio: 'Bookworm, nature photographer, and sustainability advocate. Looking for someone who cares about the planet and loves to read.',
     photos: ['https://picsum.photos/seed/values-u4/900/1200'],
     prompts: [
@@ -125,7 +141,8 @@ const MOCK_USERS: User[] = [
     name: 'Riley',
     age: 29,
     gender: 'male',
-    location: 'Portland, OR',
+    locationCoordinates: { latitude: 45.5152, longitude: -122.6784 },
+    locationLabel: 'Portland, OR, USA',
     bio: 'Musician, foodie, and community organizer. I believe in giving back and building strong connections.',
     photos: ['https://picsum.photos/seed/values-u5/900/1200'],
     prompts: [
@@ -151,7 +168,8 @@ const MOCK_USERS: User[] = [
     name: 'Morgan',
     age: 27,
     gender: 'non-binary',
-    location: 'Denver, CO',
+    locationCoordinates: { latitude: 39.7392, longitude: -104.9903 },
+    locationLabel: 'Denver, CO, USA',
     bio: 'Outdoor enthusiast, artist, and social justice advocate. Looking for someone who shares my values and sense of adventure.',
     photos: ['https://picsum.photos/seed/values-u6/900/1200'],
     prompts: [
@@ -259,14 +277,14 @@ function calculateSimilarity(
 /**
  * Find matches for a user
  * @param userId - The ID of the user to find matches for
- * @param filters - Optional filters for age range and location
+ * @param filters - Optional filters for age range and distance (centerCoordinates + radiusKm)
  * @returns Promise of Match array sorted by similarity score
  */
 export function findMatches(
   userId: string,
   filters?: {
-    ageRange?: [number, number]; // [minAge, maxAge]
-    location?: string;
+    ageRange?: [number, number];
+    centerCoordinates?: LocationCoordinates;
     radiusKm?: number;
   }
 ): Promise<Match[]> {
@@ -278,6 +296,9 @@ export function findMatches(
         return;
       }
 
+      const center = filters?.centerCoordinates ?? currentUser.locationCoordinates;
+      const radiusKm = typeof filters?.radiusKm === 'number' ? filters.radiusKm : 200;
+
       const matches: Match[] = MOCK_USERS.filter((user) => {
         // Don't match with self
         if (user.id === userId) return false;
@@ -288,20 +309,10 @@ export function findMatches(
           if (user.age < minAge || user.age > maxAge) return false;
         }
 
-        // Apply location filter
-        if (filters?.location) {
-          const want = filters.location.trim().toLowerCase();
-          const have = (user.location || '').trim().toLowerCase();
-          if (!want) return true;
-
-          // Since we don't have geo coordinates, treat radius as "strictness":
-          // small radius => strict match, large radius => loose match.
-          const strict = typeof filters.radiusKm === 'number' ? filters.radiusKm <= 25 : false;
-          if (strict) {
-            if (have !== want) return false;
-          } else {
-            if (!have.includes(want)) return false;
-          }
+        // Apply distance filter using Haversine
+        if (center && user.locationCoordinates) {
+          const km = haversineKm(center, user.locationCoordinates);
+          if (km > radiusKm) return false;
         }
 
         return true;
@@ -402,7 +413,8 @@ export function createOrUpdateUser(
         name: profileData.name,
         age: profileData.age || 25,
         gender: profileData.gender || 'prefer-not-to-say',
-        location: profileData.location || '',
+        locationCoordinates: profileData.locationCoordinates ?? null,
+        locationLabel: profileData.locationLabel ?? null,
         interestedIn: profileData.interestedIn,
         hometown: profileData.hometown,
         job: profileData.job,

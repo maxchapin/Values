@@ -61,7 +61,8 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
         name: formValues.name.trim(),
         age: 25, // Default, will be updated in profile setup
         gender: 'prefer-not-to-say', // Default, will be updated in profile setup
-        location: '',
+        locationCoordinates: null,
+        locationLabel: null,
         bio: '',
         photos: [],
         prompts: [], // Will be updated in profile setup

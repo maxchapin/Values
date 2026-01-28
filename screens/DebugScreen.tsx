@@ -236,7 +236,7 @@ export const DebugScreen: React.FC = () => {
               </View>
               <View style={styles.row}>
                 <Text style={styles.label}>Location:</Text>
-                <Text style={styles.value}>{currentUser.location}</Text>
+                <Text style={styles.value}>{currentUser.locationLabel ?? 'Not set'}</Text>
               </View>
               <View style={styles.row}>
                 <Text style={styles.label}>Bio:</Text>
@@ -398,7 +398,7 @@ export const DebugScreen: React.FC = () => {
                 {filters.ageRange
                   ? `Age: ${filters.ageRange[0]}-${filters.ageRange[1]}`
                   : 'None'}
-                {filters.location ? `, Location: ${filters.location}` : ''}
+                {typeof filters.radiusKm === 'number' ? `, Within ${filters.radiusKm} km` : ''}
               </Text>
             </View>
           </View>

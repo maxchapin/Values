@@ -35,13 +35,15 @@ export interface PersistedUserData {
     age: number;
     gender: string;
     interestedIn?: string;
-    location: string;
+    /** Map-picked coordinates; used for matching. */
+    locationCoordinates: { latitude: number; longitude: number } | null;
+    /** Human-readable label from reverse geocoding. */
+    locationLabel: string | null;
     hometown?: string;
     job?: string;
     education?: string;
     bio: string;
     photos: string[];
-    // `isCustom` added later; keep optional for backward compatibility
     prompts: Array<{ id: string; question: string; answer: string; isCustom?: boolean }>;
     selectedValues: string[];
     createdAt: string;
@@ -58,7 +60,7 @@ export interface PersistedMatchesState {
   likedUserIds: string[];
   filters: {
     ageRange?: [number, number];
-    location?: string;
+    centerCoordinates?: { latitude: number; longitude: number };
     radiusKm?: number;
   };
 }

@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useUserStore } from '../store/userStore';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { EmptyState } from '../components/EmptyState';
-import { ProfileMainPhoto } from '../components/ProfileMainPhoto';
+import { ProfilePhotoCarousel } from '../components/ProfilePhotoCarousel';
 import { useDebugAccess } from '../hooks/useDebugAccess';
 import { trackScreenView } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
@@ -41,8 +41,8 @@ export const ProfileScreen: React.FC = () => {
 
   return (
     <ScreenContainer scrollable>
-      <ProfileMainPhoto
-        uri={Array.isArray(currentUser.photos) ? currentUser.photos[0] : undefined}
+      <ProfilePhotoCarousel
+        photos={Array.isArray(currentUser.photos) ? currentUser.photos : []}
         name={currentUser.name}
         height={360}
         style={styles.mainPhoto}
@@ -65,7 +65,7 @@ export const ProfileScreen: React.FC = () => {
 
       <View style={styles.section}>
         <Text style={styles.label}>Location</Text>
-        <Text style={styles.value}>{currentUser.location}</Text>
+        <Text style={styles.value}>{currentUser.locationLabel ?? 'Not set'}</Text>
       </View>
 
       <View style={styles.section}>

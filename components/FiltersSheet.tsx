@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, TextInput } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
 import { theme } from '../theme';
 import { MatchFilters } from '../store/matchesStore';
 import { PrimaryButton } from './PrimaryButton';
@@ -32,24 +32,20 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
   }, [filters.ageRange]);
 
   const initialRadius = typeof filters.radiusKm === 'number' ? filters.radiusKm : DEFAULT_RADIUS_KM;
-  const initialLocation = filters.location ?? '';
 
   const [ageRange, setAgeRange] = useState<[number, number]>(initialAgeRange);
   const [radiusKm, setRadiusKm] = useState<number>(initialRadius);
-  const [location, setLocation] = useState<string>(initialLocation);
 
   // When opening, sync draft state from store filters.
   useEffect(() => {
     if (!visible) return;
     setAgeRange(initialAgeRange);
     setRadiusKm(initialRadius);
-    setLocation(initialLocation);
-  }, [visible, initialAgeRange, initialRadius, initialLocation]);
+  }, [visible, initialAgeRange, initialRadius]);
 
   const apply = async (): Promise<void> => {
     const next: MatchFilters = {
       ageRange,
-      location: location.trim() ? location.trim() : undefined,
       radiusKm,
     };
     await onApply(next);
@@ -59,7 +55,6 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
   const reset = async (): Promise<void> => {
     setAgeRange(DEFAULT_AGE_RANGE);
     setRadiusKm(DEFAULT_RADIUS_KM);
-    setLocation('');
     await onReset();
     onClose();
   };
@@ -93,20 +88,8 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Base location</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="City (optional)"
-              placeholderTextColor={theme.colors.textTertiary}
-              value={location}
-              onChangeText={setLocation}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Radius</Text>
+            <Text style={styles.sectionTitle}>Distance</Text>
+            <Text style={styles.hint}>Within {radiusKm} km of your profile location</Text>
             <Text style={styles.valueText}>Within {radiusKm} km</Text>
             <SingleValueSlider
               min={5}
@@ -170,14 +153,10 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.sm,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.base,
-    padding: theme.spacing.md,
-    fontSize: theme.typography.fontSize.base,
-    backgroundColor: theme.colors.backgroundTertiary,
-    color: theme.colors.text,
+  hint: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textTertiary,
+    marginBottom: theme.spacing.xs,
   },
   actions: {
     flexDirection: 'row',

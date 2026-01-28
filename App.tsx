@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { useUserStore } from './store/userStore';
 import { useMatchesStore } from './store/matchesStore';
 import { loadAllAppState, validateUserData, validateAuthState } from './services/persistence';
+import type { PersistedUserData } from './utils/storage';
 import { theme } from './theme';
 import { User } from './types/user';
 
@@ -80,29 +81,31 @@ export default function App() {
           if (isAuthenticated && userId && persistedState.userData && validateUserData(persistedState.userData)) {
             const { user: userData } = persistedState.userData;
             
-            // Convert persisted user data to User type
+            // Convert persisted user data to User type (support legacy "location" string)
+            const ud = userData.user as PersistedUserData['user'] & { location?: string };
             const user: User = {
-              id: userData.id,
-              email: userData.email,
-              name: userData.name,
-              age: userData.age,
-              gender: userData.gender as User['gender'],
-              interestedIn: userData.interestedIn as User['interestedIn'],
-              location: userData.location,
-              hometown: userData.hometown,
-              job: userData.job,
-              education: userData.education,
-              bio: userData.bio,
-              photos: userData.photos,
-              prompts: (userData.prompts ?? []).map((p) => ({
+              id: userData.user.id,
+              email: userData.user.email,
+              name: userData.user.name,
+              age: userData.user.age,
+              gender: userData.user.gender as User['gender'],
+              interestedIn: userData.user.interestedIn as User['interestedIn'],
+              locationCoordinates: ud.locationCoordinates ?? null,
+              locationLabel: ud.locationLabel ?? ud.location ?? null,
+              hometown: userData.user.hometown,
+              job: userData.user.job,
+              education: userData.user.education,
+              bio: userData.user.bio,
+              photos: userData.user.photos,
+              prompts: (userData.user.prompts ?? []).map((p) => ({
                 id: p.id,
                 question: p.question,
                 answer: p.answer,
-                isCustom: typeof (p as any).isCustom === 'boolean' ? (p as any).isCustom : false,
+                isCustom: typeof (p as { isCustom?: boolean }).isCustom === 'boolean' ? (p as { isCustom: boolean }).isCustom : false,
               })),
-              selectedValues: userData.selectedValues,
-              createdAt: userData.createdAt,
-              updatedAt: userData.updatedAt,
+              selectedValues: userData.user.selectedValues,
+              createdAt: userData.user.createdAt,
+              updatedAt: userData.user.updatedAt,
             };
             
             setRehydrationStatus('Restoring user session...');

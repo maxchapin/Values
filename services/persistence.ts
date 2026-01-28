@@ -61,7 +61,8 @@ export async function saveUserData(user: User, isProfileComplete: boolean, isVal
       age: user.age,
       gender: user.gender,
       interestedIn: user.interestedIn,
-      location: user.location,
+      locationCoordinates: user.locationCoordinates,
+      locationLabel: user.locationLabel,
       hometown: user.hometown,
       job: user.job,
       education: user.education,
@@ -161,7 +162,7 @@ export function validateUserData(data: unknown): data is PersistedUserData {
   }
 
   const user = userData.user;
-  const requiredFields = ['id', 'email', 'name', 'age', 'gender', 'location', 'bio', 'photos', 'prompts', 'selectedValues', 'createdAt'];
+  const requiredFields = ['id', 'email', 'name', 'age', 'gender', 'bio', 'photos', 'prompts', 'selectedValues', 'createdAt'];
 
   for (const field of requiredFields) {
     if (!(field in user)) {
@@ -169,20 +170,39 @@ export function validateUserData(data: unknown): data is PersistedUserData {
     }
   }
 
+  // New shape: locationCoordinates + locationLabel. Old shape: location (string). Accept both.
+  const hasNewLocation = 'locationCoordinates' in user && 'locationLabel' in user;
+  const hasOldLocation = typeof (user as { location?: string }).location === 'string';
+  if (!hasNewLocation && !hasOldLocation) {
+    return false;
+  }
+
+  if (hasNewLocation) {
+    const coords = (user as { locationCoordinates?: unknown }).locationCoordinates;
+    const label = (user as { locationLabel?: unknown }).locationLabel;
+    if (coords !== null && (typeof coords !== 'object' || typeof (coords as { latitude?: number }).latitude !== 'number' || typeof (coords as { longitude?: number }).longitude !== 'number')) {
+      return false;
+    }
+    if (label !== null && typeof label !== 'string') {
+      return false;
+    }
+  }
+
   // Validate types
   if (
     typeof user.id !== 'string' ||
-    typeof user.email !== 'string' ||
     typeof user.name !== 'string' ||
     typeof user.age !== 'number' ||
     typeof user.gender !== 'string' ||
-    typeof user.location !== 'string' ||
     typeof user.bio !== 'string' ||
     !Array.isArray(user.photos) ||
     !Array.isArray(user.prompts) ||
     !Array.isArray(user.selectedValues) ||
     typeof user.createdAt !== 'string'
   ) {
+    return false;
+  }
+  if (!('email' in user) || typeof (user as { email?: string }).email !== 'string') {
     return false;
   }
 

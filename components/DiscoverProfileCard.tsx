@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, ScrollViewProps } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ScrollViewProps } from 'react-native';
 import { Card } from './Card';
 import { TagPill } from './TagPill';
+import { ProfilePhotoCarousel } from './ProfilePhotoCarousel';
 import { theme } from '../theme';
 import { User } from '../types/user';
 import { Value } from '../types/value';
@@ -16,7 +17,7 @@ interface DiscoverProfileCardProps {
 
 export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileCardProps>(
   ({ candidate, currentUserTopValues, candidateTopValues, sharedValueIds, scrollViewProps }, ref) => {
-    const photoUri = Array.isArray(candidate.photos) ? candidate.photos[0] : undefined;
+    const photos = Array.isArray(candidate.photos) ? candidate.photos : [];
     const hometown = candidate.hometown?.trim();
 
     return (
@@ -29,13 +30,12 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
           keyboardShouldPersistTaps="handled"
           {...scrollViewProps}
         >
-          {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.photo} resizeMode="cover" />
-          ) : (
-            <View style={styles.photoPlaceholder}>
-              <Text style={styles.photoPlaceholderText}>No photo</Text>
-            </View>
-          )}
+          <ProfilePhotoCarousel
+            photos={photos}
+            name={candidate.name}
+            height={380}
+            style={styles.photo}
+          />
 
           <View style={styles.section}>
             <View style={styles.headerRow}>
@@ -44,7 +44,7 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
               </Text>
               <View style={styles.locationWrap}>
                 <Text style={styles.location} numberOfLines={1}>
-                  {candidate.location || 'Location not set'}
+                  {candidate.locationLabel ?? 'Location not set'}
                 </Text>
               </View>
             </View>
@@ -129,19 +129,7 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
-    height: 380,
     backgroundColor: theme.colors.backgroundSecondary,
-  },
-  photoPlaceholder: {
-    width: '100%',
-    height: 380,
-    backgroundColor: theme.colors.backgroundSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoPlaceholderText: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
   },
   section: {
     paddingHorizontal: theme.spacing.lg,

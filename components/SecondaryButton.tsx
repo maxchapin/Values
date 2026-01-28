@@ -38,6 +38,7 @@ export const SecondaryButton: React.FC<SecondaryButtonProps> = ({
 };
 
 const styles = StyleSheet.create({
+  
   button: {
     backgroundColor: theme.colors.background,
     paddingVertical: theme.spacing.md + 2, // 14px

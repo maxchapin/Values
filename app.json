@@ -12,6 +12,11 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "plugins": [
+      ["expo-image-picker", {
+        "photosPermission": "This app uses your photos for your dating profile."
+      }]
+    ],
     "ios": {
       "supportsTablet": true
     },

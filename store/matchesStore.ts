@@ -7,9 +7,12 @@ import { create } from 'zustand';
 import { Match } from '../types/match';
 import { saveMatchesState } from '../services/persistence';
 
+import type { LocationCoordinates } from '../types/user';
+
 export interface MatchFilters {
   ageRange?: [number, number]; // [minAge, maxAge]
-  location?: string;
+  /** Center for distance filter; from current user's locationCoordinates. */
+  centerCoordinates?: LocationCoordinates;
   radiusKm?: number;
 }
 
@@ -50,7 +53,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
   error: null,
   isHydrated: false,
 
-  // Load matches for a user
+  // Load matches for a user. Passes centerCoordinates from current user when not in filters.
   loadMatches: async (userId: string, filters?: MatchFilters): Promise<void> => {
     if (!userId || typeof userId !== 'string') {
       set({ isLoading: false, error: 'Missing user id', availableMatches: [], currentMatchIndex: 0 });
@@ -59,7 +62,12 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const { findMatches } = await import('../services/mockBackend');
-      const matches = await findMatches(userId, filters);
+      const currentUser = getCurrentUser();
+      const mergedFilters: MatchFilters = {
+        ...(filters ?? get().filters ?? {}),
+        centerCoordinates: (filters ?? get().filters)?.centerCoordinates ?? currentUser?.locationCoordinates ?? undefined,
+      };
+      const matches = await findMatches(userId, mergedFilters);
       
       // Ensure matches is always an array (defensive check)
       const safeMatches = Array.isArray(matches) ? matches : [];

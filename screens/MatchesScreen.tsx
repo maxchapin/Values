@@ -6,7 +6,7 @@ import { useUserStore } from '../store/userStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
-import { ProfileMainPhoto } from '../components/ProfileMainPhoto';
+import { ProfilePhotoCarousel } from '../components/ProfilePhotoCarousel';
 import { trackScreenView } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { getAllValues } from '../services/mockBackend';
@@ -93,8 +93,8 @@ export const MatchesScreen: React.FC = () => {
 
     return (
       <View style={styles.matchCard}>
-        <ProfileMainPhoto
-          uri={Array.isArray(user.photos) ? user.photos[0] : undefined}
+        <ProfilePhotoCarousel
+          photos={Array.isArray(user.photos) ? user.photos : []}
           name={user.name}
           height={220}
           style={styles.matchPhoto}
@@ -103,7 +103,7 @@ export const MatchesScreen: React.FC = () => {
           <View>
             <Text style={styles.matchName}>{user.name}</Text>
             <Text style={styles.matchAge}>
-              {user.age || '?'} • {user.location || 'Location not set'}
+              {user.age || '?'} • {user.locationLabel ?? 'Location not set'}
             </Text>
           </View>
           <View style={styles.matchScoreContainer}>

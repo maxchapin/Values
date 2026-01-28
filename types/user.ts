@@ -14,6 +14,12 @@ export interface Prompt {
   isCustom: boolean;
 }
 
+/** Coordinates from map picker; used for distance matching. */
+export interface LocationCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -21,12 +27,17 @@ export interface User {
   age: number;
   gender: Gender;
   interestedIn?: InterestedIn; // "I am interested in"
-  location: string;
-  hometown?: string; // "Where are you from?"
+  /** Map-picked coordinates; used for filters/matching. */
+  locationCoordinates: LocationCoordinates | null;
+  /** Human-readable label from reverse geocoding (e.g. "Cambridge, MA, USA"). */
+  locationLabel: string | null;
+  /** Free text: "Where are you from?" — informational only, not used for matching. */
+  hometown?: string;
   job?: string;
   education?: string;
   bio: string;
-  photos: string[]; // URLs or local paths
+  /** Profile photo URIs (local or remote). Max 4. */
+  photos: string[];
   prompts: Prompt[]; // Dating app prompts and answers (like Hinge)
   selectedValues: string[]; // Array of value IDs
   createdAt: string;
@@ -34,11 +45,12 @@ export interface User {
 }
 
 export interface UserProfile {
-  name: string; // First name
+  name: string;
   age: number;
   gender: Gender;
   interestedIn?: InterestedIn;
-  location: string;
+  locationCoordinates: LocationCoordinates | null;
+  locationLabel: string | null;
   hometown?: string;
   job?: string;
   education?: string;
@@ -51,7 +63,9 @@ export interface UserFilters {
   minAge?: number;
   maxAge?: number;
   gender?: Gender[];
-  location?: string;
-  maxDistance?: number; // in km
+  /** Center for distance filter; typically from current user's locationCoordinates. */
+  centerCoordinates?: LocationCoordinates;
+  /** Radius in km for distance matching. */
+  radiusKm?: number;
   minSharedValues?: number;
 }

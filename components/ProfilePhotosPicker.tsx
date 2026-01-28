@@ -1,6 +1,8 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
 import { theme } from '../theme';
+import { pickImageFromLibrary } from '../services/imagePicker';
+import { MAX_PROFILE_PHOTOS } from '../constants/profile';
 
 interface ProfilePhotosPickerProps {
   photos: string[];
@@ -8,27 +10,61 @@ interface ProfilePhotosPickerProps {
   maxPhotos?: number;
 }
 
-function makeDevPhotoUri(seed: string): string {
-  // Works without adding assets; good enough for dev.
-  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/900/1200`;
-}
-
 export const ProfilePhotosPicker: React.FC<ProfilePhotosPickerProps> = ({
   photos,
   onChange,
-  maxPhotos = 3,
+  maxPhotos = MAX_PROFILE_PHOTOS,
 }) => {
+  const [isPicking, setIsPicking] = useState(false);
+
   const safePhotos = Array.isArray(photos) ? photos.slice(0, maxPhotos) : [];
 
-  const addPhoto = (): void => {
-    if (safePhotos.length >= maxPhotos) return;
-    const seed = `values-photo-${Date.now()}-${safePhotos.length + 1}`;
-    onChange([...safePhotos, makeDevPhotoUri(seed)]);
-  };
+  const openPicker = useCallback(
+    async (replaceIndex: number | null) => {
+      if (isPicking) return;
+      if (replaceIndex === null && safePhotos.length >= maxPhotos) return;
 
-  const removePhoto = (index: number): void => {
-    onChange(safePhotos.filter((_, i) => i !== index));
-  };
+      setIsPicking(true);
+      try {
+        const result = await pickImageFromLibrary();
+
+        if (result.picked && result.uri) {
+          if (replaceIndex !== null) {
+            const next = [...safePhotos];
+            next[replaceIndex] = result.uri;
+            onChange(next.slice(0, maxPhotos));
+          } else {
+            onChange([...safePhotos, result.uri].slice(0, maxPhotos));
+          }
+        } else if (!result.canceled && result.error) {
+          Alert.alert('Photo', result.error);
+        }
+        // canceled: no-op
+      } finally {
+        setIsPicking(false);
+      }
+    },
+    [isPicking, safePhotos, maxPhotos, onChange]
+  );
+
+  const addPhoto = useCallback(() => {
+    if (safePhotos.length >= maxPhotos) return;
+    openPicker(null);
+  }, [safePhotos.length, maxPhotos, openPicker]);
+
+  const removePhoto = useCallback(
+    (index: number) => {
+      onChange(safePhotos.filter((_, i) => i !== index));
+    },
+    [safePhotos, onChange]
+  );
+
+  const replacePhoto = useCallback(
+    (index: number) => {
+      openPicker(index);
+    },
+    [openPicker]
+  );
 
   const slots = Array.from({ length: maxPhotos }, (_, i) => safePhotos[i] ?? null);
 
@@ -36,7 +72,7 @@ export const ProfilePhotosPicker: React.FC<ProfilePhotosPickerProps> = ({
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.label}>Photos</Text>
-        <Text style={styles.hint}>Add 1–3 photos</Text>
+        <Text style={styles.hint}>Add up to {maxPhotos} photos</Text>
       </View>
 
       <View style={styles.row}>
@@ -52,6 +88,13 @@ export const ProfilePhotosPicker: React.FC<ProfilePhotosPickerProps> = ({
                 >
                   <Text style={styles.removeText}>✕</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.replace}
+                  onPress={() => replacePhoto(index)}
+                  accessibilityLabel="Replace photo"
+                >
+                  <Text style={styles.replaceText}>Replace</Text>
+                </TouchableOpacity>
               </View>
             );
           }
@@ -63,7 +106,7 @@ export const ProfilePhotosPicker: React.FC<ProfilePhotosPickerProps> = ({
               style={[styles.addSlot, !canAddHere && styles.addSlotDisabled]}
               onPress={canAddHere ? addPhoto : undefined}
               activeOpacity={0.8}
-              disabled={!canAddHere}
+              disabled={!canAddHere || isPicking}
               accessibilityLabel="Add photo"
             >
               <Text style={styles.addPlus}>+</Text>
@@ -127,6 +170,21 @@ const styles = StyleSheet.create({
     color: theme.colors.textInverse,
     fontWeight: theme.typography.fontWeight.bold,
   },
+  replace: {
+    position: 'absolute',
+    bottom: theme.spacing.sm,
+    left: theme.spacing.sm,
+    right: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.overlay,
+    borderRadius: theme.borderRadius.sm,
+    alignItems: 'center',
+  },
+  replaceText: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textInverse,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
   addSlot: {
     flex: 1,
     aspectRatio: 3 / 4,
@@ -151,4 +209,3 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
 });
-

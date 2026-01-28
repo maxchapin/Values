@@ -105,7 +105,6 @@ export const DiscoverScreen: React.FC = () => {
   const handleResetFilters = async (): Promise<void> => {
     await setFilters({
       ageRange: [18, 99],
-      location: undefined,
       radiusKm: 200,
     });
   };

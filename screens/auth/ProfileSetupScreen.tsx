@@ -7,6 +7,8 @@ import { TextInputField } from '../../components/TextInputField';
 import { TagPill } from '../../components/TagPill';
 import { ProfilePhotosPicker } from '../../components/ProfilePhotosPicker';
 import { ProfilePromptsEditor } from '../../components/ProfilePromptsEditor';
+import { LocationPicker } from '../../components/LocationPicker';
+import type { LocationCoordinates } from '../../types/user';
 import { trackScreenView, trackProfileCompleted, setUserProperties } from '../../services/analytics';
 import { theme } from '../../theme';
 import { useUserStore } from '../../store/userStore';
@@ -19,7 +21,6 @@ type ProfileSetupScreenProps = NativeStackScreenProps<RootStackParamList, 'Profi
 interface ProfileFormData {
   name: string;
   age: string;
-  location: string;
   hometown: string;
   job: string;
   education: string;
@@ -29,7 +30,6 @@ interface ProfileFormData {
 export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation }) => {
   const { currentUser, createOrUpdateUser, isLoading } = useUserStore();
   const ageRef = useRef<TextInput>(null);
-  const locationRef = useRef<TextInput>(null);
   const hometownRef = useRef<TextInput>(null);
   const jobRef = useRef<TextInput>(null);
   const educationRef = useRef<TextInput>(null);
@@ -51,7 +51,6 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     {
       name: currentUser?.name || '',
       age: currentUser?.age.toString() || '',
-      location: currentUser?.location || '',
       hometown: currentUser?.hometown || '',
       job: currentUser?.job || '',
       education: currentUser?.education || '',
@@ -78,10 +77,6 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           return undefined;
         },
       ],
-      location: [
-        validators.required('Location is required'),
-        validators.minLength(2, 'Location must be at least 2 characters'),
-      ],
       hometown: [
         validators.required('Where you are from is required'),
         validators.minLength(2, 'Please enter where you are from'),
@@ -102,7 +97,14 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
   );
   const [interestedInError, setInterestedInError] = useState<string | null>(null);
   const [promptsError, setPromptsError] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [showGenderPicker, setShowGenderPicker] = useState(false);
+  const [locationCoordinates, setLocationCoordinates] = useState<LocationCoordinates | null>(
+    currentUser?.locationCoordinates ?? null
+  );
+  const [locationLabel, setLocationLabel] = useState<string | null>(
+    currentUser?.locationLabel ?? null
+  );
   const [photos, setPhotos] = useState<string[]>(
     Array.isArray(currentUser?.photos) ? currentUser!.photos : []
   );
@@ -144,6 +146,13 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     }
     setInterestedInError(null);
 
+    // Require location (map pin) to be set
+    if (!locationCoordinates || typeof locationCoordinates.latitude !== 'number' || typeof locationCoordinates.longitude !== 'number') {
+      setLocationError('Please set your location on the map (tap or drag the pin, or search for a place)');
+      return;
+    }
+    setLocationError(null);
+
     // Additional validation for prompts
     const validPrompts = getValidPrompts();
     if (validPrompts.length < 1) {
@@ -160,7 +169,8 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       age: ageNum,
       gender,
       interestedIn,
-      location: formValues.location.trim(),
+      locationCoordinates,
+      locationLabel,
       hometown: formValues.hometown.trim(),
       job: formValues.job.trim() || undefined,
       education: formValues.education.trim() || undefined,
@@ -184,7 +194,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     setUserProperties({
       age: ageNum,
       gender,
-      location: profileData.location,
+      location: locationLabel ?? undefined,
       interestedIn,
       hometown: profileData.hometown,
     });
@@ -238,7 +248,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           keyboardType="number-pad"
           returnKeyType="next"
           blurOnSubmit={false}
-          onSubmitEditing={() => locationRef.current?.focus()}
+          onSubmitEditing={() => hometownRef.current?.focus()}
         />
 
         {/* Gender */}
@@ -326,27 +336,24 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           {interestedInError && <Text style={styles.errorText}>{interestedInError}</Text>}
         </View>
 
-        {/* Location */}
-        <TextInputField
-          label="Location *"
-          placeholder="City, State"
-          value={values.location}
-          onChangeText={(text) => {
-            setValue('location', text, true);
+        {/* Location (map pin) — used for matching and filters */}
+        <LocationPicker
+          coordinates={locationCoordinates}
+          locationLabel={locationLabel}
+          onChange={(coords, label) => {
+            setLocationCoordinates(coords);
+            setLocationLabel(label);
+            setLocationError(null);
           }}
-          onBlur={() => setFieldTouched('location')}
-          error={touched.location ? errors.location : undefined}
-          autoCapitalize="words"
-          ref={locationRef}
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => hometownRef.current?.focus()}
+          error={locationError ?? undefined}
+          mapHeight={240}
+          searchPlaceholder="Search for a city or address..."
         />
 
-        {/* Where are you from? */}
+        {/* Where are you from? — free text, informational only */}
         <TextInputField
           label="Where are you from? *"
-          placeholder="Hometown (e.g., Chicago, IL)"
+          placeholder="e.g. Chicago, IL (your hometown — just for your profile)"
           value={values.hometown}
           onChangeText={(text) => {
             setValue('hometown', text, true);
@@ -436,9 +443,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           disabled={isLoading}
           loading={isLoading}
         />
-        {(!hasValidPrompts() || Object.keys(errors).length > 0) && (
+        {(!hasValidPrompts() || Object.keys(errors).length > 0 || !locationCoordinates) && (
           <Text style={styles.hint}>
-            Please fill in all required fields (*). Age must be between 18 and 100. Add at least one prompt + answer.
+            Please fill in all required fields (*). Set your location on the map. Age 18–100. Add at least one prompt + answer.
           </Text>
         )}
       </View>

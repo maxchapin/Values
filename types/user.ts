@@ -41,6 +41,7 @@ export interface User {
   prompts: Prompt[]; // Dating app prompts and answers (like Hinge)
   selectedValues: string[]; // Array of value IDs (legacy - kept for backward compatibility)
   valuesProfile?: UserValuesProfile; // Tiered values profile (new)
+  settings?: UserSettings; // User preferences and settings
   createdAt: string;
   updatedAt?: string;
 }
@@ -84,4 +85,18 @@ export interface UserFilters {
   /** Radius in km for distance matching. */
   radiusKm?: number;
   minSharedValues?: number;
+}
+
+/**
+ * User settings/preferences
+ */
+export interface UserSettings {
+  /** Whether profile is visible to others in Discover */
+  isProfileVisible: boolean;
+  /** Notification preferences */
+  notifications: {
+    newMatch: boolean;
+    newMessage: boolean;
+    newLikesYou: boolean;
+  };
 }

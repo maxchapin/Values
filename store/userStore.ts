@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { User, UserProfile, UserValuesProfile } from '../types/user';
+import { User, UserProfile, UserValuesProfile, UserSettings } from '../types/user';
 import { saveUserData, saveAuthState, clearPersistedData } from '../services/persistence';
 import { MAX_PROFILE_PHOTOS } from '../constants/profile';
 
@@ -28,6 +28,8 @@ interface UserStore {
   updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
   updateValues: (values: string[]) => Promise<void>;
   updateValuesProfile: (valuesProfile: UserValuesProfile) => Promise<void>;
+  updateSettings: (settings: Partial<UserSettings>) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   completeOnboarding: () => void;
   logout: () => Promise<void>;
   rehydrate: (user: User, isProfileComplete: boolean, isValuesComplete: boolean, keepSignedIn: boolean) => void;
@@ -401,6 +403,85 @@ export const useUserStore = create<UserStore>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to update values profile',
         isLoading: false,
       });
+    }
+  },
+
+  // Update user settings
+  updateSettings: async (settings: Partial<UserSettings>): Promise<void> => {
+    const { currentUser, keepSignedIn } = get();
+    if (!currentUser) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      const currentSettings: UserSettings = currentUser.settings || {
+        isProfileVisible: true,
+        notifications: {
+          newMatch: true,
+          newMessage: true,
+          newLikesYou: true,
+        },
+      };
+
+      const updatedSettings: UserSettings = {
+        ...currentSettings,
+        ...settings,
+        notifications: {
+          ...currentSettings.notifications,
+          ...(settings.notifications || {}),
+        },
+      };
+
+      const updatedUser: User = {
+        ...currentUser,
+        settings: updatedSettings,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const isProfileComplete = get().checkProfileComplete(updatedUser);
+      const isValuesComplete = get().checkValuesComplete(updatedUser);
+      
+      set({
+        currentUser: updatedUser,
+        keepSignedIn,
+        isLoading: false,
+      });
+
+      // Update mock backend
+      const { updateUser } = await import('../services/mockBackend');
+      await updateUser(updatedUser);
+
+      // Persist updated user data
+      try {
+        await saveUserData(updatedUser, isProfileComplete, isValuesComplete);
+        await saveAuthState({
+          isAuthenticated: true,
+          userId: updatedUser.id,
+          keepSignedIn,
+        });
+      } catch (error) {
+        if (__DEV__) {
+          console.error('[UserStore] Error persisting settings:', error);
+        }
+      }
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update settings',
+        isLoading: false,
+      });
+    }
+  },
+
+  // Delete account - clears all data and logs out
+  deleteAccount: async (): Promise<void> => {
+    if (__DEV__) {
+      console.log('[UserStore] Delete account initiated - clearing all data');
+    }
+    
+    // Same as logout - clear all data
+    await get().logout();
+    
+    if (__DEV__) {
+      console.log('[UserStore] ✅ Account deleted - user will see welcome screen');
     }
   },
 

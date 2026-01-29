@@ -79,34 +79,35 @@ export default function App() {
           
           // If authenticated and user data exists, rehydrate full session
           if (isAuthenticated && userId && persistedState.userData && validateUserData(persistedState.userData)) {
-            const { user: userData } = persistedState.userData;
+            const persistedUser = persistedState.userData.user;
             
             // Convert persisted user data to User type (support legacy "location" string)
-            const ud = userData.user as PersistedUserData['user'] & { location?: string };
+            const ud = persistedUser as PersistedUserData['user'] & { location?: string };
             const user: User = {
-              id: userData.user.id,
-              email: userData.user.email,
-              name: userData.user.name,
-              age: userData.user.age,
-              gender: userData.user.gender as User['gender'],
-              interestedIn: userData.user.interestedIn as User['interestedIn'],
+              id: persistedUser.id,
+              email: persistedUser.email,
+              name: persistedUser.name,
+              age: persistedUser.age,
+              gender: persistedUser.gender as User['gender'],
+              interestedIn: persistedUser.interestedIn as User['interestedIn'],
               locationCoordinates: ud.locationCoordinates ?? null,
               locationLabel: ud.locationLabel ?? ud.location ?? null,
-              hometown: userData.user.hometown,
-              job: userData.user.job,
-              education: userData.user.education,
-              bio: userData.user.bio,
-              photos: userData.user.photos,
-              prompts: (userData.user.prompts ?? []).map((p) => ({
+              hometown: persistedUser.hometown,
+              job: persistedUser.job,
+              education: persistedUser.education,
+              bio: persistedUser.bio,
+              photos: persistedUser.photos,
+              prompts: (persistedUser.prompts ?? []).map((p) => ({
                 id: p.id,
                 question: p.question,
                 answer: p.answer,
                 isCustom: typeof (p as { isCustom?: boolean }).isCustom === 'boolean' ? (p as { isCustom: boolean }).isCustom : false,
               })),
-              selectedValues: userData.user.selectedValues,
-              valuesProfile: userData.user.valuesProfile,
-              createdAt: userData.user.createdAt,
-              updatedAt: userData.user.updatedAt,
+              selectedValues: persistedUser.selectedValues,
+              valuesProfile: persistedUser.valuesProfile,
+              settings: persistedUser.settings,
+              createdAt: persistedUser.createdAt,
+              updatedAt: persistedUser.updatedAt,
             };
             
             setRehydrationStatus('Restoring user session...');

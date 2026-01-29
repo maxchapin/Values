@@ -37,9 +37,13 @@ export type RootStackParamList = {
   ValuesNarrow20: undefined;
   ValuesNarrow10: undefined;
   ValuesFinal5: undefined;
-  ValuesOnboarding: undefined;
+  ValuesOnboarding: { fromEditProfile?: boolean } | undefined;
   // Main app (tabs)
   MainApp: undefined;
+  // Profile editing
+  EditProfile: undefined;
+  ProfilePreview: undefined;
+  Settings: undefined;
   // Debug (dev mode only)
   Debug: undefined;
   // Legacy (can be removed later)
@@ -64,6 +68,10 @@ export const ROUTES = {
   DISCOVER: 'Discover',
   MATCHES: 'Matches',
   PROFILE: 'Profile',
+  // Profile editing
+  EDIT_PROFILE: 'EditProfile',
+  PROFILE_PREVIEW: 'ProfilePreview',
+  SETTINGS: 'Settings',
   // Debug
   DEBUG: 'Debug',
   // Legacy

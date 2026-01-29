@@ -24,6 +24,9 @@ import { ValuesFinalScreen } from '../screens/values/ValuesFinalScreen';
 import { DiscoverScreen } from '../screens/DiscoverScreen';
 import { MatchesScreen } from '../screens/MatchesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { EditProfileScreen } from '../screens/EditProfileScreen';
+import { ProfilePreviewScreen } from '../screens/ProfilePreviewScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 
 // Debug screen (dev mode only)
 import { DebugScreen } from '../screens/DebugScreen';
@@ -209,6 +212,23 @@ export const AppNavigator: React.FC = () => {
           name={ROUTES.MAIN_APP}
           component={MainTabNavigator}
           options={{ headerShown: false }}
+        />
+
+        {/* Profile Editing */}
+        <Stack.Screen
+          name={ROUTES.EDIT_PROFILE}
+          component={EditProfileScreen}
+          options={{ title: 'Edit Profile' }}
+        />
+        <Stack.Screen
+          name={ROUTES.PROFILE_PREVIEW}
+          component={ProfilePreviewScreen}
+          options={{ title: 'Profile Preview', headerShown: false }}
+        />
+        <Stack.Screen
+          name={ROUTES.SETTINGS}
+          component={SettingsScreen}
+          options={{ title: 'Settings & Help' }}
         />
 
         {/* Debug Screen (dev mode only) */}

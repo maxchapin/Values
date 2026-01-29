@@ -9,16 +9,36 @@ import { Value } from '../types/value';
 
 interface DiscoverProfileCardProps {
   candidate: User;
-  currentUserTopValues: Value[];
-  candidateTopValues: Value[];
-  sharedValueIds: Set<string>;
+  currentUserTopValues?: Value[]; // Optional for self mode
+  candidateTopValues?: Value[]; // Optional for self mode
+  sharedValueIds?: Set<string>; // Optional for self mode
+  mode?: 'self' | 'other'; // 'self' shows only candidate's values, 'other' shows comparison
   scrollViewProps?: Omit<ScrollViewProps, 'ref'>;
 }
 
 export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileCardProps>(
-  ({ candidate, currentUserTopValues, candidateTopValues, sharedValueIds, scrollViewProps }, ref) => {
+  ({ candidate, currentUserTopValues = [], candidateTopValues = [], sharedValueIds = new Set(), mode = 'other', scrollViewProps }, ref) => {
     const photos = Array.isArray(candidate.photos) ? candidate.photos : [];
     const hometown = candidate.hometown?.trim();
+    const isSelfMode = mode === 'self';
+
+    // In self mode, use candidate's values from valuesProfile if available
+    let displayValues: Array<{ id: string; label: string }> = [];
+    if (isSelfMode) {
+      if (candidate.valuesProfile?.top5Ids && candidate.valuesProfile.allValues) {
+        // Use new tiered values system
+        displayValues = candidate.valuesProfile.top5Ids
+          .slice(0, 5)
+          .map((id) => {
+            const valueItem = candidate.valuesProfile!.allValues.find((v) => v.id === id);
+            return valueItem ? { id: valueItem.id, label: valueItem.label } : null;
+          })
+          .filter((v): v is { id: string; label: string } => v !== null);
+      } else if (candidateTopValues.length > 0) {
+        // Fallback to candidateTopValues prop (old system)
+        displayValues = candidateTopValues.map((v) => ({ id: v.id, label: v.name }));
+      }
+    }
 
     return (
       <Card padding={0} variant="elevated" style={styles.card}>
@@ -75,37 +95,57 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Values</Text>
 
-            <Text style={styles.valuesLabel}>Your top 5</Text>
-            <View style={styles.tagsRow}>
-              {currentUserTopValues.map((v) => {
-                const shared = sharedValueIds.has(v.id);
-                return (
-                  <TagPill
-                    key={`me-${v.id}`}
-                    label={v.name}
-                    size="sm"
-                    style={shared ? styles.sharedTag : undefined}
-                    textStyle={shared ? styles.sharedTagText : undefined}
-                  />
-                );
-              })}
-            </View>
+            {isSelfMode ? (
+              // Self mode: show only candidate's top 5 values
+              displayValues.length > 0 ? (
+                <View style={styles.tagsRow}>
+                  {displayValues.map((v) => (
+                    <TagPill
+                      key={v.id}
+                      label={v.label}
+                      size="sm"
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.valuesLabel}>No values selected</Text>
+              )
+            ) : (
+              // Other mode: show comparison (Your top 5 vs Their top 5)
+              <>
+                <Text style={styles.valuesLabel}>Your top 5</Text>
+                <View style={styles.tagsRow}>
+                  {currentUserTopValues.map((v) => {
+                    const shared = sharedValueIds.has(v.id);
+                    return (
+                      <TagPill
+                        key={`me-${v.id}`}
+                        label={v.name}
+                        size="sm"
+                        style={shared ? styles.sharedTag : undefined}
+                        textStyle={shared ? styles.sharedTagText : undefined}
+                      />
+                    );
+                  })}
+                </View>
 
-            <Text style={[styles.valuesLabel, { marginTop: theme.spacing.base }]}>Their top 5</Text>
-            <View style={styles.tagsRow}>
-              {candidateTopValues.map((v) => {
-                const shared = sharedValueIds.has(v.id);
-                return (
-                  <TagPill
-                    key={`them-${v.id}`}
-                    label={v.name}
-                    size="sm"
-                    style={shared ? styles.sharedTag : undefined}
-                    textStyle={shared ? styles.sharedTagText : undefined}
-                  />
-                );
-              })}
-            </View>
+                <Text style={[styles.valuesLabel, { marginTop: theme.spacing.base }]}>Their top 5</Text>
+                <View style={styles.tagsRow}>
+                  {candidateTopValues.map((v) => {
+                    const shared = sharedValueIds.has(v.id);
+                    return (
+                      <TagPill
+                        key={`them-${v.id}`}
+                        label={v.name}
+                        size="sm"
+                        style={shared ? styles.sharedTag : undefined}
+                        textStyle={shared ? styles.sharedTagText : undefined}
+                      />
+                    );
+                  })}
+                </View>
+              </>
+            )}
           </View>
         </ScrollView>
       </Card>

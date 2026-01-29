@@ -57,6 +57,14 @@ export interface PersistedUserData {
       top20Ids: string[];
       initialIds: string[];
     };
+    settings?: {
+      isProfileVisible: boolean;
+      notifications: {
+        newMatch: boolean;
+        newMessage: boolean;
+        newLikesYou: boolean;
+      };
+    };
     createdAt: string;
     updatedAt?: string;
   };

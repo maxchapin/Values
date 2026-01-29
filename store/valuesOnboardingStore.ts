@@ -22,7 +22,9 @@ interface ValuesOnboardingStore {
   // Actions
   setCurrentStep: (step: ValuesOnboardingStep) => void;
   toggleValueForCurrentStep: (id: string) => void;
+  cycleValueTier: (id: string) => { success: boolean; blockedReason?: 'top20' | 'top10' | 'top5' }; // Returns success status and which cap blocked it
   resetValues: () => void;
+  initializeFromProfile: (valuesProfile: { allValues: ValueItem[] }) => void;
   canProceedToNextStep: () => boolean;
   proceedToNextStep: () => void;
   goToPreviousStep: () => void;
@@ -32,6 +34,7 @@ interface ValuesOnboardingStore {
     title: string;
     subtitle: string;
   };
+  verifyTierHierarchy: () => boolean; // Dev helper to verify consistency
 }
 
 /**
@@ -247,6 +250,113 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
     }
   },
 
+  /**
+   * Cycle a value's tier hierarchically: none → initial → top20 → top10 → top5 → top10 → top20 → initial → none
+   * Used in edit mode (from Edit Profile) to allow free promotion/demotion
+   * Respects caps: top20 ≤ 20, top10 ≤ 10, top5 ≤ 5
+   * Maintains hierarchy: top5 ⊆ top10 ⊆ top20 ⊆ initial
+   * 
+   * Returns { success: boolean, blockedReason?: 'top20' | 'top10' | 'top5' }
+   */
+  cycleValueTier: (id: string): { success: boolean; blockedReason?: 'top20' | 'top10' | 'top5' } => {
+    const { values } = get();
+    const value = values.find((v) => v.id === id);
+
+    if (!value) {
+      if (__DEV__) {
+        console.warn(`[ValuesOnboardingStore] Value not found: ${id}`);
+      }
+      return { success: false };
+    }
+
+    // Hierarchical cycle: none → initial → top20 → top10 → top5 → top10 → top20 → initial → none
+    // Strategy: Track direction by checking if we can promote from current tier
+    // If at top5, always demote to top10
+    // Otherwise, try to promote first; if cap prevents, demote
+    
+    let actualNextTier: ValueTier;
+    let isPromoting = false;
+    
+    if (value.tier === 'top5') {
+      // From top5, always go back to top10 (demote)
+      actualNextTier = 'top10';
+      isPromoting = false;
+    } else if (value.tier === 'top10') {
+      // From top10: try to promote to top5, otherwise demote to top20
+      const top5Count = get().top5Count();
+      if (top5Count < 5) {
+        actualNextTier = 'top5';
+        isPromoting = true;
+      } else {
+        actualNextTier = 'top20';
+        isPromoting = false;
+      }
+    } else if (value.tier === 'top20') {
+      // From top20: try to promote to top10, otherwise demote to initial
+      const top10Count = get().top10Count();
+      if (top10Count < 10) {
+        actualNextTier = 'top10';
+        isPromoting = true;
+      } else {
+        actualNextTier = 'initial';
+        isPromoting = false;
+      }
+    } else if (value.tier === 'initial') {
+      // From initial: try to promote to top20, otherwise demote to none
+      const top20Count = get().top20Count();
+      if (top20Count < 20) {
+        actualNextTier = 'top20';
+        isPromoting = true;
+      } else {
+        actualNextTier = 'none';
+        isPromoting = false;
+      }
+    } else {
+      // From none, always promote to initial
+      actualNextTier = 'initial';
+      isPromoting = true;
+    }
+
+    // Check caps before promoting (only for promotions, not demotions)
+    if (isPromoting) {
+      if (actualNextTier === 'top20') {
+        const top20Count = get().top20Count();
+        if (top20Count >= 20) {
+          if (__DEV__) {
+            console.log(`[ValuesOnboardingStore] Cannot cycle to top20: cap reached (20)`);
+          }
+          return { success: false, blockedReason: 'top20' };
+        }
+      } else if (actualNextTier === 'top10') {
+        const top10Count = get().top10Count();
+        if (top10Count >= 10) {
+          if (__DEV__) {
+            console.log(`[ValuesOnboardingStore] Cannot cycle to top10: cap reached (10)`);
+          }
+          return { success: false, blockedReason: 'top10' };
+        }
+      } else if (actualNextTier === 'top5') {
+        const top5Count = get().top5Count();
+        if (top5Count >= 5) {
+          if (__DEV__) {
+            console.log(`[ValuesOnboardingStore] Cannot cycle to top5: cap reached (5)`);
+          }
+          return { success: false, blockedReason: 'top5' };
+        }
+      }
+    }
+
+    // Apply the tier change
+    const updatedValues = updateValueTier(values, id, actualNextTier);
+    set({ values: updatedValues });
+
+    if (__DEV__) {
+      console.log(`[ValuesOnboardingStore] Cycled ${id}: ${value.tier} → ${actualNextTier}`);
+    }
+
+    return { success: true };
+  },
+
   resetValues: (): void => {
     if (__DEV__) {
       console.log('[ValuesOnboardingStore] Resetting all values to tier: none');
@@ -254,6 +364,42 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
     set({
       values: [...INITIAL_VALUES], // Reset to initial state
       currentStep: 'broad',
+    });
+  },
+
+  /**
+   * Initialize values store from existing user profile
+   * Used when editing profile - pre-fills tiers from saved valuesProfile
+   */
+  initializeFromProfile: (valuesProfile: { allValues: ValueItem[] }): void => {
+    if (__DEV__) {
+      console.log('[ValuesOnboardingStore] Initializing from profile with', valuesProfile.allValues.length, 'values');
+    }
+    
+    // Create a map of existing values by ID for quick lookup
+    const existingValuesMap = new Map<string, ValueItem>();
+    valuesProfile.allValues.forEach((v) => {
+      existingValuesMap.set(v.id, v);
+    });
+
+    // Merge with INITIAL_VALUES, preserving tiers from profile where they exist
+    const mergedValues: ValueItem[] = INITIAL_VALUES.map((initialValue) => {
+      const existing = existingValuesMap.get(initialValue.id);
+      if (existing) {
+        // Use the tier from the saved profile
+        return {
+          ...initialValue,
+          tier: existing.tier,
+        };
+      }
+      // Value not in saved profile, keep as 'none'
+      return initialValue;
+    });
+
+    // Start at summary step since user is editing existing values
+    set({
+      values: mergedValues,
+      currentStep: 'summary',
     });
   },
 
@@ -320,15 +466,13 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
           }
           return;
         } else {
-          // Promote all initial to top20 for the top20 step
-          const { values } = get();
-          const updatedValues = values.map((v) => {
-            if (v.tier === 'initial') {
-              return { ...v, tier: 'top20' as ValueTier };
-            }
-            return v;
-          });
-          set({ values: updatedValues, currentStep: 'top20' });
+          // Transition to top20 step: keep all values at 'initial' tier
+          // User will explicitly promote values from initial to top20 by tapping
+          // Do NOT automatically promote - top20 should start empty (top20Count = 0)
+          set({ currentStep: 'top20' });
+          if (__DEV__) {
+            console.log('[ValuesOnboardingStore] Transitioned to top20 step - top20 starts empty, user will promote from initial');
+          }
           return;
         }
       case 'top20':
@@ -418,5 +562,84 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
     };
 
     return stepMap[currentStep];
+  },
+
+  /**
+   * Dev helper: Verify that tier hierarchy is consistent
+   * Checks: top5 ⊆ top10 ⊆ top20 ⊆ initial
+   * Returns true if hierarchy is valid, false otherwise
+   */
+  verifyTierHierarchy: (): boolean => {
+    const { values } = get();
+    
+    const top5Ids = new Set(values.filter((v) => v.tier === 'top5').map((v) => v.id));
+    const top10Ids = new Set(values.filter((v) => v.tier === 'top10' || v.tier === 'top5').map((v) => v.id));
+    const top20Ids = new Set(values.filter((v) => v.tier === 'top20' || v.tier === 'top10' || v.tier === 'top5').map((v) => v.id));
+    const initialIds = new Set(values.filter((v) => v.tier !== 'none').map((v) => v.id));
+
+    // Check: top5 ⊆ top10
+    for (const id of top5Ids) {
+      if (!top10Ids.has(id)) {
+        if (__DEV__) {
+          console.error(`[ValuesOnboardingStore] Hierarchy violation: ${id} is in top5 but not in top10`);
+        }
+        return false;
+      }
+    }
+
+    // Check: top10 ⊆ top20
+    for (const id of top10Ids) {
+      if (!top20Ids.has(id)) {
+        if (__DEV__) {
+          console.error(`[ValuesOnboardingStore] Hierarchy violation: ${id} is in top10 but not in top20`);
+        }
+        return false;
+      }
+    }
+
+    // Check: top20 ⊆ initial
+    for (const id of top20Ids) {
+      if (!initialIds.has(id)) {
+        if (__DEV__) {
+          console.error(`[ValuesOnboardingStore] Hierarchy violation: ${id} is in top20 but not in initial`);
+        }
+        return false;
+      }
+    }
+
+    // Check counts match
+    if (top5Ids.size !== get().top5Count()) {
+      if (__DEV__) {
+        console.error(`[ValuesOnboardingStore] Count mismatch: top5Ids.size (${top5Ids.size}) !== top5Count() (${get().top5Count()})`);
+      }
+      return false;
+    }
+
+    if (top10Ids.size !== get().top10Count()) {
+      if (__DEV__) {
+        console.error(`[ValuesOnboardingStore] Count mismatch: top10Ids.size (${top10Ids.size}) !== top10Count() (${get().top10Count()})`);
+      }
+      return false;
+    }
+
+    if (top20Ids.size !== get().top20Count()) {
+      if (__DEV__) {
+        console.error(`[ValuesOnboardingStore] Count mismatch: top20Ids.size (${top20Ids.size}) !== top20Count() (${get().top20Count()})`);
+      }
+      return false;
+    }
+
+    if (initialIds.size !== get().initialCount()) {
+      if (__DEV__) {
+        console.error(`[ValuesOnboardingStore] Count mismatch: initialIds.size (${initialIds.size}) !== initialCount() (${get().initialCount()})`);
+      }
+      return false;
+    }
+
+    if (__DEV__) {
+      console.log('[ValuesOnboardingStore] ✅ Tier hierarchy verified: all constraints satisfied');
+    }
+
+    return true;
   },
 }));

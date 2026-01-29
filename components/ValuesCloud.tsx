@@ -19,6 +19,7 @@ import { theme } from '../theme';
 interface ValuesCloudProps {
   values: ValueItem[];
   onValuePress: (id: string) => void;
+  blockedBubbleId?: string | null; // ID of bubble that was blocked (for shake animation)
 }
 
 /**
@@ -102,11 +103,41 @@ function sortValuesByTier(values: ValueItem[]): ValueItem[] {
 interface ValueBubbleProps {
   value: ValueItem;
   onPress: (id: string) => void;
+  isBlocked?: boolean; // Whether this bubble was blocked (for shake animation)
 }
 
-const ValueBubble: React.FC<ValueBubbleProps> = ({ value, onPress }) => {
+const ValueBubble: React.FC<ValueBubbleProps> = ({ value, onPress, isBlocked = false }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
   const stylesByTier = getValueStylesByTier(value.tier);
+
+  // Trigger shake animation when blocked
+  React.useEffect(() => {
+    if (isBlocked) {
+      Animated.sequence([
+        Animated.timing(shakeAnim, {
+          toValue: 10,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: -10,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: 10,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: 0,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isBlocked, shakeAnim]);
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -134,7 +165,10 @@ const ValueBubble: React.FC<ValueBubbleProps> = ({ value, onPress }) => {
     <Animated.View
       style={[
         {
-          transform: [{ scale: scaleAnim }],
+          transform: [
+            { scale: scaleAnim },
+            { translateX: shakeAnim },
+          ],
         },
       ]}
     >

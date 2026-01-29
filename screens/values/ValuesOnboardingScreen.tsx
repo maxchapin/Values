@@ -12,16 +12,21 @@ import {
   Animated,
   TouchableOpacity,
 } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useValuesOnboardingStore } from '../../store/valuesOnboardingStore';
 import { useUserStore } from '../../store/userStore';
 import { ValuesCloud } from '../../components/ValuesCloud';
+import { ValueCountsDisplay } from '../../components/ValueCountsDisplay';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { SecondaryButton } from '../../components/SecondaryButton';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { theme } from '../../theme';
 import { UserValuesProfile } from '../../types/user';
+import { RootStackParamList } from '../../navigation/types';
 
-export const ValuesOnboardingScreen: React.FC = () => {
+type ValuesOnboardingScreenProps = NativeStackScreenProps<RootStackParamList, 'ValuesOnboarding'>;
+
+export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ navigation, route }) => {
   const {
     values,
     currentStep,
@@ -30,13 +35,17 @@ export const ValuesOnboardingScreen: React.FC = () => {
     top10Count,
     top5Count,
     toggleValueForCurrentStep,
+    cycleValueTier,
     canProceedToNextStep,
     proceedToNextStep,
     goToPreviousStep,
     getStepInfo,
+    verifyTierHierarchy,
   } = useValuesOnboardingStore();
 
   const [validationError, setValidationError] = useState<string>('');
+  const [blockedTooltip, setBlockedTooltip] = useState<{ id: string; message: string } | null>(null);
+  const [blockedBubbleId, setBlockedBubbleId] = useState<string | null>(null);
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const countShakeAnim = useRef(new Animated.Value(0)).current;
 
@@ -158,16 +167,69 @@ export const ValuesOnboardingScreen: React.FC = () => {
 
   const handleBack = (): void => {
     setValidationError('');
-    goToPreviousStep();
+    
+    // Check if we're in edit mode (came from EditProfile)
+    const fromEditProfile = route.params?.fromEditProfile;
+    
+    if (fromEditProfile) {
+      // If in edit mode and not at first step, go to previous step
+      // Otherwise go back to EditProfile
+      if (currentStep !== 'broad') {
+        goToPreviousStep();
+      } else {
+        navigation.goBack();
+      }
+    } else {
+      // Normal onboarding flow - go to previous step
+      goToPreviousStep();
+    }
   };
 
   const handleValuePress = (id: string): void => {
-    // Don't allow toggling in summary step
-    if (currentStep === 'summary') {
-      return;
-    }
     setValidationError(''); // Clear error on any interaction
-    toggleValueForCurrentStep(id);
+    
+    // Check if we're in edit mode (from Edit Profile)
+    const fromEditProfile = route.params?.fromEditProfile;
+    const isEditMode = fromEditProfile && currentStep === 'summary';
+    
+    if (isEditMode) {
+      // In edit mode, cycle through tiers hierarchically
+      const result = cycleValueTier(id);
+      
+      if (!result.success && result.blockedReason) {
+        // Cap prevented promotion - show visual feedback
+        const messages: Record<'top20' | 'top10' | 'top5', string> = {
+          top20: 'Top 20 is full',
+          top10: 'Top 10 is full',
+          top5: 'Top 5 is full',
+        };
+        
+        setBlockedTooltip({ id, message: messages[result.blockedReason] });
+        setBlockedBubbleId(id); // Trigger shake animation
+        
+        // Clear tooltip and blocked state after 2 seconds
+        setTimeout(() => {
+          setBlockedTooltip(null);
+          setBlockedBubbleId(null);
+        }, 2000);
+      } else {
+        // Success - clear any existing tooltip
+        setBlockedTooltip(null);
+        setBlockedBubbleId(null);
+      }
+      
+      // Verify hierarchy after each cycle (dev only)
+      if (__DEV__) {
+        verifyTierHierarchy();
+      }
+    } else {
+      // In onboarding mode, use step-based toggle logic
+      // Don't allow toggling in summary step (unless in edit mode)
+      if (currentStep === 'summary') {
+        return;
+      }
+      toggleValueForCurrentStep(id);
+    }
   };
 
   const handleEditValues = (): void => {
@@ -196,12 +258,23 @@ export const ValuesOnboardingScreen: React.FC = () => {
     const { updateValuesProfile } = useUserStore.getState();
     await updateValuesProfile(valuesProfile);
 
-    // Navigate to main app (onboarding complete)
-    // Navigation will be handled by AppNavigator based on isValuesComplete flag
+    // Check if we're in edit mode (came from EditProfile)
+    const fromEditProfile = route.params?.fromEditProfile;
+    
+    if (fromEditProfile) {
+      // Navigate back to EditProfile screen
+      navigation.goBack();
+    } else {
+      // Navigate to main app (onboarding complete)
+      // Navigation will be handled by AppNavigator based on isValuesComplete flag
+    }
   };
 
   // Render summary step with legend
   if (currentStep === 'summary') {
+    const fromEditProfile = route.params?.fromEditProfile;
+    const isEditMode = fromEditProfile;
+    
     return (
       <ScreenContainer contentPadding={false}>
         <View style={styles.header}>
@@ -209,7 +282,30 @@ export const ValuesOnboardingScreen: React.FC = () => {
           <Text style={styles.subtitle}>{stepInfo.subtitle}</Text>
         </View>
 
-        <ValuesCloud values={values} onValuePress={handleValuePress} />
+        {/* Show count display in edit mode */}
+        {isEditMode && (
+          <View style={styles.countsContainer}>
+            <ValueCountsDisplay
+              anyCount={initialCount()}
+              top20Count={top20Count()}
+              top10Count={top10Count()}
+              top5Count={top5Count()}
+            />
+          </View>
+        )}
+
+        {/* Tooltip for blocked promotions */}
+        {blockedTooltip && (
+          <View style={styles.tooltipContainer}>
+            <Text style={styles.tooltipText}>{blockedTooltip.message}</Text>
+          </View>
+        )}
+
+        <ValuesCloud
+          values={values}
+          onValuePress={handleValuePress}
+          blockedBubbleId={blockedBubbleId}
+        />
 
         <View style={styles.legendContainer}>
           <Text style={styles.legendTitle}>Legend:</Text>
@@ -239,11 +335,20 @@ export const ValuesOnboardingScreen: React.FC = () => {
             onPress={handleComplete}
             style={styles.doneButton}
           />
-          <SecondaryButton
-            title="Edit Values"
-            onPress={handleEditValues}
-            style={styles.editButton}
-          />
+          {!route.params?.fromEditProfile && (
+            <SecondaryButton
+              title="Edit Values"
+              onPress={handleEditValues}
+              style={styles.editButton}
+            />
+          )}
+          {route.params?.fromEditProfile && (
+            <SecondaryButton
+              title="Cancel"
+              onPress={() => navigation.goBack()}
+              style={styles.editButton}
+            />
+          )}
         </View>
       </ScreenContainer>
     );
@@ -257,7 +362,11 @@ export const ValuesOnboardingScreen: React.FC = () => {
         <Text style={styles.subtitle}>{stepInfo.subtitle}</Text>
       </View>
 
-      <ValuesCloud values={values} onValuePress={handleValuePress} />
+      <ValuesCloud
+        values={values}
+        onValuePress={handleValuePress}
+        blockedBubbleId={blockedBubbleId}
+      />
 
       <View style={styles.footer}>
         <View style={styles.footerTop}>
@@ -286,6 +395,14 @@ export const ValuesOnboardingScreen: React.FC = () => {
               <SecondaryButton
                 title="Back"
                 onPress={handleBack}
+              />
+            </View>
+          )}
+          {currentStep === 'broad' && route.params?.fromEditProfile && (
+            <View style={styles.backButton}>
+              <SecondaryButton
+                title="Cancel"
+                onPress={() => navigation.goBack()}
               />
             </View>
           )}
@@ -384,6 +501,23 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.textTertiary,
     textAlign: 'center',
+  },
+  countsContainer: {
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.base,
+  },
+  tooltipContainer: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+    backgroundColor: theme.colors.error,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+  },
+  tooltipText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textInverse,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   legendContainer: {
     padding: theme.spacing.lg,

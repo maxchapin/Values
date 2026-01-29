@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { User, UserProfile } from '../types/user';
+import { User, UserProfile, UserValuesProfile } from '../types/user';
 import { saveUserData, saveAuthState, clearPersistedData } from '../services/persistence';
 import { MAX_PROFILE_PHOTOS } from '../constants/profile';
 
@@ -27,6 +27,7 @@ interface UserStore {
   createOrUpdateUser: (profileData: Partial<UserProfile> & { email: string; name: string }) => Promise<void>;
   updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
   updateValues: (values: string[]) => Promise<void>;
+  updateValuesProfile: (valuesProfile: UserValuesProfile) => Promise<void>;
   completeOnboarding: () => void;
   logout: () => Promise<void>;
   rehydrate: (user: User, isProfileComplete: boolean, isValuesComplete: boolean, keepSignedIn: boolean) => void;
@@ -76,7 +77,11 @@ export const useUserStore = create<UserStore>((set, get) => ({
   // Helper to check if values selection is complete
   checkValuesComplete: (user: User | null): boolean => {
     if (!user) return false;
-    return user.selectedValues.length === 5; // Final top 5
+    // Check new tiered values profile first, fall back to legacy selectedValues
+    if (user.valuesProfile) {
+      return user.valuesProfile.top5Ids.length === 5;
+    }
+    return user.selectedValues.length === 5; // Legacy: Final top 5
   },
 
   // Set current user
@@ -342,6 +347,58 @@ export const useUserStore = create<UserStore>((set, get) => ({
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to update values',
+        isLoading: false,
+      });
+    }
+  },
+
+  // Update user's values profile with tiers
+  updateValuesProfile: async (valuesProfile: UserValuesProfile): Promise<void> => {
+    const { currentUser, keepSignedIn } = get();
+    if (!currentUser) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      // Update user with values profile
+      // Also update selectedValues for backward compatibility (use top5Ids)
+      const updatedUser: User = {
+        ...currentUser,
+        valuesProfile,
+        selectedValues: valuesProfile.top5Ids, // Legacy compatibility
+        updatedAt: new Date().toISOString(),
+      };
+
+      const isProfileComplete = get().checkProfileComplete(updatedUser);
+      const isValuesComplete = get().checkValuesComplete(updatedUser);
+      
+      set({
+        currentUser: updatedUser,
+        isValuesComplete,
+        isOnboardingComplete: isProfileComplete && isValuesComplete,
+        keepSignedIn,
+        isLoading: false,
+      });
+
+      // Update mock backend
+      const { updateUser } = await import('../services/mockBackend');
+      await updateUser(updatedUser);
+
+      // Persist updated user data and auth state
+      try {
+        await saveUserData(updatedUser, isProfileComplete, isValuesComplete);
+        await saveAuthState({
+          isAuthenticated: true,
+          userId: updatedUser.id,
+          keepSignedIn,
+        });
+      } catch (error) {
+        if (__DEV__) {
+          console.error('[UserStore] Error persisting user data:', error);
+        }
+      }
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update values profile',
         isLoading: false,
       });
     }

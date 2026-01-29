@@ -16,6 +16,7 @@ export type ValuesStackParamList = {
   ValuesNarrow20: undefined;
   ValuesNarrow10: undefined;
   ValuesFinal5: undefined;
+  ValuesOnboarding: undefined; // New unified onboarding screen
 };
 
 // Main app routes
@@ -36,6 +37,7 @@ export type RootStackParamList = {
   ValuesNarrow20: undefined;
   ValuesNarrow10: undefined;
   ValuesFinal5: undefined;
+  ValuesOnboarding: undefined;
   // Main app (tabs)
   MainApp: undefined;
   // Debug (dev mode only)
@@ -56,6 +58,7 @@ export const ROUTES = {
   VALUES_NARROW_20: 'ValuesNarrow20',
   VALUES_NARROW_10: 'ValuesNarrow10',
   VALUES_FINAL_5: 'ValuesFinal5',
+  VALUES_ONBOARDING: 'ValuesOnboarding',
   // Main app
   MAIN_APP: 'MainApp',
   DISCOVER: 'Discover',

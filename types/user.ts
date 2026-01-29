@@ -39,7 +39,8 @@ export interface User {
   /** Profile photo URIs (local or remote). Max 4. */
   photos: string[];
   prompts: Prompt[]; // Dating app prompts and answers (like Hinge)
-  selectedValues: string[]; // Array of value IDs
+  selectedValues: string[]; // Array of value IDs (legacy - kept for backward compatibility)
+  valuesProfile?: UserValuesProfile; // Tiered values profile (new)
   createdAt: string;
   updatedAt?: string;
 }
@@ -57,6 +58,21 @@ export interface UserProfile {
   bio: string;
   photos: string[];
   prompts: Prompt[];
+}
+
+/**
+ * User values profile with tier information
+ */
+export interface UserValuesProfile {
+  allValues: Array<{
+    id: string;
+    label: string;
+    tier: 'none' | 'initial' | 'top20' | 'top10' | 'top5';
+  }>;
+  top5Ids: string[];
+  top10Ids: string[];
+  top20Ids: string[];
+  initialIds: string[];
 }
 
 export interface UserFilters {

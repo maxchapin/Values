@@ -25,3 +25,18 @@ export enum ValuesSelectionStep {
   FINAL_5 = 'final_5', // Must select exactly 5
   COMPLETE = 'complete',
 }
+
+/**
+ * Tiered Values Data Model
+ * New tiered "values cloud" concept for onboarding
+ */
+
+export type ValueTier = 'none' | 'initial' | 'top20' | 'top10' | 'top5';
+
+export type ValuesOnboardingStep = 'broad' | 'top20' | 'top10' | 'top5' | 'summary';
+
+export interface ValueItem {
+  id: string;
+  label: string;
+  tier: ValueTier;
+}

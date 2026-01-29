@@ -215,61 +215,103 @@ export function getMockUsers(): Promise<User[]> {
 
 /**
  * Calculate similarity score between two users based on shared values
- * Prioritizes top 5 values, then top 10, then top 20
+ * Uses tiered values profile if available, falls back to legacy selectedValues
+ * Prioritizes top 5 values, then top 10, then top 20, then initial
  * Returns a score from 0 to 1
  */
 function calculateSimilarity(
-  currentUserValues: string[],
-  otherUserValues: string[]
+  currentUser: User,
+  otherUser: User
 ): { score: number; sharedValues: string[] } {
-  // Get shared values
-  const sharedValues = currentUserValues.filter((v) => otherUserValues.includes(v));
+  // Use tiered values profile if available, otherwise fall back to legacy
+  let currentTop5: string[] = [];
+  let currentTop10: string[] = [];
+  let currentTop20: string[] = [];
+  let currentInitial: string[] = [];
+  let currentAllValues: string[] = [];
+
+  let otherTop5: string[] = [];
+  let otherTop10: string[] = [];
+  let otherTop20: string[] = [];
+  let otherInitial: string[] = [];
+  let otherAllValues: string[] = [];
+
+  if (currentUser.valuesProfile) {
+    // Use tiered values profile
+    currentTop5 = currentUser.valuesProfile.top5Ids;
+    currentTop10 = currentUser.valuesProfile.top10Ids;
+    currentTop20 = currentUser.valuesProfile.top20Ids;
+    currentInitial = currentUser.valuesProfile.initialIds;
+    currentAllValues = currentUser.valuesProfile.allValues
+      .filter((v) => v.tier !== 'none')
+      .map((v) => v.id);
+  } else {
+    // Legacy: use selectedValues array (assume first 5 are top5, first 10 are top10, etc.)
+    currentTop5 = currentUser.selectedValues.slice(0, 5);
+    currentTop10 = currentUser.selectedValues.slice(0, 10);
+    currentTop20 = currentUser.selectedValues.slice(0, 20);
+    currentAllValues = currentUser.selectedValues;
+  }
+
+  if (otherUser.valuesProfile) {
+    otherTop5 = otherUser.valuesProfile.top5Ids;
+    otherTop10 = otherUser.valuesProfile.top10Ids;
+    otherTop20 = otherUser.valuesProfile.top20Ids;
+    otherInitial = otherUser.valuesProfile.initialIds;
+    otherAllValues = otherUser.valuesProfile.allValues
+      .filter((v) => v.tier !== 'none')
+      .map((v) => v.id);
+  } else {
+    otherTop5 = otherUser.selectedValues.slice(0, 5);
+    otherTop10 = otherUser.selectedValues.slice(0, 10);
+    otherTop20 = otherUser.selectedValues.slice(0, 20);
+    otherAllValues = otherUser.selectedValues;
+  }
+
+  // Get shared values at each tier
+  const sharedTop5 = currentTop5.filter((v) => otherTop5.includes(v));
+  const sharedTop10 = currentTop10.filter((v) => otherTop10.includes(v));
+  const sharedTop20 = currentTop20.filter((v) => otherTop20.includes(v));
+  const sharedInitial = currentInitial.filter((v) => otherInitial.includes(v));
+
+  // Get all shared values (for return value)
+  const sharedValues = currentAllValues.filter((v) => otherAllValues.includes(v));
 
   if (sharedValues.length === 0) {
     return { score: 0, sharedValues: [] };
   }
 
-  // Prioritize top 5, then top 10, then top 20
-  const top5 = currentUserValues.slice(0, 5);
-  const top10 = currentUserValues.slice(0, 10);
-  const top20 = currentUserValues.slice(0, 20);
-
-  const sharedTop5 = sharedValues.filter((v) => top5.includes(v)).length;
-  const sharedTop10 = sharedValues.filter((v) => top10.includes(v)).length;
-  const sharedTop20 = sharedValues.filter((v) => top20.includes(v)).length;
-
-  // Weighted scoring:
-  // - Top 5 matches: 0.5 weight each (max 2.5 points)
-  // - Top 10 matches (excluding top 5): 0.2 weight each (max 1.0 points)
-  // - Top 20 matches (excluding top 10): 0.1 weight each (max 1.0 points)
-  // - Remaining matches: 0.05 weight each
+  // Weighted scoring based on tier importance:
+  // - Top 5 matches: 0.6 weight each (max 3.0 points) - highest priority
+  // - Top 10 matches (excluding top 5): 0.3 weight each (max 1.5 points)
+  // - Top 20 matches (excluding top 10): 0.15 weight each (max 1.5 points)
+  // - Initial matches (excluding top 20): 0.05 weight each
   // Normalize to 0-1 scale
 
   let score = 0;
 
   // Top 5 matches (highest priority)
-  score += sharedTop5 * 0.5;
+  score += sharedTop5.length * 0.6;
 
   // Top 10 matches (excluding top 5)
-  const sharedTop10Excluding5 = sharedTop10 - sharedTop5;
-  score += sharedTop10Excluding5 * 0.2;
+  const sharedTop10Excluding5 = sharedTop10.filter((v) => !sharedTop5.includes(v));
+  score += sharedTop10Excluding5.length * 0.3;
 
   // Top 20 matches (excluding top 10)
-  const sharedTop20Excluding10 = sharedTop20 - sharedTop10;
-  score += sharedTop20Excluding10 * 0.1;
+  const sharedTop20Excluding10 = sharedTop20.filter((v) => !sharedTop10.includes(v));
+  score += sharedTop20Excluding10.length * 0.15;
 
-  // Remaining matches
-  const remainingShared = sharedValues.length - sharedTop20;
-  score += remainingShared * 0.05;
+  // Initial matches (excluding top 20)
+  const sharedInitialExcluding20 = sharedInitial.filter((v) => !sharedTop20.includes(v));
+  score += sharedInitialExcluding20.length * 0.05;
 
   // Normalize to 0-1 scale
-  // Maximum possible score: 5*0.5 + 5*0.2 + 10*0.1 + (remaining)*0.05
-  // For simplicity, we'll cap at a reasonable max and normalize
-  const maxPossibleScore = 5 * 0.5 + 5 * 0.2 + 10 * 0.1 + 20 * 0.05; // ~5.5
+  // Maximum possible score: 5*0.6 + 5*0.3 + 10*0.15 + (remaining)*0.05 ≈ 6.0
+  const maxPossibleScore = 5 * 0.6 + 5 * 0.3 + 10 * 0.15 + 20 * 0.05; // 6.0
   const normalizedScore = Math.min(score / maxPossibleScore, 1);
 
   return {
-    score: Math.round(normalizedScore * 100) / 100, // Round to 2 decimal places
+    score: Math.round(normalizedScore * 100) / 100,
     sharedValues,
   };
 }
@@ -318,8 +360,8 @@ export function findMatches(
         return true;
       }).map((user) => {
         const { score, sharedValues } = calculateSimilarity(
-          currentUser.selectedValues,
-          user.selectedValues
+          currentUser,
+          user
         );
 
         return {
@@ -440,6 +482,24 @@ export function updateUserValues(userId: string, values: string[]): Promise<User
       const user = MOCK_USERS.find((u) => u.id === userId);
       if (user) {
         user.selectedValues = values;
+        user.updatedAt = new Date().toISOString();
+        resolve(user);
+      } else {
+        resolve(null);
+      }
+    }, 300);
+  });
+}
+
+/**
+ * Update a user (full user object)
+ */
+export function updateUser(updatedUser: User): Promise<User | null> {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const user = MOCK_USERS.find((u) => u.id === updatedUser.id);
+      if (user) {
+        Object.assign(user, updatedUser);
         user.updatedAt = new Date().toISOString();
         resolve(user);
       } else {

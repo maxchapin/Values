@@ -104,6 +104,7 @@ export default function App() {
                 isCustom: typeof (p as { isCustom?: boolean }).isCustom === 'boolean' ? (p as { isCustom: boolean }).isCustom : false,
               })),
               selectedValues: userData.user.selectedValues,
+              valuesProfile: userData.user.valuesProfile,
               createdAt: userData.user.createdAt,
               updatedAt: userData.user.updatedAt,
             };

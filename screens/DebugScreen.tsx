@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useUserStore } from '../store/userStore';
 import { useValuesSelectionStore } from '../store/valuesSelectionStore';
+import { useValuesOnboardingStore } from '../store/valuesOnboardingStore';
 import { useMatchesStore } from '../store/matchesStore';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SecondaryButton } from '../components/SecondaryButton';
 import { theme } from '../theme';
-import { getAllValues, getMockUsers } from '../services/mockBackend';
+import { getAllValues, getMockUsers, findMatches } from '../services/mockBackend';
 import { Value } from '../types/value';
 import { Match } from '../types/match';
 
@@ -19,6 +20,7 @@ import { Match } from '../types/match';
 export const DebugScreen: React.FC = () => {
   const { currentUser, logout, isAuthenticated, isProfileComplete, isValuesComplete } = useUserStore();
   const { selectedAny, top20, top10, top5, currentStep, reset: resetValues } = useValuesSelectionStore();
+  const { values: onboardingValues, currentStep: onboardingStep, top5Count, top10Count, top20Count, initialCount } = useValuesOnboardingStore();
   const {
     availableMatches,
     currentMatchIndex,
@@ -34,57 +36,10 @@ export const DebugScreen: React.FC = () => {
   useEffect(() => {
     // Load values and candidate users
     getAllValues().then(setAvailableValues);
-    if (currentUser && currentUser.selectedValues.length > 0) {
-      getMockUsers().then((users) => {
-        // Calculate similarity for each candidate using the same algorithm as mockBackend
-        const matches: Match[] = users
-          .filter((u) => u.id !== currentUser.id)
-          .map((user) => {
-            const sharedValues = currentUser.selectedValues.filter((v) =>
-              user.selectedValues.includes(v)
-            );
-            
-            if (sharedValues.length === 0) {
-              return {
-                user,
-                similarityScore: 0,
-                sharedValues: [],
-                sharedValuesCount: 0,
-              };
-            }
-
-            // Use similar weighted scoring as mockBackend
-            const top5 = currentUser.selectedValues.slice(0, 5);
-            const top10 = currentUser.selectedValues.slice(0, 10);
-            const top20 = currentUser.selectedValues.slice(0, 20);
-
-            const sharedTop5 = sharedValues.filter((v) => top5.includes(v)).length;
-            const sharedTop10 = sharedValues.filter((v) => top10.includes(v)).length;
-            const sharedTop20 = sharedValues.filter((v) => top20.includes(v)).length;
-
-            let score = 0;
-            score += sharedTop5 * 0.5;
-            const sharedTop10Excluding5 = sharedTop10 - sharedTop5;
-            score += sharedTop10Excluding5 * 0.2;
-            const sharedTop20Excluding10 = sharedTop20 - sharedTop10;
-            score += sharedTop20Excluding10 * 0.1;
-            const remainingShared = sharedValues.length - sharedTop20;
-            score += remainingShared * 0.05;
-
-            const maxPossibleScore = 5 * 0.5 + 5 * 0.2 + 10 * 0.1 + 20 * 0.05;
-            const normalizedScore = Math.min(score / maxPossibleScore, 1);
-            const similarityScore = Math.round(normalizedScore * 100);
-
-            return {
-              user,
-              similarityScore,
-              sharedValues,
-              sharedValuesCount: sharedValues.length,
-            };
-          })
-          .sort((a, b) => b.similarityScore - a.similarityScore)
-          .slice(0, 5); // Show top 5 candidates
-        setCandidateUsers(matches);
+    if (currentUser) {
+      // Use new matching function from mockBackend which handles tiered values
+      findMatches(currentUser.id).then((matches) => {
+        setCandidateUsers(matches.slice(0, 5)); // Show top 5 candidates
       });
     } else {
       setCandidateUsers([]);
@@ -281,9 +236,73 @@ export const DebugScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Values Selections */}
+        {/* Tiered Values Profile (New) */}
+        {currentUser?.valuesProfile && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Tiered Values Profile</Text>
+            <View style={styles.card}>
+              <View style={styles.valuesRow}>
+                <Text style={styles.label}>Top 5:</Text>
+                <Text style={styles.value}>{currentUser.valuesProfile.top5Ids.length}</Text>
+              </View>
+              {currentUser.valuesProfile.top5Ids.length > 0 && (
+                <View style={styles.valuesList}>
+                  {currentUser.valuesProfile.top5Ids.map((id) => {
+                    const value = currentUser.valuesProfile!.allValues.find((v) => v.id === id);
+                    return (
+                      <Text key={id} style={styles.valueItem}>
+                        • {value?.label || id}
+                      </Text>
+                    );
+                  })}
+                </View>
+              )}
+              <View style={styles.valuesRow}>
+                <Text style={styles.label}>Top 10:</Text>
+                <Text style={styles.value}>{currentUser.valuesProfile.top10Ids.length}</Text>
+              </View>
+              <View style={styles.valuesRow}>
+                <Text style={styles.label}>Top 20:</Text>
+                <Text style={styles.value}>{currentUser.valuesProfile.top20Ids.length}</Text>
+              </View>
+              <View style={styles.valuesRow}>
+                <Text style={styles.label}>Initial:</Text>
+                <Text style={styles.value}>{currentUser.valuesProfile.initialIds.length}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Values Onboarding Store (Current State) */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Values Selections</Text>
+          <Text style={styles.sectionTitle}>Values Onboarding Store</Text>
+          <View style={styles.card}>
+            <View style={styles.valuesRow}>
+              <Text style={styles.label}>Current Step:</Text>
+              <Text style={styles.value}>{onboardingStep}</Text>
+            </View>
+            <View style={styles.valuesRow}>
+              <Text style={styles.label}>Top 5:</Text>
+              <Text style={styles.value}>{top5Count()}</Text>
+            </View>
+            <View style={styles.valuesRow}>
+              <Text style={styles.label}>Top 10:</Text>
+              <Text style={styles.value}>{top10Count()}</Text>
+            </View>
+            <View style={styles.valuesRow}>
+              <Text style={styles.label}>Top 20:</Text>
+              <Text style={styles.value}>{top20Count()}</Text>
+            </View>
+            <View style={styles.valuesRow}>
+              <Text style={styles.label}>Initial:</Text>
+              <Text style={styles.value}>{initialCount()}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Values Selections (Legacy) */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Values Selections (Legacy)</Text>
           <View style={styles.card}>
             <View style={styles.valuesRow}>
               <Text style={styles.label}>Selected Any:</Text>
@@ -351,7 +370,12 @@ export const DebugScreen: React.FC = () => {
 
         {/* Candidate Users Table */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Candidate Users</Text>
+          <Text style={styles.sectionTitle}>Candidate Users (Tiered Similarity Scores)</Text>
+          {currentUser?.valuesProfile && (
+            <Text style={styles.hint}>
+              Using tiered values profile. Top 5 matches weighted highest.
+            </Text>
+          )}
           {candidateUsers.length > 0 ? (
             <View style={styles.table}>
               <View style={styles.tableHeader}>
@@ -580,6 +604,12 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: theme.colors.warning,
     borderColor: theme.colors.warning,
+  },
+  hint: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textTertiary,
+    fontStyle: 'italic',
+    marginBottom: theme.spacing.sm,
   },
   devNote: {
     fontSize: theme.typography.fontSize.xs,

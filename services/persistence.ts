@@ -70,6 +70,7 @@ export async function saveUserData(user: User, isProfileComplete: boolean, isVal
       photos: user.photos,
       prompts: user.prompts,
       selectedValues: user.selectedValues,
+      valuesProfile: user.valuesProfile,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },

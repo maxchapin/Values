@@ -200,7 +200,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     });
 
     // Navigate to values selection flow
-    navigation.navigate('ValuesSelection');
+    // Navigate to new unified values onboarding screen
+    // Navigation will be handled by AppNavigator based on isValuesComplete flag
+    // No explicit navigation needed - AppNavigator will route to ValuesOnboarding automatically
   };
 
   return (

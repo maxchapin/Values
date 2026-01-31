@@ -80,7 +80,9 @@ export interface PersistedMatchesState {
   filters: {
     ageRange?: [number, number];
     centerCoordinates?: { latitude: number; longitude: number };
-    radiusKm?: number;
+    /** Radius in miles (imperial). Legacy: radiusKm is converted to radiusMiles on load. */
+    radiusMiles?: number;
+    radiusKm?: number; // legacy, ignored if radiusMiles present
   };
 }
 

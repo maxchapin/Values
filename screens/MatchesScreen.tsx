@@ -10,6 +10,7 @@ import { ProfilePhotoCarousel } from '../components/ProfilePhotoCarousel';
 import { trackScreenView } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { getAllValues } from '../services/mockBackend';
+import { formatExplanationLines } from '../services/matchingModel';
 import { Value } from '../types/value';
 import { Match } from '../types/match';
 import { theme } from '../theme';
@@ -70,7 +71,8 @@ export const MatchesScreen: React.FC = () => {
       return null;
     }
 
-    const { user, similarityScore, sharedValues, sharedValuesCount } = match;
+    const { user, similarityScore, sharedValues, sharedValuesCount, valuesExplanation } = match;
+    const explanationLines = valuesExplanation ? formatExplanationLines(valuesExplanation) : [];
 
     // Defensive check: ensure user has required fields
     if (!user.id || !user.name) {
@@ -113,6 +115,16 @@ export const MatchesScreen: React.FC = () => {
             <Text style={styles.matchScoreLabel}>Match</Text>
           </View>
         </View>
+
+        {explanationLines && explanationLines.length > 0 ? (
+          <View style={styles.explanationBlock}>
+            {explanationLines.map((line, i) => (
+              <Text key={i} style={styles.explanationLine}>
+                {line}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         {user.bio && (
           <Text style={styles.matchBio} numberOfLines={2}>
@@ -232,6 +244,8 @@ export const MatchesScreen: React.FC = () => {
   );
 };
 
+export default MatchesScreen;
+
 const styles = StyleSheet.create({
   header: {
     padding: theme.spacing.lg,
@@ -295,6 +309,15 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.textSecondary,
     textTransform: 'uppercase',
+  },
+  explanationBlock: {
+    marginBottom: theme.spacing.sm,
+  },
+  explanationLine: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.relaxed,
+    marginBottom: theme.spacing.xs,
   },
   matchBio: {
     fontSize: theme.typography.fontSize.sm,

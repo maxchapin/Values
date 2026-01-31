@@ -1,47 +1,89 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ScrollViewProps } from 'react-native';
+import React, { useRef, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, ScrollViewProps, Pressable } from 'react-native';
 import { Card } from './Card';
 import { TagPill } from './TagPill';
-import { ProfilePhotoCarousel } from './ProfilePhotoCarousel';
+import { ProfilePhotoCarousel, type ProfilePhotoCarouselRef } from './ProfilePhotoCarousel';
+import { MatchScoreInfoModal } from './MatchScoreInfoModal';
 import { theme } from '../theme';
 import { User } from '../types/user';
-import { Value } from '../types/value';
+
+export interface CandidateValueItem {
+  id: string;
+  label: string;
+}
 
 interface DiscoverProfileCardProps {
   candidate: User;
-  currentUserTopValues?: Value[]; // Optional for self mode
-  candidateTopValues?: Value[]; // Optional for self mode
-  sharedValueIds?: Set<string>; // Optional for self mode
-  mode?: 'self' | 'other'; // 'self' shows only candidate's values, 'other' shows comparison
+  /** Candidate's values to show (e.g. top 5 or top 10 from valuesProfile). */
+  candidateValueItems?: CandidateValueItem[];
+  /** Value IDs that are shared with current user (from match.sharedValues). Used for highlight. */
+  sharedValueIds?: Set<string>;
+  /** Match percentage 0–100 from Model 3. Shown only in 'other' mode when provided. */
+  similarityScore?: number;
+  /** Count of shared values (current user ∩ candidate). Shown only in 'other' mode when provided. */
+  sharedValuesCount?: number;
+  /** Human-readable explanation lines from match buckets (strong / partial / friction). */
+  explanationLines?: string[];
+  mode?: 'self' | 'other';
   scrollViewProps?: Omit<ScrollViewProps, 'ref'>;
 }
 
+function getCandidateDisplayValues(
+  candidate: User,
+  candidateValueItems?: CandidateValueItem[]
+): CandidateValueItem[] {
+  if (candidateValueItems && candidateValueItems.length > 0) {
+    return candidateValueItems;
+  }
+  if (candidate.valuesProfile?.top5Ids && candidate.valuesProfile.allValues) {
+    return candidate.valuesProfile.top5Ids
+      .slice(0, 10)
+      .map((id) => {
+        const v = candidate.valuesProfile!.allValues.find((item) => item.id === id);
+        return v ? { id: v.id, label: v.label } : null;
+      })
+      .filter((v): v is CandidateValueItem => v !== null);
+  }
+  return [];
+}
+
 export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileCardProps>(
-  ({ candidate, currentUserTopValues = [], candidateTopValues = [], sharedValueIds = new Set(), mode = 'other', scrollViewProps }, ref) => {
+  (
+    {
+      candidate,
+      candidateValueItems,
+      sharedValueIds = new Set(),
+      similarityScore,
+      sharedValuesCount,
+      explanationLines,
+      mode = 'other',
+      scrollViewProps,
+    },
+    ref
+  ) => {
     const photos = Array.isArray(candidate.photos) ? candidate.photos : [];
     const hometown = candidate.hometown?.trim();
     const isSelfMode = mode === 'self';
+    const displayValues = getCandidateDisplayValues(candidate, candidateValueItems);
+    const photoCarouselRef = useRef<ProfilePhotoCarouselRef>(null);
+    const showMatchScore =
+      !isSelfMode &&
+      (typeof similarityScore === 'number' || typeof sharedValuesCount === 'number');
+    const score = typeof similarityScore === 'number' ? similarityScore : 0;
+    const matchHeadline = `${score}% Match`;
+    const [showScoreInfoModal, setShowScoreInfoModal] = useState(false);
 
-    // In self mode, use candidate's values from valuesProfile if available
-    let displayValues: Array<{ id: string; label: string }> = [];
-    if (isSelfMode) {
-      if (candidate.valuesProfile?.top5Ids && candidate.valuesProfile.allValues) {
-        // Use new tiered values system
-        displayValues = candidate.valuesProfile.top5Ids
-          .slice(0, 5)
-          .map((id) => {
-            const valueItem = candidate.valuesProfile!.allValues.find((v) => v.id === id);
-            return valueItem ? { id: valueItem.id, label: valueItem.label } : null;
-          })
-          .filter((v): v is { id: string; label: string } => v !== null);
-      } else if (candidateTopValues.length > 0) {
-        // Fallback to candidateTopValues prop (old system)
-        displayValues = candidateTopValues.map((v) => ({ id: v.id, label: v.name }));
-      }
-    }
+    // Reset photo carousel to first image whenever the active candidate changes (Like/Pass or index change)
+    useEffect(() => {
+      photoCarouselRef.current?.resetToFirstPhoto();
+    }, [candidate.id]);
 
     return (
       <Card padding={0} variant="elevated" style={styles.card}>
+        <MatchScoreInfoModal
+          visible={showScoreInfoModal}
+          onClose={() => setShowScoreInfoModal(false)}
+        />
         <ScrollView
           ref={ref}
           style={styles.scroll}
@@ -51,23 +93,49 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
           {...scrollViewProps}
         >
           <ProfilePhotoCarousel
+            ref={photoCarouselRef}
             photos={photos}
             name={candidate.name}
-            height={380}
+            height={theme.spacing['4xl'] * 6}
             style={styles.photo}
           />
 
           <View style={styles.section}>
-            <View style={styles.headerRow}>
-              <Text style={styles.name}>
+            <View style={styles.nameLocationRow}>
+              <Text style={styles.name} numberOfLines={1}>
                 {candidate.name || 'Unknown'}{candidate.age ? `, ${candidate.age}` : ''}
               </Text>
-              <View style={styles.locationWrap}>
-                <Text style={styles.location} numberOfLines={1}>
-                  {candidate.locationLabel ?? 'Location not set'}
-                </Text>
-              </View>
+              <Text style={styles.location} numberOfLines={1}>
+                {candidate.locationLabel ?? 'Location not set'}
+              </Text>
             </View>
+            {showMatchScore ? (
+              <>
+                <View style={styles.matchScoreRow}>
+                  <View style={styles.matchScorePill}>
+                    <Text style={styles.matchScoreText}>{matchHeadline}</Text>
+                  </View>
+                  <Pressable
+                    style={styles.matchScoreInfoButton}
+                    onPress={() => setShowScoreInfoModal(true)}
+                    accessibilityLabel="Learn how match score is calculated"
+                    accessibilityRole="button"
+                    accessibilityHint="Opens explanation of how match scores are calculated"
+                  >
+                    <Text style={styles.matchScoreInfoIcon}>ℹ️</Text>
+                  </Pressable>
+                </View>
+                {explanationLines && explanationLines.length > 0 ? (
+                  <View style={styles.explanationBlock}>
+                    {explanationLines.map((line, i) => (
+                      <Text key={i} style={styles.explanationLine}>
+                        {line}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
 
             {hometown ? (
               <Text style={styles.subRow} numberOfLines={1}>
@@ -96,55 +164,34 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
             <Text style={styles.sectionTitle}>Values</Text>
 
             {isSelfMode ? (
-              // Self mode: show only candidate's top 5 values
               displayValues.length > 0 ? (
                 <View style={styles.tagsRow}>
                   {displayValues.map((v) => (
-                    <TagPill
-                      key={v.id}
-                      label={v.label}
-                      size="sm"
-                    />
+                    <TagPill key={v.id} label={v.label} size="sm" />
                   ))}
                 </View>
               ) : (
                 <Text style={styles.valuesLabel}>No values selected</Text>
               )
             ) : (
-              // Other mode: show comparison (Your top 5 vs Their top 5)
-              <>
-                <Text style={styles.valuesLabel}>Your top 5</Text>
+              displayValues.length > 0 ? (
                 <View style={styles.tagsRow}>
-                  {currentUserTopValues.map((v) => {
+                  {displayValues.map((v) => {
                     const shared = sharedValueIds.has(v.id);
                     return (
                       <TagPill
-                        key={`me-${v.id}`}
-                        label={v.name}
+                        key={v.id}
+                        label={v.label}
                         size="sm"
-                        style={shared ? styles.sharedTag : undefined}
-                        textStyle={shared ? styles.sharedTagText : undefined}
+                        style={shared ? styles.sharedPill : undefined}
+                        textStyle={shared ? styles.sharedPillText : undefined}
                       />
                     );
                   })}
                 </View>
-
-                <Text style={[styles.valuesLabel, { marginTop: theme.spacing.base }]}>Their top 5</Text>
-                <View style={styles.tagsRow}>
-                  {candidateTopValues.map((v) => {
-                    const shared = sharedValueIds.has(v.id);
-                    return (
-                      <TagPill
-                        key={`them-${v.id}`}
-                        label={v.name}
-                        size="sm"
-                        style={shared ? styles.sharedTag : undefined}
-                        textStyle={shared ? styles.sharedTagText : undefined}
-                      />
-                    );
-                  })}
-                </View>
-              </>
+              ) : (
+                <Text style={styles.valuesLabel}>No values selected</Text>
+              )
             )}
           </View>
         </ScrollView>
@@ -177,22 +224,67 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+  },
+  nameLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.md,
   },
   name: {
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
     fontSize: theme.typography.fontSize['3xl'],
     fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.text,
   },
-  locationWrap: {
-    flexShrink: 1,
-  },
   location: {
+    flexShrink: 0,
     fontSize: theme.typography.fontSize.sm,
     color: theme.colors.textSecondary,
+    textAlign: 'right',
+  },
+  matchScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginTop: theme.spacing.sm,
+    gap: theme.spacing.xs,
+  },
+  matchScorePill: {
+    backgroundColor: theme.colors.primaryLight + '25',
+    paddingHorizontal: theme.spacing.base,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + '40',
+  },
+  matchScoreText: {
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.primary,
+  },
+  matchScoreInfoButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  matchScoreInfoIcon: {
+    fontSize: 16,
+    opacity: 0.9,
+  },
+  explanationBlock: {
+    marginTop: theme.spacing.sm,
+  },
+  explanationLine: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.relaxed,
+    marginBottom: theme.spacing.xs,
   },
   subRow: {
     marginTop: theme.spacing.sm,
@@ -229,12 +321,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
   },
-  sharedTag: {
+  sharedPill: {
     borderColor: theme.colors.primary,
-    backgroundColor: theme.colors.backgroundSecondary,
+    borderWidth: 2,
+    backgroundColor: theme.colors.primaryLight + '20',
   },
-  sharedTagText: {
-    color: theme.colors.text,
+  sharedPillText: {
+    color: theme.colors.primaryDark,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
 });
 

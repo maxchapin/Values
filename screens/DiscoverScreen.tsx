@@ -12,8 +12,7 @@ import { ScreenContainer } from '../components/ScreenContainer';
 import { DiscoverActionBar } from '../components/DiscoverActionBar';
 import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
 import { FiltersSheet } from '../components/FiltersSheet';
-import { getAllValues } from '../services/mockBackend';
-import { Value } from '../types/value';
+import { formatExplanationLines } from '../services/matchingModel';
 import { theme } from '../theme';
 
 export const DiscoverScreen: React.FC = () => {
@@ -33,7 +32,6 @@ export const DiscoverScreen: React.FC = () => {
   } = useMatchesStore();
 
   const [showFilters, setShowFilters] = useState(false);
-  const [availableValues, setAvailableValues] = useState<Value[]>([]);
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const didInitialLoadRef = useRef(false);
   const cardScrollRef = useRef<ScrollView>(null);
@@ -70,11 +68,6 @@ export const DiscoverScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id, availableMatches.length, isLoading]);
 
-  // Load values for display
-  useEffect(() => {
-    getAllValues().then(setAvailableValues);
-  }, []);
-
   const handleLike = (): void => {
     const currentMatch = getCurrentMatch();
     if (currentMatch) {
@@ -105,43 +98,19 @@ export const DiscoverScreen: React.FC = () => {
   const handleResetFilters = async (): Promise<void> => {
     await setFilters({
       ageRange: [18, 99],
-      radiusKm: 200,
+      radiusMiles: 50,
     });
-  };
-
-  // Get top 5 values for display with defensive checks
-  const getTop5Values = (valueIds: string[] | undefined): Value[] => {
-    if (!valueIds || !Array.isArray(valueIds) || valueIds.length === 0) {
-      return [];
-    }
-    const top5Ids = valueIds.slice(0, 5);
-    return availableValues.filter((v) => v && v.id && top5Ids.includes(v.id));
   };
 
   const currentMatch = getCurrentMatch();
   const candidate = currentMatch?.user ?? null;
 
-  const currentUserTopValues = useMemo<Value[]>(() => {
-    return getTop5Values(currentUser?.selectedValues);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.selectedValues, availableValues.length]);
-
-  const candidateTopValues = useMemo<Value[]>(() => {
-    return candidate ? getTop5Values(candidate.selectedValues) : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidate?.selectedValues, availableValues.length]);
-
+  // Shared values from match (backend uses tiered top5/top10/top20/initial)
   const sharedValueIds = useMemo<Set<string>>(() => {
-    const a = new Set((currentUser?.selectedValues ?? []).slice(0, 5));
-    const b = new Set((candidate?.selectedValues ?? []).slice(0, 5));
-    const shared = new Set<string>();
-    a.forEach((id) => {
-      if (b.has(id)) shared.add(id);
-    });
-    return shared;
-  }, [currentUser?.selectedValues, candidate?.selectedValues]);
+    return new Set(currentMatch?.sharedValues ?? []);
+  }, [currentMatch?.sharedValues]);
 
-  // Reset scroll position whenever we advance to a new candidate
+  // Scroll reset after Like/Pass: advance to next candidate and show profile from top (photo carousel)
   useEffect(() => {
     requestAnimationFrame(() => {
       cardScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -195,10 +164,9 @@ export const DiscoverScreen: React.FC = () => {
     );
   }
 
-  const { similarityScore, sharedValuesCount } = currentMatch;
-
   return (
     <ScreenContainer contentPadding={false}>
+      
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.headerBar}>
@@ -208,37 +176,54 @@ export const DiscoverScreen: React.FC = () => {
             onLongPress={handleFilterPress}
           >
             <Text style={styles.filterButtonText}>Filters</Text>
+            <Text style={styles.filterBadge}>
+              {typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : 50} mi
+            </Text>
           </TouchableOpacity>
-          <Text style={styles.counterText}>
-            {Math.min(currentMatchIndex + 1, availableMatches.length)} / {availableMatches.length}
-          </Text>
         </View>
 
-        {/* Card + fixed action bar */}
+        {/*{__DEV__ && (
+          <View style={styles.devPanel}>
+            <Text style={styles.devPanelTitle}>Discover (dev)</Text>
+            <Text style={styles.devPanelText}>Candidates: {availableMatches.length}</Text>
+            <Text style={styles.devPanelText}>
+              Age: {filters?.ageRange?.[0] ?? 18}–{filters?.ageRange?.[1] ?? 99}
+            </Text>
+            <Text style={styles.devPanelText}>
+              Radius: {typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : 50} mi
+            </Text>
+          </View>
+        )}*/}
+
+        {/* Scrollable card area */}
         <View style={styles.cardArea}>
           <DiscoverProfileCard
             ref={cardScrollRef}
             candidate={candidate}
-            currentUserTopValues={currentUserTopValues}
-            candidateTopValues={candidateTopValues}
             sharedValueIds={sharedValueIds}
+            similarityScore={typeof currentMatch?.similarityScore === 'number' ? currentMatch.similarityScore : 0}
+            sharedValuesCount={typeof currentMatch?.sharedValuesCount === 'number' ? currentMatch.sharedValuesCount : 0}
+            explanationLines={
+              currentMatch?.valuesExplanation
+                ? formatExplanationLines(currentMatch.valuesExplanation)
+                : undefined
+            }
             scrollViewProps={{
               contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
             }}
           />
         </View>
 
-        {/* Match score (optional, subtle) */}
-        <Text style={styles.subtleMeta}>
-          Match score: {typeof similarityScore === 'number' ? similarityScore : 0}% • {sharedValuesCount || 0} shared value{(sharedValuesCount || 0) !== 1 ? 's' : ''}
-        </Text>
-
-        <DiscoverActionBar
-          onPass={handlePass}
-          onLike={handleLike}
-          disabled={!candidate}
-        />
+        {/* Fixed bottom bar: Like/Pass (match score is on the card) */}
+        <View style={styles.fixedBottomBar}>
+          <DiscoverActionBar
+            onPass={handlePass}
+            onLike={handleLike}
+            disabled={!candidate}
+          />
+        </View>
       </View>
+      
 
       <FiltersSheet
         visible={showFilters}
@@ -250,6 +235,8 @@ export const DiscoverScreen: React.FC = () => {
     </ScreenContainer>
   );
 };
+
+export default DiscoverScreen;
 
 const styles = StyleSheet.create({
   container: {
@@ -265,6 +252,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.base,
     paddingVertical: theme.spacing.sm,
     backgroundColor: theme.colors.backgroundSecondary,
@@ -277,21 +267,46 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
   },
-  counterText: {
-    fontSize: theme.typography.fontSize.sm,
+  filterBadge: {
+    fontSize: theme.typography.fontSize.xs,
     color: theme.colors.textSecondary,
-    fontWeight: theme.typography.fontWeight.semibold,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   cardArea: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.base,
+    minHeight: 0,
+  },
+  fixedBottomBar: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
   },
   subtleMeta: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.sm,
+    paddingBottom: theme.spacing.xs,
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.textTertiary,
   },
-  // Filters styles moved into `FiltersSheet`
+  devPanel: {
+    marginHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
+    padding: theme.spacing.sm,
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  devPanelTitle: {
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
+  },
+  devPanelText: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textTertiary,
+  },
 });

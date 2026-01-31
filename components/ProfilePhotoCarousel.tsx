@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,11 @@ import {
 } from 'react-native';
 import { theme } from '../theme';
 
+export interface ProfilePhotoCarouselRef {
+  /** Reset carousel to first photo (index 0). Call when switching to a new candidate. */
+  resetToFirstPhoto: () => void;
+}
+
 interface ProfilePhotoCarouselProps {
   /** Photo URIs. First is main; multiple show as swipeable carousel. */
   photos: string[];
@@ -20,15 +25,24 @@ interface ProfilePhotoCarouselProps {
   style?: ViewStyle;
 }
 
-export const ProfilePhotoCarousel: React.FC<ProfilePhotoCarouselProps> = ({
-  photos,
-  name,
-  height = 320,
-  style,
-}) => {
+export const ProfilePhotoCarousel = forwardRef<ProfilePhotoCarouselRef, ProfilePhotoCarouselProps>(
+  ({ photos, name, height = 320, style }, ref) => {
   const scrollRef = useRef<ScrollView>(null);
   const [page, setPage] = useState(0);
   const [layoutWidth, setLayoutWidth] = useState(0);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      resetToFirstPhoto: () => {
+        setPage(0);
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({ x: 0, animated: false });
+        });
+      },
+    }),
+    []
+  );
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
@@ -96,7 +110,11 @@ export const ProfilePhotoCarousel: React.FC<ProfilePhotoCarouselProps> = ({
       </View>
     </View>
   );
-};
+});
+
+ProfilePhotoCarousel.displayName = 'ProfilePhotoCarousel';
+
+export default ProfilePhotoCarousel;
 
 const styles = StyleSheet.create({
   container: {

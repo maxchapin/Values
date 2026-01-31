@@ -20,10 +20,10 @@ import { ValuesSelectionScreen } from '../screens/values/ValuesSelectionScreen';
 import { ValuesNarrowScreen } from '../screens/values/ValuesNarrowScreen';
 import { ValuesFinalScreen } from '../screens/values/ValuesFinalScreen';
 
-// Main app screens
-import { DiscoverScreen } from '../screens/DiscoverScreen';
-import { MatchesScreen } from '../screens/MatchesScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
+// Main app screens (default import so navigator always receives a function component)
+import DiscoverScreen from '../screens/DiscoverScreen';
+import MatchesScreen from '../screens/MatchesScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ProfilePreviewScreen } from '../screens/ProfilePreviewScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';

@@ -422,7 +422,7 @@ export const DebugScreen: React.FC = () => {
                 {filters.ageRange
                   ? `Age: ${filters.ageRange[0]}-${filters.ageRange[1]}`
                   : 'None'}
-                {typeof filters.radiusKm === 'number' ? `, Within ${filters.radiusKm} km` : ''}
+                {typeof filters.radiusMiles === 'number' ? `, Within ${filters.radiusMiles} mi` : ''}
               </Text>
             </View>
           </View>

@@ -5,24 +5,84 @@
  * Can be easily swapped out for a real API later
  */
 
-import { User, LocationCoordinates } from '../types/user';
+import { User, LocationCoordinates, UserValuesProfile } from '../types/user';
 import { Value } from '../types/value';
 import { Match } from '../types/match';
-import { EXAMPLE_VALUES } from '../data/values';
+import { INITIAL_VALUES } from '../data/valuesConstants';
+import {
+  userToWeightMap,
+  computeModel3Score,
+  computeValuesExplanation,
+} from './matchingModel';
 
-// Use values from data file
-const PREDEFINED_VALUES: Value[] = EXAMPLE_VALUES;
+/** Slugify label to match valuesConstants IDs */
+function slug(label: string): string {
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
-/** Haversine distance in km between two points. */
-function haversineKm(a: LocationCoordinates, b: LocationCoordinates): number {
-  const R = 6371; // Earth radius km
+/**
+ * Build a UserValuesProfile for mock users (tiered values use slugified IDs from valuesConstants).
+ * Pass arrays of value labels; they will be slugified and assigned to tiers.
+ */
+function buildValuesProfile(
+  top5Labels: string[],
+  top10Extra: string[] = [],
+  top20Extra: string[] = [],
+  initialExtra: string[] = []
+): UserValuesProfile {
+  const top5Ids = top5Labels.slice(0, 5).map(slug);
+  const top10Ids = [...top5Ids, ...top10Extra.slice(0, 5).map(slug)];
+  const top20Ids = [...top10Ids, ...top20Extra.slice(0, 10).map(slug)];
+  const initialIds = [...top20Ids, ...initialExtra.map(slug)];
+
+  const allValues = INITIAL_VALUES.map((v) => {
+    if (top5Ids.includes(v.id)) return { ...v, tier: 'top5' as const };
+    if (top10Ids.includes(v.id)) return { ...v, tier: 'top10' as const };
+    if (top20Ids.includes(v.id)) return { ...v, tier: 'top20' as const };
+    if (initialIds.includes(v.id)) return { ...v, tier: 'initial' as const };
+    return { ...v, tier: 'none' as const };
+  });
+
+  return {
+    allValues,
+    top5Ids,
+    top10Ids,
+    top20Ids,
+    initialIds,
+  };
+}
+
+/** All values as Value[] for getAllValues (id, name from label, category). */
+const PREDEFINED_VALUES: Value[] = INITIAL_VALUES.map((v) => ({
+  id: v.id,
+  name: v.label,
+  category: 'Values',
+}));
+
+/** Default placeholder photos for new users (Profile/Preview testing when photos not set). */
+const DEFAULT_USER_PHOTOS: string[] = [
+  'https://picsum.photos/seed/me1/900/1200',
+  'https://picsum.photos/seed/me2/900/1200',
+  'https://picsum.photos/seed/me3/1200/800',
+];
+
+/** Earth radius in miles (for Haversine). */
+const EARTH_RADIUS_MILES = 3959;
+
+/** Haversine distance in miles between two points. */
+function haversineMiles(a: LocationCoordinates, b: LocationCoordinates): number {
   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
   const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
   const lat1 = (a.latitude * Math.PI) / 180;
   const lat2 = (b.latitude * Math.PI) / 180;
   const x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-  return R * c;
+  return EARTH_RADIUS_MILES * c;
 }
 
 // Mock users database with realistic dating profiles (approximate city coords)
@@ -36,7 +96,11 @@ const MOCK_USERS: User[] = [
     locationCoordinates: { latitude: 40.7128, longitude: -74.006 },
     locationLabel: 'New York, NY, USA',
     bio: 'Love hiking, reading, and deep conversations. Looking for someone who values growth and adventure.',
-    photos: ['https://picsum.photos/seed/values-u1/900/1200'],
+    photos: [
+      'https://picsum.photos/seed/u1a/900/1200',
+      'https://picsum.photos/seed/u1b/900/1200',
+      'https://picsum.photos/seed/u1c/1200/800',
+    ],
     prompts: [
       {
         id: 'p1',
@@ -52,6 +116,12 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v1', 'v5', 'v7', 'v14', 'v15', 'v19', 'v23', 'v25', 'v28', 'v32'],
+    valuesProfile: buildValuesProfile(
+      ['Adventure', 'Growth', 'Connection', 'Well-being', 'Authenticity'],
+      ['Balance', 'Freedom', 'Joy', 'Peace', 'Honesty'],
+      ['Family', 'Health', 'Trust', 'Respect', 'Compassion', 'Laughter', 'Fun', 'Stability', 'Safety', 'Community'],
+      []
+    ),
     createdAt: '2024-01-15T10:00:00Z',
   },
   {
@@ -63,7 +133,12 @@ const MOCK_USERS: User[] = [
     locationCoordinates: { latitude: 37.7749, longitude: -122.4194 },
     locationLabel: 'San Francisco, CA, USA',
     bio: 'Tech enthusiast, coffee lover, and weekend adventurer. Passionate about sustainability and innovation.',
-    photos: ['https://picsum.photos/seed/values-u2/900/1200'],
+    photos: [
+      'https://picsum.photos/seed/u2a/900/1200',
+      'https://picsum.photos/seed/u2b/900/1200',
+      'https://picsum.photos/seed/u2c/1200/800',
+      'https://picsum.photos/seed/u2d/900/1200',
+    ],
     prompts: [
       {
         id: 'p1',
@@ -79,6 +154,12 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v2', 'v10', 'v11', 'v13', 'v16', 'v17', 'v20', 'v22', 'v26', 'v31'],
+    valuesProfile: buildValuesProfile(
+      ['Growth', 'Experiment', 'Balance', 'Cooperation', 'Achievement'],
+      ['Fairness', 'Freedom', 'Connection', 'Honesty', 'Integrity'],
+      ['Trust', 'Responsibility', 'Challenge', 'Determination', 'Purpose', 'Wisdom', 'Open-Minded', 'Collaboration', 'Community', 'Security'],
+      []
+    ),
     createdAt: '2024-01-16T11:30:00Z',
   },
   {
@@ -90,7 +171,10 @@ const MOCK_USERS: User[] = [
     locationCoordinates: { latitude: 30.2672, longitude: -97.7431 },
     locationLabel: 'Austin, TX, USA',
     bio: 'Yoga instructor, plant parent, and aspiring chef. I value mindfulness, wellness, and authentic connections.',
-    photos: ['https://picsum.photos/seed/values-u3/900/1200'],
+    photos: [
+      'https://picsum.photos/seed/u3a/900/1200',
+      'https://picsum.photos/seed/u3b/900/1200',
+    ],
     prompts: [
       {
         id: 'p1',
@@ -106,6 +190,12 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v3', 'v4', 'v6', 'v9', 'v14', 'v18', 'v23', 'v24', 'v27', 'v33'],
+    valuesProfile: buildValuesProfile(
+      ['Well-being', 'Peace', 'Compassion', 'Awareness', 'Authenticity'],
+      ['Growth', 'Connection', 'Balance', 'Joy', 'Nurturance'],
+      ['Health', 'Calm', 'Presence', 'Acceptance', 'Kindness', 'Harmony', 'Sensitivity', 'Spirituality', 'Rest', 'Safety'],
+      []
+    ),
     createdAt: '2024-01-17T14:20:00Z',
   },
   {
@@ -117,7 +207,11 @@ const MOCK_USERS: User[] = [
     locationCoordinates: { latitude: 47.6062, longitude: -122.3321 },
     locationLabel: 'Seattle, WA, USA',
     bio: 'Bookworm, nature photographer, and sustainability advocate. Looking for someone who cares about the planet and loves to read.',
-    photos: ['https://picsum.photos/seed/values-u4/900/1200'],
+    photos: [
+      'https://picsum.photos/seed/u4a/900/1200',
+      'https://picsum.photos/seed/u4b/1200/800',
+      'https://picsum.photos/seed/u4c/900/1200',
+    ],
     prompts: [
       {
         id: 'p1',
@@ -133,6 +227,12 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v1', 'v2', 'v5', 'v7', 'v15', 'v17', 'v19', 'v25', 'v28', 'v34'],
+    valuesProfile: buildValuesProfile(
+      ['Connection', 'Growth', 'Adventure', 'Honesty', 'Well-being'],
+      ['Balance', 'Peace', 'Family', 'Trust', 'Respect'],
+      ['Community', 'Compassion', 'Authenticity', 'Joy', 'Health', 'Safety', 'Stability', 'Laughter', 'Appreciation', 'Inspiration'],
+      []
+    ),
     createdAt: '2024-01-18T09:15:00Z',
   },
   {
@@ -144,7 +244,12 @@ const MOCK_USERS: User[] = [
     locationCoordinates: { latitude: 45.5152, longitude: -122.6784 },
     locationLabel: 'Portland, OR, USA',
     bio: 'Musician, foodie, and community organizer. I believe in giving back and building strong connections.',
-    photos: ['https://picsum.photos/seed/values-u5/900/1200'],
+    photos: [
+      'https://picsum.photos/seed/u5a/900/1200',
+      'https://picsum.photos/seed/u5b/900/1200',
+      'https://picsum.photos/seed/u5c/1200/800',
+      'https://picsum.photos/seed/u5d/900/1200',
+    ],
     prompts: [
       {
         id: 'p1',
@@ -160,6 +265,12 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v6', 'v8', 'v12', 'v13', 'v16', 'v21', 'v22', 'v29', 'v30', 'v35'],
+    valuesProfile: buildValuesProfile(
+      ['Community', 'Connection', 'Cooperation', 'Collaboration', 'Growth'],
+      ['Fun', 'Laughter', 'Adventure', 'Honesty', 'Authenticity'],
+      ['Fairness', 'Respect', 'Kindness', 'Friendship', 'Participation', 'Celebration', 'Joy', 'Balance', 'Freedom', 'Creativity'],
+      []
+    ),
     createdAt: '2024-01-19T16:45:00Z',
   },
   {
@@ -171,7 +282,10 @@ const MOCK_USERS: User[] = [
     locationCoordinates: { latitude: 39.7392, longitude: -104.9903 },
     locationLabel: 'Denver, CO, USA',
     bio: 'Outdoor enthusiast, artist, and social justice advocate. Looking for someone who shares my values and sense of adventure.',
-    photos: ['https://picsum.photos/seed/values-u6/900/1200'],
+    photos: [
+      'https://picsum.photos/seed/u6a/900/1200',
+      'https://picsum.photos/seed/u6b/900/1200',
+    ],
     prompts: [
       {
         id: 'p1',
@@ -187,7 +301,182 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v15', 'v20', 'v25', 'v26', 'v34', 'v35', 'v36', 'v37', 'v38', 'v39'],
+    valuesProfile: buildValuesProfile(
+      ['Adventure', 'Freedom', 'Growth', 'Authenticity', 'Connection'],
+      ['Justice', 'Community', 'Fairness', 'Honesty', 'Determination'],
+      ['Challenge', 'Risk', 'Determination', 'Freedom', 'Experiment', 'Expression', 'Spontaneity', 'Fun', 'Balance', 'Adventure'],
+      []
+    ),
     createdAt: '2024-01-20T12:00:00Z',
+  },
+  // u7–u12: extra mock users so Discover has 12+ candidates and relaxation is rarely needed
+  {
+    id: 'u7',
+    email: 'casey@example.com',
+    name: 'Casey',
+    age: 25,
+    gender: 'female',
+    interestedIn: 'men',
+    locationCoordinates: { latitude: 40.7128, longitude: -74.006 },
+    locationLabel: 'New York, NY, USA',
+    bio: 'Artist and coffee enthusiast. I value creativity, connection, and kindness.',
+    photos: [
+      'https://picsum.photos/seed/u7a/900/1200',
+      'https://picsum.photos/seed/u7b/900/1200',
+      'https://picsum.photos/seed/u7c/1200/800',
+    ],
+    prompts: [
+      { id: 'p1', question: 'I\'m looking for', answer: 'Someone creative and kind', isCustom: false },
+      { id: 'p2', question: 'My simple pleasures', answer: 'Sketching, espresso, long walks', isCustom: false },
+    ],
+    selectedValues: [],
+    valuesProfile: buildValuesProfile(
+      ['Connection', 'Kindness', 'Well-being', 'Growth', 'Authenticity'],
+      ['Creativity', 'Joy', 'Peace', 'Balance', 'Compassion'],
+      ['Expression', 'Adventure', 'Laughter', 'Family', 'Trust', 'Respect', 'Honesty', 'Community', 'Freedom', 'Health'],
+      []
+    ),
+    createdAt: '2024-01-21T10:00:00Z',
+  },
+  {
+    id: 'u8',
+    email: 'quinn@example.com',
+    name: 'Quinn',
+    age: 31,
+    gender: 'male',
+    interestedIn: 'women',
+    locationCoordinates: { latitude: 41.8781, longitude: -87.6298 },
+    locationLabel: 'Chicago, IL, USA',
+    bio: 'Software engineer who loves hiking and board games. Values honesty and growth.',
+    photos: [
+      'https://picsum.photos/seed/u8a/900/1200',
+      'https://picsum.photos/seed/u8b/900/1200',
+      'https://picsum.photos/seed/u8c/1200/800',
+      'https://picsum.photos/seed/u8d/900/1200',
+    ],
+    prompts: [
+      { id: 'p1', question: 'I\'m looking for', answer: 'A partner who values honesty and fun', isCustom: false },
+      { id: 'p2', question: 'My simple pleasures', answer: 'Trails, game nights, good food', isCustom: false },
+    ],
+    selectedValues: [],
+    valuesProfile: buildValuesProfile(
+      ['Honesty', 'Growth', 'Connection', 'Adventure', 'Balance'],
+      ['Fun', 'Achievement', 'Trust', 'Family', 'Well-being'],
+      ['Integrity', 'Responsibility', 'Challenge', 'Freedom', 'Joy', 'Community', 'Respect', 'Laughter', 'Stability', 'Health'],
+      []
+    ),
+    createdAt: '2024-01-22T11:00:00Z',
+  },
+  {
+    id: 'u9',
+    email: 'reese@example.com',
+    name: 'Reese',
+    age: 24,
+    gender: 'non-binary',
+    interestedIn: 'everyone',
+    locationCoordinates: { latitude: 42.3601, longitude: -71.0589 },
+    locationLabel: 'Boston, MA, USA',
+    bio: 'Grad student and activist. Passionate about equality, community, and learning.',
+    photos: [
+      'https://picsum.photos/seed/u9a/900/1200',
+      'https://picsum.photos/seed/u9b/900/1200',
+    ],
+    prompts: [
+      { id: 'p1', question: 'I\'m looking for', answer: 'Someone who cares about justice and growth', isCustom: false },
+      { id: 'p2', question: 'My simple pleasures', answer: 'Books, protests, tea with friends', isCustom: false },
+    ],
+    selectedValues: [],
+    valuesProfile: buildValuesProfile(
+      ['Equality', 'Community', 'Growth', 'Honesty', 'Connection'],
+      ['Fairness', 'Freedom', 'Compassion', 'Authenticity', 'Respect'],
+      ['Diversity', 'Participation', 'Kindness', 'Trust', 'Integrity', 'Cooperation', 'Balance', 'Well-being', 'Safety', 'Family'],
+      []
+    ),
+    createdAt: '2024-01-23T14:00:00Z',
+  },
+  {
+    id: 'u10',
+    email: 'skyler@example.com',
+    name: 'Skyler',
+    age: 29,
+    gender: 'female',
+    interestedIn: 'men',
+    locationCoordinates: { latitude: 34.0522, longitude: -118.2437 },
+    locationLabel: 'Los Angeles, CA, USA',
+    bio: 'Yoga teacher and travel lover. I value peace, adventure, and authentic connections.',
+    photos: [
+      'https://picsum.photos/seed/u10a/900/1200',
+      'https://picsum.photos/seed/u10b/1200/800',
+      'https://picsum.photos/seed/u10c/900/1200',
+    ],
+    prompts: [
+      { id: 'p1', question: 'I\'m looking for', answer: 'Someone calm and adventurous', isCustom: false },
+      { id: 'p2', question: 'My simple pleasures', answer: 'Sunrise yoga, new places, deep talks', isCustom: false },
+    ],
+    selectedValues: [],
+    valuesProfile: buildValuesProfile(
+      ['Peace', 'Adventure', 'Well-being', 'Connection', 'Authenticity'],
+      ['Balance', 'Growth', 'Joy', 'Freedom', 'Health'],
+      ['Calm', 'Presence', 'Compassion', 'Laughter', 'Family', 'Trust', 'Respect', 'Community', 'Safety', 'Harmony'],
+      []
+    ),
+    createdAt: '2024-01-24T09:00:00Z',
+  },
+  {
+    id: 'u11',
+    email: 'jordan2@example.com',
+    name: 'Jordan R.',
+    age: 27,
+    gender: 'male',
+    interestedIn: 'women',
+    locationCoordinates: { latitude: 39.7392, longitude: -104.9903 },
+    locationLabel: 'Denver, CO, USA',
+    bio: 'Outdoor guide and minimalist. Values simplicity, adventure, and honesty.',
+    photos: [
+      'https://picsum.photos/seed/u11a/900/1200',
+      'https://picsum.photos/seed/u11b/900/1200',
+      'https://picsum.photos/seed/u11c/1200/800',
+      'https://picsum.photos/seed/u11d/900/1200',
+    ],
+    prompts: [
+      { id: 'p1', question: 'I\'m looking for', answer: 'A partner who loves the outdoors and real talk', isCustom: false },
+      { id: 'p2', question: 'My simple pleasures', answer: 'Summit views, campfires, starry skies', isCustom: false },
+    ],
+    selectedValues: [],
+    valuesProfile: buildValuesProfile(
+      ['Adventure', 'Honesty', 'Simplicity', 'Well-being', 'Connection'],
+      ['Freedom', 'Growth', 'Authenticity', 'Balance', 'Peace'],
+      ['Health', 'Inspiration', 'Respect', 'Trust', 'Family', 'Joy', 'Fun', 'Community', 'Safety', 'Stability'],
+      []
+    ),
+    createdAt: '2024-01-25T16:00:00Z',
+  },
+  {
+    id: 'u12',
+    email: 'avery@example.com',
+    name: 'Avery',
+    age: 33,
+    gender: 'non-binary',
+    interestedIn: 'everyone',
+    locationCoordinates: { latitude: 37.7749, longitude: -122.4194 },
+    locationLabel: 'San Francisco, CA, USA',
+    bio: 'Designer and foodie. I value creativity, kindness, and growth.',
+    photos: [
+      'https://picsum.photos/seed/u12a/900/1200',
+      'https://picsum.photos/seed/u12b/900/1200',
+    ],
+    prompts: [
+      { id: 'p1', question: 'I\'m looking for', answer: 'Someone creative and kind', isCustom: false },
+      { id: 'p2', question: 'My simple pleasures', answer: 'Design sprints, farmers markets, wine', isCustom: false },
+    ],
+    selectedValues: [],
+    valuesProfile: buildValuesProfile(
+      ['Growth', 'Kindness', 'Connection', 'Well-being', 'Authenticity'],
+      ['Creativity', 'Adventure', 'Balance', 'Joy', 'Honesty'],
+      ['Community', 'Respect', 'Trust', 'Family', 'Freedom', 'Fun', 'Laughter', 'Health', 'Peace', 'Compassion'],
+      []
+    ),
+    createdAt: '2024-01-26T12:00:00Z',
   },
 ];
 
@@ -213,121 +502,104 @@ export function getMockUsers(): Promise<User[]> {
   });
 }
 
+/** Fixed list of values for Model 3 (id + label). */
+const FIXED_VALUES = INITIAL_VALUES.map((v) => ({ id: v.id, label: v.label }));
+
 /**
- * Calculate similarity score between two users based on shared values
- * Uses tiered values profile if available, falls back to legacy selectedValues
- * Prioritizes top 5 values, then top 10, then top 20, then initial
- * Returns a score from 0 to 1
+ * Model 3: Mutual Importance Emphasis.
+ * Returns match percentage (0–100), shared value IDs, and explanation buckets for UI.
  */
-function calculateSimilarity(
+function computeMatch(
   currentUser: User,
   otherUser: User
-): { score: number; sharedValues: string[] } {
-  // Use tiered values profile if available, otherwise fall back to legacy
-  let currentTop5: string[] = [];
-  let currentTop10: string[] = [];
-  let currentTop20: string[] = [];
-  let currentInitial: string[] = [];
-  let currentAllValues: string[] = [];
+): {
+  similarityScore: number;
+  sharedValues: string[];
+  valuesExplanation: import('../types/match').ValuesExplanation;
+} {
+  const weightMapA = userToWeightMap(currentUser, FIXED_VALUES);
+  const weightMapB = userToWeightMap(otherUser, FIXED_VALUES);
 
-  let otherTop5: string[] = [];
-  let otherTop10: string[] = [];
-  let otherTop20: string[] = [];
-  let otherInitial: string[] = [];
-  let otherAllValues: string[] = [];
+  const { matchPercentage, sharedValueIds } = computeModel3Score(
+    weightMapA,
+    weightMapB,
+    FIXED_VALUES
+  );
 
-  if (currentUser.valuesProfile) {
-    // Use tiered values profile
-    currentTop5 = currentUser.valuesProfile.top5Ids;
-    currentTop10 = currentUser.valuesProfile.top10Ids;
-    currentTop20 = currentUser.valuesProfile.top20Ids;
-    currentInitial = currentUser.valuesProfile.initialIds;
-    currentAllValues = currentUser.valuesProfile.allValues
-      .filter((v) => v.tier !== 'none')
-      .map((v) => v.id);
-  } else {
-    // Legacy: use selectedValues array (assume first 5 are top5, first 10 are top10, etc.)
-    currentTop5 = currentUser.selectedValues.slice(0, 5);
-    currentTop10 = currentUser.selectedValues.slice(0, 10);
-    currentTop20 = currentUser.selectedValues.slice(0, 20);
-    currentAllValues = currentUser.selectedValues;
-  }
-
-  if (otherUser.valuesProfile) {
-    otherTop5 = otherUser.valuesProfile.top5Ids;
-    otherTop10 = otherUser.valuesProfile.top10Ids;
-    otherTop20 = otherUser.valuesProfile.top20Ids;
-    otherInitial = otherUser.valuesProfile.initialIds;
-    otherAllValues = otherUser.valuesProfile.allValues
-      .filter((v) => v.tier !== 'none')
-      .map((v) => v.id);
-  } else {
-    otherTop5 = otherUser.selectedValues.slice(0, 5);
-    otherTop10 = otherUser.selectedValues.slice(0, 10);
-    otherTop20 = otherUser.selectedValues.slice(0, 20);
-    otherAllValues = otherUser.selectedValues;
-  }
-
-  // Get shared values at each tier
-  const sharedTop5 = currentTop5.filter((v) => otherTop5.includes(v));
-  const sharedTop10 = currentTop10.filter((v) => otherTop10.includes(v));
-  const sharedTop20 = currentTop20.filter((v) => otherTop20.includes(v));
-  const sharedInitial = currentInitial.filter((v) => otherInitial.includes(v));
-
-  // Get all shared values (for return value)
-  const sharedValues = currentAllValues.filter((v) => otherAllValues.includes(v));
-
-  if (sharedValues.length === 0) {
-    return { score: 0, sharedValues: [] };
-  }
-
-  // Weighted scoring based on tier importance:
-  // - Top 5 matches: 0.6 weight each (max 3.0 points) - highest priority
-  // - Top 10 matches (excluding top 5): 0.3 weight each (max 1.5 points)
-  // - Top 20 matches (excluding top 10): 0.15 weight each (max 1.5 points)
-  // - Initial matches (excluding top 20): 0.05 weight each
-  // Normalize to 0-1 scale
-
-  let score = 0;
-
-  // Top 5 matches (highest priority)
-  score += sharedTop5.length * 0.6;
-
-  // Top 10 matches (excluding top 5)
-  const sharedTop10Excluding5 = sharedTop10.filter((v) => !sharedTop5.includes(v));
-  score += sharedTop10Excluding5.length * 0.3;
-
-  // Top 20 matches (excluding top 10)
-  const sharedTop20Excluding10 = sharedTop20.filter((v) => !sharedTop10.includes(v));
-  score += sharedTop20Excluding10.length * 0.15;
-
-  // Initial matches (excluding top 20)
-  const sharedInitialExcluding20 = sharedInitial.filter((v) => !sharedTop20.includes(v));
-  score += sharedInitialExcluding20.length * 0.05;
-
-  // Normalize to 0-1 scale
-  // Maximum possible score: 5*0.6 + 5*0.3 + 10*0.15 + (remaining)*0.05 ≈ 6.0
-  const maxPossibleScore = 5 * 0.6 + 5 * 0.3 + 10 * 0.15 + 20 * 0.05; // 6.0
-  const normalizedScore = Math.min(score / maxPossibleScore, 1);
+  const valuesExplanation = computeValuesExplanation(
+    weightMapA,
+    weightMapB,
+    FIXED_VALUES
+  );
 
   return {
-    score: Math.round(normalizedScore * 100) / 100,
-    sharedValues,
+    similarityScore: Math.round(matchPercentage),
+    sharedValues: sharedValueIds,
+    valuesExplanation,
   };
 }
 
+/** Default radius (miles) for mock mode when not specified. */
+const DEFAULT_RADIUS_MILES = 50;
+
+/** Relaxed radius (miles) used when strict filters yield 0 candidates (mock-only fallback). */
+const RELAXED_RADIUS_MILES = 2500;
+
 /**
- * Find matches for a user
- * @param userId - The ID of the user to find matches for
- * @param filters - Optional filters for age range and distance (centerCoordinates + radiusKm)
- * @returns Promise of Match array sorted by similarity score
+ * Apply filters and build Match[] for a user. Used for strict pass and relaxed fallback.
+ * All distances in miles.
+ */
+function buildMatchesForUser(
+  currentUser: User,
+  candidates: User[],
+  opts: {
+    ageRange?: [number, number];
+    center: LocationCoordinates | null;
+    radiusMiles: number;
+  }
+): Match[] {
+  const { ageRange, center, radiusMiles } = opts;
+
+  return candidates
+    .filter((user) => {
+      if (user.id === currentUser.id) return false;
+      if (ageRange) {
+        const [minAge, maxAge] = ageRange;
+        if (user.age < minAge || user.age > maxAge) return false;
+      }
+      if (center && user.locationCoordinates) {
+        const miles = haversineMiles(center, user.locationCoordinates);
+        if (miles > radiusMiles) return false;
+      }
+      return true;
+    })
+    .map((user) => {
+      const { similarityScore, sharedValues, valuesExplanation } = computeMatch(
+        currentUser,
+        user
+      );
+      return {
+        user,
+        similarityScore,
+        sharedValues,
+        sharedValuesCount: sharedValues.length,
+        valuesExplanation,
+      };
+    })
+    .sort((a, b) => b.similarityScore - a.similarityScore);
+}
+
+/**
+ * Find matches for a user.
+ * All distances in miles. In mock mode: if strict filters yield 0 candidates,
+ * retries with relaxed radius so Discover is never empty for testing.
  */
 export function findMatches(
   userId: string,
   filters?: {
     ageRange?: [number, number];
     centerCoordinates?: LocationCoordinates;
-    radiusKm?: number;
+    radiusMiles?: number;
   }
 ): Promise<Match[]> {
   return new Promise((resolve) => {
@@ -338,42 +610,29 @@ export function findMatches(
         return;
       }
 
-      const center = filters?.centerCoordinates ?? currentUser.locationCoordinates;
-      const radiusKm = typeof filters?.radiusKm === 'number' ? filters.radiusKm : 200;
+      const center =
+        filters?.centerCoordinates ?? currentUser.locationCoordinates ?? null;
+      const radiusMiles =
+        typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : DEFAULT_RADIUS_MILES;
+      const ageRange = filters?.ageRange;
 
-      const matches: Match[] = MOCK_USERS.filter((user) => {
-        // Don't match with self
-        if (user.id === userId) return false;
-
-        // Apply age range filter
-        if (filters?.ageRange) {
-          const [minAge, maxAge] = filters.ageRange;
-          if (user.age < minAge || user.age > maxAge) return false;
-        }
-
-        // Apply distance filter using Haversine
-        if (center && user.locationCoordinates) {
-          const km = haversineKm(center, user.locationCoordinates);
-          if (km > radiusKm) return false;
-        }
-
-        return true;
-      }).map((user) => {
-        const { score, sharedValues } = calculateSimilarity(
-          currentUser,
-          user
-        );
-
-        return {
-          user,
-          similarityScore: Math.round(score * 100), // Convert to 0-100 for display
-          sharedValues,
-          sharedValuesCount: sharedValues.length,
-        };
+      const candidates = MOCK_USERS.filter((u) => u.id !== userId);
+      let matches = buildMatchesForUser(currentUser, candidates, {
+        ageRange,
+        center,
+        radiusMiles,
       });
 
-      // Sort by similarity score (descending)
-      matches.sort((a, b) => b.similarityScore - a.similarityScore);
+      // Mock-only: if no candidates, relax radius and retry
+      if (matches.length === 0 && candidates.length > 0) {
+        const relaxedAge: [number, number] = [18, 99];
+        const relaxedRadius = Math.max(radiusMiles, RELAXED_RADIUS_MILES);
+        matches = buildMatchesForUser(currentUser, candidates, {
+          ageRange: relaxedAge,
+          center,
+          radiusMiles: relaxedRadius,
+        });
+      }
 
       resolve(matches);
     }, 500);
@@ -413,8 +672,13 @@ export function upsertMockUser(user: User): void {
 export function createUser(userData: Omit<User, 'id' | 'createdAt'>): Promise<User> {
   return new Promise((resolve) => {
     setTimeout(() => {
+      const photos =
+        userData.photos && userData.photos.length > 0
+          ? userData.photos.slice(0, 4)
+          : DEFAULT_USER_PHOTOS;
       const newUser: User = {
         ...userData,
+        photos,
         id: `u${MOCK_USERS.length + 1}`,
         createdAt: new Date().toISOString(),
       };
@@ -449,6 +713,10 @@ export function createOrUpdateUser(
       // Create new user
       // If a userId was provided but not found, preserve that id to keep persistence consistent.
       const resolvedId = userId ?? `u${MOCK_USERS.length + 1}`;
+      const photos =
+        profileData.photos && profileData.photos.length > 0
+          ? profileData.photos.slice(0, 4)
+          : DEFAULT_USER_PHOTOS;
       const newUser: User = {
         id: resolvedId,
         email: profileData.email,
@@ -462,7 +730,7 @@ export function createOrUpdateUser(
         job: profileData.job,
         education: profileData.education,
         bio: profileData.bio || '',
-        photos: profileData.photos || [],
+        photos,
         prompts: profileData.prompts || [],
         selectedValues: profileData.selectedValues || [],
         createdAt: new Date().toISOString(),

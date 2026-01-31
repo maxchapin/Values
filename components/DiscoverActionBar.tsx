@@ -37,12 +37,8 @@ export const DiscoverActionBar: React.FC<DiscoverActionBarProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.base,
-    paddingBottom: theme.spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
+    paddingBottom: theme.spacing.sm,
   },
   row: {
     flexDirection: 'row',

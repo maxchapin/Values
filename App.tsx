@@ -134,10 +134,17 @@ export default function App() {
               }
             }
             
-            // Rehydrate matches store if data exists
+            // Rehydrate matches store if data exists (normalize legacy radiusKm → radiusMiles)
             if (persistedState.matchesState) {
               const { likedUserIds, filters } = persistedState.matchesState;
-              rehydrateMatches(likedUserIds, filters);
+              const normalizedFilters = { ...filters };
+              if (typeof normalizedFilters.radiusMiles !== 'number' && typeof (normalizedFilters as { radiusKm?: number }).radiusKm === 'number') {
+                normalizedFilters.radiusMiles = Math.round((normalizedFilters as { radiusKm: number }).radiusKm / 1.609);
+              }
+              if (typeof normalizedFilters.radiusMiles !== 'number') {
+                normalizedFilters.radiusMiles = 50;
+              }
+              rehydrateMatches(likedUserIds, normalizedFilters);
             }
             
             if (__DEV__) {

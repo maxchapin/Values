@@ -13,7 +13,8 @@ export interface MatchFilters {
   ageRange?: [number, number]; // [minAge, maxAge]
   /** Center for distance filter; from current user's locationCoordinates. */
   centerCoordinates?: LocationCoordinates;
-  radiusKm?: number;
+  /** Radius in miles (imperial). */
+  radiusMiles?: number;
 }
 
 interface MatchesStore {

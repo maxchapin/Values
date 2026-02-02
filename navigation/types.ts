@@ -46,6 +46,8 @@ export type RootStackParamList = {
   Settings: undefined;
   // Debug (dev mode only)
   Debug: undefined;
+  // Match detail (Profile + Chat)
+  MatchDetail: { matchUserId: string };
   // Legacy (can be removed later)
   Home: undefined;
   Details: { itemId: string };
@@ -72,6 +74,8 @@ export const ROUTES = {
   EDIT_PROFILE: 'EditProfile',
   PROFILE_PREVIEW: 'ProfilePreview',
   SETTINGS: 'Settings',
+  // Match detail
+  MATCH_DETAIL: 'MatchDetail',
   // Debug
   DEBUG: 'Debug',
   // Legacy

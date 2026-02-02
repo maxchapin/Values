@@ -1,20 +1,134 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  Image,
+  RefreshControl,
+  Alert,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useMatchesStore } from '../store/matchesStore';
 import { useUserStore } from '../store/userStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
-import { ProfilePhotoCarousel } from '../components/ProfilePhotoCarousel';
 import { trackScreenView } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
-import { getAllValues } from '../services/mockBackend';
-import { formatExplanationLines } from '../services/matchingModel';
-import { Value } from '../types/value';
+import { formatExplanationOneLine } from '../services/matchingModel';
 import { Match } from '../types/match';
 import { theme } from '../theme';
 import { ROUTES } from '../navigation/types';
+import { formatRelativeTime } from '../utils/formatRelativeTime';
+import type { ConversationPreviewData } from '../store/matchesStore';
+
+const AVATAR_SIZE = 60;
+const MESSAGE_PREVIEW_MAX = 40;
+
+/** Props for a single match row: match + conversation preview (MatchChat-equivalent). */
+export interface MatchRowProps {
+  match: Match;
+  conversationPreview: ConversationPreviewData;
+  onPress: () => void;
+  onUnmatch: (match: Match, userName: string) => void;
+}
+
+/** Single match row: name, age, score, latest message preview (40 chars), relative time, unread badge. */
+export const MatchRow: React.FC<MatchRowProps> = ({
+  match,
+  conversationPreview,
+  onPress,
+  onUnmatch,
+}) => {
+  const { user, similarityScore, valuesExplanation } = match;
+  const userId = user.id;
+  const name = user.name || 'Unknown';
+  const age = user.age != null ? user.age : '?';
+  const score = typeof similarityScore === 'number' ? similarityScore : 0;
+  const oneLineExplanation = valuesExplanation ? formatExplanationOneLine(valuesExplanation) : '';
+  const { lastMessage, unreadCount, lastMessageAt } = conversationPreview;
+  const messagePreview =
+    lastMessage && lastMessage.length > MESSAGE_PREVIEW_MAX
+      ? lastMessage.slice(0, MESSAGE_PREVIEW_MAX - 1) + '…'
+      : lastMessage ?? '';
+  const relativeTime = lastMessageAt != null ? formatRelativeTime(lastMessageAt) : null;
+  const photoUri = Array.isArray(user.photos) && user.photos[0] ? user.photos[0] : null;
+
+  return (
+    <Pressable
+      style={styles.card}
+      onPress={onPress}
+      android_ripple={{ color: theme.colors.backgroundSecondary }}
+    >
+      <View style={styles.cardInner}>
+        <View style={styles.left}>
+          <View style={styles.avatarWrap}>
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                <Text style={styles.avatarPlaceholderText}>{name.charAt(0)}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.main}>
+            <View style={styles.row1}>
+              <Text style={styles.name} numberOfLines={1}>
+                {name} ({age})
+              </Text>
+              <View style={styles.scorePill}>
+                <Text style={styles.scoreText}>{score}%</Text>
+              </View>
+            </View>
+            {oneLineExplanation ? (
+              <Text style={styles.explanationLine} numberOfLines={1}>
+                {oneLineExplanation}
+              </Text>
+            ) : null}
+            {messagePreview ? (
+              <Text style={styles.messagePreview} numberOfLines={1}>
+                "{messagePreview}"
+              </Text>
+            ) : (
+              <Text style={styles.messagePreview} numberOfLines={1}>
+                {user.locationLabel ?? 'No messages yet'}
+              </Text>
+            )}
+            {relativeTime ? (
+              <Text style={styles.relativeTime} numberOfLines={1}>
+                {relativeTime}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+        <View style={styles.actions}>
+          <View style={styles.chatIconWrap}>
+            <Text style={styles.chatIcon}>💬</Text>
+            {unreadCount > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <Pressable
+            style={styles.unmatchButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onUnmatch(match, name);
+            }}
+            hitSlop={8}
+          >
+            <Text style={styles.unmatchText}>✕</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Pressable>
+  );
+};
 
 export const MatchesScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -24,221 +138,167 @@ export const MatchesScreen: React.FC = () => {
   const isLoading = useMatchesStore((s) => s.isLoading);
   const error = useMatchesStore((s) => s.error);
   const loadMatches = useMatchesStore((s) => s.loadMatches);
-  const [availableValues, setAvailableValues] = useState<Value[]>([]);
+  const unmatchUser = useMatchesStore((s) => s.unmatchUser);
+  const getConversationPreview = useMatchesStore((s) => s.getConversationPreview);
+  const setConversationPreview = useMatchesStore((s) => s.setConversationPreview);
+  /** Subscribe so list re-renders when chat previews (lastMessage, unreadCount, lastMessageAt) change. */
+  useMatchesStore((s) => s._conversationPreviews);
+  const [refreshing, setRefreshing] = useState(false);
   const didLoadRef = useRef(false);
+
+  // Guard: store may return undefined before ready when switching tabs
+  const matches = Array.isArray(availableMatches) ? availableMatches : [];
+  const likedIds = Array.isArray(likedUserIds) ? likedUserIds : [];
+
+  const likedMatches = useMemo<Match[]>(() => {
+    if (matches.length === 0 || likedIds.length === 0) return [];
+    return matches.filter((match) => {
+      const id = match?.user?.id;
+      return !!id && likedIds.includes(id);
+    });
+  }, [matches, likedIds]);
+
+  // Safe list for effects and render (never undefined)
+  const safeLikedMatches = likedMatches ?? [];
+
+  // Seed mock conversation previews for first 2 matches (demo)
+  useEffect(() => {
+    if (safeLikedMatches.length === 0) return;
+    const [first, second] = safeLikedMatches;
+    const oneHourAgo = Date.now() - 3600000;
+    const yesterday = Date.now() - 86400000;
+    if (first?.user?.id) {
+      setConversationPreview(first.user.id, "Hey! Love your Growth value 🥰", 1, oneHourAgo);
+    }
+    if (second?.user?.id) {
+      setConversationPreview(second.user.id, "Your Privacy value resonates", 0, yesterday);
+    }
+  }, [safeLikedMatches.length]);
 
   useEffect(() => {
     trackScreenView('Matches');
   }, []);
 
   useEffect(() => {
-    getAllValues().then(setAvailableValues);
-  }, []);
-
-  // Ensure matches are loaded even if user lands on Matches tab first
-  useEffect(() => {
     if (!currentUserId) {
       didLoadRef.current = false;
       return;
     }
-
-    if (!didLoadRef.current && availableMatches.length === 0 && !isLoading) {
+    if (!didLoadRef.current && matches.length === 0 && !isLoading) {
       didLoadRef.current = true;
       loadMatches(currentUserId);
     }
-  }, [currentUserId, availableMatches.length, isLoading, loadMatches]);
+  }, [currentUserId, matches.length, isLoading, loadMatches]);
 
-  const likedMatches = useMemo<Match[]>(() => {
-    if (!Array.isArray(availableMatches) || availableMatches.length === 0) return [];
-    if (!Array.isArray(likedUserIds) || likedUserIds.length === 0) return [];
-
-    return availableMatches.filter((match) => {
-      const id = match?.user?.id;
-      return !!id && likedUserIds.includes(id);
-    });
-  }, [availableMatches, likedUserIds]);
-
-  // Get value name by ID
-  const getValueName = (valueId: string): string => {
-    const value = availableValues.find((v) => v.id === valueId);
-    return value?.name || valueId;
+  const onRefresh = async () => {
+    if (!currentUserId) return;
+    setRefreshing(true);
+    await loadMatches(currentUserId);
+    setRefreshing(false);
   };
 
-  // Render a match card with defensive checks
-  const renderMatchCard = ({ item: match }: { item: Match }): React.ReactElement | null => {
-    // Defensive check: ensure match exists
-    if (!match || !match.user) {
-      return null;
+  const handleOpenMatch = (matchUserId: string) => {
+    // Reach root stack to push MatchDetail (we're inside MainApp tab).
+    const root = navigation.getParent?.() as { navigate: (name: string, params: { matchUserId: string }) => void } | undefined;
+    if (root) {
+      root.navigate(ROUTES.MATCH_DETAIL, { matchUserId });
+    } else {
+      (navigation as { navigate: (name: string, params: { matchUserId: string }) => void }).navigate(ROUTES.MATCH_DETAIL, { matchUserId });
     }
+  };
 
-    const { user, similarityScore, sharedValues, sharedValuesCount, valuesExplanation } = match;
-    const explanationLines = valuesExplanation ? formatExplanationLines(valuesExplanation) : [];
-
-    // Defensive check: ensure user has required fields
-    if (!user.id || !user.name) {
-      return null;
-    }
-
-    // Safely get top 5 values with type guards
-    const top5Values: Value[] = [];
-    if (user.selectedValues && Array.isArray(user.selectedValues)) {
-      const top5Ids = user.selectedValues.slice(0, 5);
-      for (const id of top5Ids) {
-        if (id) {
-          const value = availableValues.find((v) => v && v.id === id);
-          if (value) {
-            top5Values.push(value);
-          }
-        }
-      }
-    }
-
-    return (
-      <View style={styles.matchCard}>
-        <ProfilePhotoCarousel
-          photos={Array.isArray(user.photos) ? user.photos : []}
-          name={user.name}
-          height={220}
-          style={styles.matchPhoto}
-        />
-        <View style={styles.matchHeader}>
-          <View>
-            <Text style={styles.matchName}>{user.name}</Text>
-            <Text style={styles.matchAge}>
-              {user.age || '?'} • {user.locationLabel ?? 'Location not set'}
-            </Text>
-          </View>
-          <View style={styles.matchScoreContainer}>
-            <Text style={styles.matchScore}>
-              {typeof similarityScore === 'number' ? similarityScore : 0}%
-            </Text>
-            <Text style={styles.matchScoreLabel}>Match</Text>
-          </View>
-        </View>
-
-        {explanationLines && explanationLines.length > 0 ? (
-          <View style={styles.explanationBlock}>
-            {explanationLines.map((line, i) => (
-              <Text key={i} style={styles.explanationLine}>
-                {line}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        {user.bio && (
-          <Text style={styles.matchBio} numberOfLines={2}>
-            {user.bio}
-          </Text>
-        )}
-
-        {sharedValues && Array.isArray(sharedValues) && sharedValues.length > 0 && (
-          <View style={styles.sharedValuesSection}>
-            <Text style={styles.sharedValuesTitle}>
-              {sharedValuesCount || 0} Shared Value{(sharedValuesCount || 0) !== 1 ? 's' : ''}
-            </Text>
-            <View style={styles.sharedValuesChips}>
-              {sharedValues.slice(0, 5).map((valueId) => {
-                if (!valueId) return null;
-                return (
-                  <View key={valueId} style={styles.sharedValueChip}>
-                    <Text style={styles.sharedValueChipText}>{getValueName(valueId)}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {top5Values.length > 0 && (
-          <View style={styles.topValuesSection}>
-            <Text style={styles.topValuesTitle}>Their Top 5 Values</Text>
-            <View style={styles.topValuesChips}>
-              {top5Values.map((value) => {
-                if (!value || !value.id) return null;
-                return (
-                  <View key={value.id} style={styles.topValueChip}>
-                    <Text style={styles.topValueChipText}>{value.name || 'Unknown'}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {user.prompts && Array.isArray(user.prompts) && user.prompts.length > 0 && (
-          <View style={styles.promptsSection}>
-            {user.prompts.slice(0, 2).map((prompt) => {
-              if (!prompt || !prompt.id) return null;
-              return (
-                <View key={prompt.id} style={styles.promptItem}>
-                  <Text style={styles.promptQuestion}>
-                    {prompt.question || 'Question'}
-                  </Text>
-                  <Text style={styles.promptAnswer} numberOfLines={1}>
-                    {prompt.answer || 'No answer provided'}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </View>
+  const handleUnmatch = (match: Match, userName: string) => {
+    const userId = match?.user?.id;
+    if (!userId) return;
+    Alert.alert(
+      'Unmatch',
+      `Remove ${userName} from your matches?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unmatch', style: 'destructive', onPress: () => unmatchUser(userId) },
+      ]
     );
   };
+
+  const renderMatchCard = ({ item: match }: { item: Match }): React.ReactElement | null => {
+    if (!match || !match.user) return null;
+    const userId = match.user.id;
+    const preview: ConversationPreviewData = getConversationPreview(userId);
+    return (
+      <MatchRow
+        match={match}
+        conversationPreview={preview}
+        onPress={() => handleOpenMatch(userId)}
+        onUnmatch={handleUnmatch}
+      />
+    );
+  };
+
+  const ListHeader = () => (
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Matches</Text>
+      <Text style={styles.headerSubtitle}>
+        {safeLikedMatches.length} match{safeLikedMatches.length !== 1 ? 'es' : ''}
+      </Text>
+    </View>
+  );
 
   if (!currentUserId) {
     return (
-      <EmptyState
-        icon="🔒"
-        title="Not signed in"
-        message="Please sign up or log in to view matches."
-      />
+      <ScreenContainer>
+        <EmptyState
+          icon="🔒"
+          title="Not signed in"
+          message="Please sign up or log in to view matches."
+        />
+      </ScreenContainer>
     );
   }
 
-  if (isLoading) {
+  if (isLoading && safeLikedMatches.length === 0) {
     return <LoadingSpinner message="Loading matches..." />;
   }
 
   if (error) {
     return (
-      <ErrorState
-        message={error}
-        actionLabel="Try Again"
-        onAction={() => loadMatches(currentUserId)}
-      />
+      <ScreenContainer>
+        <ErrorState
+          message={error}
+          actionLabel="Try Again"
+          onAction={() => loadMatches(currentUserId)}
+        />
+      </ScreenContainer>
     );
   }
 
-  if (likedMatches.length === 0) {
+  if (safeLikedMatches.length === 0) {
     return (
-      <EmptyState
-        icon="💕"
-        title="No Matches Yet"
-        message="Start swiping in Discover to find people you like. Your matches will appear here!"
-        actionLabel="Go to Discover"
-        onAction={() => {
-          (navigation as any).navigate(ROUTES.DISCOVER);
-        }}
-      />
+      <ScreenContainer>
+        <ListHeader />
+        <EmptyState
+          icon="💕"
+          title="No matches yet—keep exploring!"
+          message="Start swiping in Discover. Your matches will appear here."
+          actionLabel="Go to Discover"
+          onAction={() => navigation.navigate(ROUTES.DISCOVER as 'Discover')}
+        />
+      </ScreenContainer>
     );
   }
 
   return (
     <ScreenContainer contentPadding={false}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Your Matches</Text>
-        <Text style={styles.headerSubtitle}>
-          {likedMatches.length} match{likedMatches.length !== 1 ? 'es' : ''}
-        </Text>
-      </View>
       <FlatList
-        data={likedMatches}
+        data={safeLikedMatches}
         renderItem={renderMatchCard}
         keyExtractor={(item) => item.user.id}
+        ListHeaderComponent={ListHeader}
         contentContainerStyle={styles.listContent}
+        ItemSeparatorComponent={() => <View style={styles.divider} />}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
+        }
       />
     </ScreenContainer>
   );
@@ -248,8 +308,9 @@ export default MatchesScreen;
 
 const styles = StyleSheet.create({
   header: {
-    padding: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.base,
     backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -265,141 +326,135 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
   listContent: {
-    padding: theme.spacing.base,
+    paddingBottom: theme.spacing['2xl'],
   },
-  matchCard: {
-    backgroundColor: theme.colors.backgroundTertiary,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.base,
-    marginBottom: theme.spacing.base,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    overflow: 'hidden',
+  card: {
+    minHeight: 80,
+    backgroundColor: theme.colors.background,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.base,
+    justifyContent: 'center',
   },
-  matchPhoto: {
-    borderRadius: 0,
-    marginBottom: theme.spacing.base,
-  },
-  matchHeader: {
+  cardInner: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
   },
-  matchName: {
-    fontSize: theme.typography.fontSize['2xl'],
+  left: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  avatarWrap: {
+    marginRight: theme.spacing.md,
+  },
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: theme.colors.backgroundSecondary,
+  },
+  avatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPlaceholderText: {
+    fontSize: theme.typography.fontSize.xl,
     fontWeight: theme.typography.fontWeight.bold,
-    color: theme.colors.text,
+    color: theme.colors.textSecondary,
+  },
+  main: {
+    flex: 1,
+    minWidth: 0,
+  },
+  row1: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
     marginBottom: theme.spacing.xs,
   },
-  matchAge: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  matchScoreContainer: {
-    alignItems: 'flex-end',
-  },
-  matchScore: {
-    fontSize: theme.typography.fontSize['2xl'],
+  name: {
+    fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.text,
+    flex: 1,
+  },
+  scorePill: {
+    backgroundColor: theme.colors.primaryLight + '30',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 2,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + '50',
+  },
+  scoreText: {
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.primary,
-    marginBottom: 2,
-  },
-  matchScoreLabel: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.textSecondary,
-    textTransform: 'uppercase',
-  },
-  explanationBlock: {
-    marginBottom: theme.spacing.sm,
   },
   explanationLine: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.relaxed,
-    marginBottom: theme.spacing.xs,
-  },
-  matchBio: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.normal,
-    marginBottom: theme.spacing.base,
-  },
-  sharedValuesSection: {
-    marginBottom: theme.spacing.base,
-    paddingTop: theme.spacing.base,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  sharedValuesTitle: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.primary,
-    marginBottom: theme.spacing.sm,
-  },
-  sharedValuesChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  sharedValueChip: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.sm + 2,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.md,
-    marginRight: theme.spacing.xs + 2,
-    marginBottom: theme.spacing.xs + 2,
-  },
-  sharedValueChipText: {
     fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textSecondary,
+    marginBottom: 2,
+  },
+  messagePreview: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textTertiary,
+    fontStyle: 'italic',
+  },
+  relativeTime: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textTertiary,
+    marginTop: 2,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginLeft: theme.spacing.sm,
+  },
+  chatIconWrap: {
+    position: 'relative',
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatIcon: {
+    fontSize: 20,
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: theme.colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.textInverse,
-    fontWeight: theme.typography.fontWeight.semibold,
   },
-  topValuesSection: {
-    marginBottom: theme.spacing.base,
-    paddingTop: theme.spacing.base,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+  unmatchButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  topValuesTitle: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-  },
-  topValuesChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  topValueChip: {
-    backgroundColor: theme.colors.backgroundSecondary,
-    paddingHorizontal: theme.spacing.sm + 2,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.md,
-    marginRight: theme.spacing.xs + 2,
-    marginBottom: theme.spacing.xs + 2,
-  },
-  topValueChipText: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.primary,
-    fontWeight: theme.typography.fontWeight.medium,
-  },
-  promptsSection: {
-    paddingTop: theme.spacing.base,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  promptItem: {
-    marginBottom: theme.spacing.md,
-  },
-  promptQuestion: {
-    fontSize: theme.typography.fontSize.xs,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
-  },
-  promptAnswer: {
-    fontSize: theme.typography.fontSize.xs,
+  unmatchText: {
+    fontSize: theme.typography.fontSize.lg,
     color: theme.colors.textSecondary,
-    lineHeight: theme.typography.fontSize.xs * theme.typography.lineHeight.normal,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.borderLight,
+    marginLeft: AVATAR_SIZE + theme.spacing.md + theme.spacing.base,
   },
 });

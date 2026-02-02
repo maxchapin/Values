@@ -148,17 +148,20 @@ export function computeValuesExplanation(
  */
 export function formatExplanationLines(explanation: ValuesExplanation): string[] {
   const lines: string[] = [];
+  const strongAlignment = explanation?.strongAlignment ?? [];
+  const partialOverlap = explanation?.partialOverlap ?? [];
+  const potentialFriction = explanation?.potentialFriction ?? [];
 
-  if (explanation.strongAlignment.length > 0) {
-    const list = formatList(explanation.strongAlignment);
+  if (strongAlignment.length > 0) {
+    const list = formatList(strongAlignment);
     lines.push(`You both strongly prioritize ${list}.`);
   }
-  if (explanation.partialOverlap.length > 0) {
-    const list = formatList(explanation.partialOverlap);
+  if (partialOverlap.length > 0) {
+    const list = formatList(partialOverlap);
     lines.push(`You're aligned on ${list}, but at different levels.`);
   }
-  if (explanation.potentialFriction.length > 0) {
-    const list = formatList(explanation.potentialFriction);
+  if (potentialFriction.length > 0) {
+    const list = formatList(potentialFriction);
     lines.push(`You have different priorities around ${list}.`);
   }
 
@@ -173,4 +176,28 @@ function formatList(labels: string[], max = 5): string {
   const last = show[show.length - 1];
   const rest = show.slice(0, -1).join(', ');
   return `${rest} and ${last}`;
+}
+
+/**
+ * One-line explanation for compact UI: 🟢 Strong values or 🟡 Partial, truncated.
+ */
+export function formatExplanationOneLine(
+  explanation: ValuesExplanation,
+  maxChars = 36
+): string {
+  const strong = (explanation?.strongAlignment ?? []).slice(0, 3).join(', ');
+  const partial = (explanation?.partialOverlap ?? []).slice(0, 3).join(', ');
+  if (strong && partial) {
+    const s = `🟢 ${strong}  🟡 ${partial}`;
+    return s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s;
+  }
+  if (strong) {
+    const s = `🟢 ${strong}`;
+    return s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s;
+  }
+  if (partial) {
+    const s = `🟡 ${partial}`;
+    return s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s;
+  }
+  return '';
 }

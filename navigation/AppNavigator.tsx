@@ -27,6 +27,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ProfilePreviewScreen } from '../screens/ProfilePreviewScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { MatchDetailScreen } from '../screens/MatchDetailScreen';
 
 // Debug screen (dev mode only)
 import { DebugScreen } from '../screens/DebugScreen';
@@ -229,6 +230,11 @@ export const AppNavigator: React.FC = () => {
           name={ROUTES.SETTINGS}
           component={SettingsScreen}
           options={{ title: 'Settings & Help' }}
+        />
+        <Stack.Screen
+          name={ROUTES.MATCH_DETAIL}
+          component={MatchDetailScreen}
+          options={{ title: 'Match', headerShown: false }}
         />
 
         {/* Debug Screen (dev mode only) */}

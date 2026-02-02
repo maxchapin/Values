@@ -17,6 +17,12 @@ export interface MatchFilters {
   radiusMiles?: number;
 }
 
+export interface ConversationPreviewData {
+  lastMessage: string;
+  unreadCount: number;
+  lastMessageAt?: number;
+}
+
 interface MatchesStore {
   // State
   availableMatches: Match[];
@@ -26,6 +32,8 @@ interface MatchesStore {
   isLoading: boolean;
   error: string | null;
   isHydrated: boolean; // Track if store has been hydrated from storage
+  /** Keyed by match userId; used so UI re-renders when previews change. */
+  _conversationPreviews: Record<string, ConversationPreviewData>;
 
   // Actions
   loadMatches: (userId: string, filters?: MatchFilters) => Promise<void>;
@@ -34,6 +42,10 @@ interface MatchesStore {
   passUser: (userId: string) => void;
   getCurrentMatch: () => Match | null;
   getLikedMatches: () => Match[];
+  unmatchUser: (userId: string) => void;
+  getConversationPreview: (userId: string) => { lastMessage: string; unreadCount: number; lastMessageAt?: number };
+  setConversationPreview: (userId: string, lastMessage: string, unreadCount?: number, lastMessageAt?: number) => void;
+  markConversationRead: (userId: string) => void;
   reset: () => void;
   rehydrate: (likedUserIds: string[], filters: MatchFilters) => void;
 }
@@ -53,6 +65,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
   isLoading: false,
   error: null,
   isHydrated: false,
+  _conversationPreviews: {},
 
   // Load matches for a user. Passes centerCoordinates from current user when not in filters.
   loadMatches: async (userId: string, filters?: MatchFilters): Promise<void> => {
@@ -186,6 +199,37 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
       }
       return likedUserIds.includes(match.user.id);
     });
+  },
+
+  // Unmatch: remove user from liked list
+  unmatchUser: (userId: string): void => {
+    const { likedUserIds, filters } = get();
+    if (!likedUserIds.includes(userId)) return;
+    const newLikedUserIds = likedUserIds.filter((id) => id !== userId);
+    set({ likedUserIds: newLikedUserIds });
+    saveMatchesState(newLikedUserIds, filters).catch((err) => {
+      if (__DEV__) console.error('[MatchesStore] Error persisting after unmatch:', err);
+    });
+  },
+
+  // In-memory conversation preview (mock; keyed by match userId)
+  getConversationPreview: (userId: string): ConversationPreviewData => {
+    const state = get();
+    const previews = state._conversationPreviews ?? {};
+    return previews[userId] ?? { lastMessage: '', unreadCount: 0 };
+  },
+  setConversationPreview: (userId: string, lastMessage: string, unreadCount = 0, lastMessageAt?: number): void => {
+    const state = get();
+    const previews = { ...(state._conversationPreviews ?? {}), [userId]: { lastMessage, unreadCount, lastMessageAt } };
+    set({ _conversationPreviews: previews });
+  },
+  markConversationRead: (userId: string): void => {
+    const state = get();
+    const previews = state._conversationPreviews ?? {};
+    const p = previews[userId];
+    if (p) {
+      set({ _conversationPreviews: { ...previews, [userId]: { ...p, unreadCount: 0 } } });
+    }
   },
 
   // Reset store

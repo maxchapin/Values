@@ -24,3 +24,10 @@ export { ErrorBoundary } from './ErrorBoundary';
 export { LoadingSpinner } from './LoadingSpinner';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
+export {
+  MatchChatScreen,
+  ChatBubble,
+  DayHeader,
+  ImageModal,
+} from './MatchChatScreen';
+export type { MatchChatScreenProps, ChatBubbleProps, DayHeaderProps, ImageModalProps } from './MatchChatScreen';

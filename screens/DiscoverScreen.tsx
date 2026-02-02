@@ -31,6 +31,9 @@ export const DiscoverScreen: React.FC = () => {
     reset,
   } = useMatchesStore();
 
+  // Guard: store may not have availableMatches on first paint when switching tabs
+  const matches = availableMatches ?? [];
+
   const [showFilters, setShowFilters] = useState(false);
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const didInitialLoadRef = useRef(false);
@@ -61,12 +64,12 @@ export const DiscoverScreen: React.FC = () => {
     }
 
     // Prevent infinite retry loops when backend returns [] (e.g. user not found)
-    if (userId && !didInitialLoadRef.current && availableMatches.length === 0 && !isLoading) {
+    if (userId && !didInitialLoadRef.current && matches.length === 0 && !isLoading) {
       didInitialLoadRef.current = true;
       loadMatches(userId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id, availableMatches.length, isLoading]);
+  }, [currentUser?.id, matches.length, isLoading]);
 
   const handleLike = (): void => {
     const currentMatch = getCurrentMatch();
@@ -134,7 +137,7 @@ export const DiscoverScreen: React.FC = () => {
   }
 
   // No matches initially (empty list from backend)
-  if (availableMatches.length === 0) {
+  if (matches.length === 0) {
     return (
       <EmptyState
         icon="🔍"

@@ -220,12 +220,17 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
     return unsub;
   }, [isService, matchId]);
 
+  // Scroll to bottom on initial mount and when messages change
   useEffect(() => {
-    if (messages.length > prevMessageCountRef.current) {
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    if (listItems.length > 0) {
+      // Use requestAnimationFrame to ensure list has rendered
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          listRef.current?.scrollToEnd({ animated: false });
+        }, 50);
+      });
     }
-    prevMessageCountRef.current = messages.length;
-  }, [messages.length]);
+  }, [listItems.length]); // Run when list items change (initial mount or new messages)
 
   const handleSend = useCallback(() => {
     const text = inputText.trim();
@@ -273,7 +278,6 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
         data={listItems}
         renderItem={renderItem}
         keyExtractor={(item) => item.key}
-        inverted
         contentContainerStyle={[styles.listContent, listItems.length === 0 && styles.listContentEmpty]}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
@@ -283,6 +287,10 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
             </View>
           ) : null
         }
+        onContentSizeChange={() => {
+          // Auto-scroll to bottom when content size changes (e.g., new messages)
+          listRef.current?.scrollToEnd({ animated: false });
+        }}
       />
 
       <View style={styles.inputBar}>

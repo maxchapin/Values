@@ -27,8 +27,19 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
 
   const currentUser = useUserStore((s) => s.currentUser);
   const currentUserId = currentUser?.id ?? '';
-  const likedMatches = useMatchesStore((s) => s.getLikedMatches());
+  const availableMatches = useMatchesStore((s) => s.availableMatches);
+  const likedUserIds = useMatchesStore((s) => s.likedUserIds);
   const seedMockMessages = useChatStore((s) => s.seedMockMessages);
+
+  const likedMatches = useMemo(() => {
+    if (availableMatches.length === 0 || likedUserIds.length === 0) return [];
+    return availableMatches.filter((match) => {
+      if (!match || !match.user || !match.user.id) {
+        return false;
+      }
+      return likedUserIds.includes(match.user.id);
+    });
+  }, [availableMatches, likedUserIds]);
 
   const match = useMemo(
     () => likedMatches.find((m) => m.user.id === matchUserId),

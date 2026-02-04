@@ -71,7 +71,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     };
     set((state) => {
       const byMatch = state._messagesByMatch ?? {};
-      const list = [...(byMatch[matchId] ?? []), msg];
+      const existing = byMatch[matchId] ?? [];
+      // Append new message and maintain ascending order (oldest → newest)
+      const list = [...existing, msg].sort((a, b) => {
+        const ta = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp as number).getTime();
+        const tb = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp as number).getTime();
+        return ta - tb;
+      });
       const next = { ...byMatch, [matchId]: list };
       const { preview, lastMessageAt } = lastMessagePreviewAndTime(list, currentUserId);
       const unread = countUnreadForUser(list, matchId);

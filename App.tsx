@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { AppNavigator } from './navigation/AppNavigator';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AuthProvider } from './contexts/AuthContext';
+import { AuthGate } from './components/AuthGate';
 import { useUserStore } from './store/userStore';
 import { useMatchesStore } from './store/matchesStore';
 import { loadAllAppState, validateUserData, validateAuthState } from './services/persistence';
@@ -20,6 +21,17 @@ const LoadingScreen: React.FC = () => (
   </View>
 );
 
+/**
+ * Root App Component
+ * 
+ * Note: There are two rehydration systems:
+ * 1. App.tsx rehydration (legacy) - restores UserStore from AsyncStorage
+ * 2. AuthContext rehydration (new) - restores AuthUser from SecureStore
+ * 
+ * AuthContext is now the source of truth for authentication.
+ * UserStore rehydration is kept for backward compatibility but AuthContext
+ * handles session restoration independently.
+ */
 export default function App() {
   const [isRehydrating, setIsRehydrating] = useState<boolean>(true);
   const [rehydrationStatus, setRehydrationStatus] = useState<string>('Initializing...');
@@ -242,17 +254,22 @@ export default function App() {
     );
   }
 
+  // Note: AuthProvider handles its own session restoration from secure storage
+  // The old App.tsx rehydration (userStore-based) is kept for backward compatibility
+  // but AuthContext is now the source of truth for authentication state
   return (
     <ErrorBoundary>
-      <AppNavigator />
-      {__DEV__ && rehydrationResult && (
-        <View style={styles.devResultContainer}>
-          <Text style={styles.devResultText}>
-            {rehydrationResult.autoLogin ? '✅ Auto-logged in' : '❌ Showing login'}
-          </Text>
-        </View>
-      )}
-      <StatusBar style="auto" />
+      <AuthProvider>
+        <AuthGate />
+        {__DEV__ && rehydrationResult && (
+          <View style={styles.devResultContainer}>
+            <Text style={styles.devResultText}>
+              {rehydrationResult.autoLogin ? '✅ Auto-logged in' : '❌ Showing login'}
+            </Text>
+          </View>
+        )}
+        <StatusBar style="auto" />
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

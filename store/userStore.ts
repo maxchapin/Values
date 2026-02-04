@@ -355,6 +355,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
   },
 
   // Update user's values profile with tiers
+  // This is called when values onboarding completes
   updateValuesProfile: async (valuesProfile: UserValuesProfile): Promise<void> => {
     const { currentUser, keepSignedIn } = get();
     if (!currentUser) return;
@@ -398,6 +399,10 @@ export const useUserStore = create<UserStore>((set, get) => ({
           console.error('[UserStore] Error persisting user data:', error);
         }
       }
+
+      // Sync values completion back to AuthUser (via useValuesCompletionSync hook)
+      // This ensures AuthUser.isValuesComplete stays in sync
+      // The hook will detect the change and update AuthContext
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to update values profile',

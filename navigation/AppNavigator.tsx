@@ -3,12 +3,14 @@ import { NavigationContainer, createNavigationContainerRef } from '@react-naviga
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { RootStackParamList, MainTabParamList, ROUTES } from './types';
+import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
 import { useValuesOnboardingStore } from '../store/valuesOnboardingStore';
 import { theme } from '../theme';
 
 // Auth screens
 import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
+import { LoginScreen } from '../screens/auth/LoginScreen';
 import { SignUpScreen } from '../screens/auth/SignUpScreen';
 import { ProfileSetupScreen } from '../screens/auth/ProfileSetupScreen';
 
@@ -79,23 +81,35 @@ const MainTabNavigator: React.FC = () => {
 
 /**
  * Root App Navigator
- * Handles conditional navigation based on onboarding state
- * Decides which stack to show: Auth → Profile Setup → Values → Main App
+ * Handles conditional navigation based on authentication and onboarding state
+ * 
+ * Navigation Phases:
+ * 1. 'auth' - No authenticated user → Show Welcome/Login screens
+ * 2. 'profile' - User authenticated but profile incomplete → Show ProfileSetupScreen
+ * 3. 'values' - Profile complete but values incomplete → Show ValuesOnboardingScreen
+ * 4. 'main' - Everything complete → Show MainTabNavigator (Discover, Matches, Profile)
+ * 
+ * Phase changes trigger navigation reset to prevent conflicting navigation states.
+ * This ensures clean transitions between major app sections.
  */
 export const AppNavigator: React.FC = () => {
-  // Use selector to prevent unnecessary re-renders
-  const isAuthenticated = useUserStore((state) => state.isAuthenticated);
+  // Check auth state from AuthContext (unified auth layer)
+  // AuthContext is the source of truth for authentication
+  const { user: authUser } = useAuth();
+  
+  // Check UserStore for onboarding completion status
+  // These flags are computed from User data and synced to AuthUser via hooks
   const isProfileComplete = useUserStore((state) => state.isProfileComplete);
   const isValuesComplete = useUserStore((state) => state.isValuesComplete);
   
-  // Decide which "phase" the app is in. We only reset navigation when the phase changes
-  // (avoids fighting in-stack navigation / back gestures).
+  // Decide which "phase" the app is in
+  // Only reset navigation when the phase changes (avoids fighting in-stack navigation / back gestures)
   const phase = useMemo<'auth' | 'profile' | 'values' | 'main'>(() => {
-    if (!isAuthenticated) return 'auth';
+    if (!authUser) return 'auth';
     if (!isProfileComplete) return 'profile';
     if (!isValuesComplete) return 'values';
     return 'main';
-  }, [isAuthenticated, isProfileComplete, isValuesComplete]);
+  }, [authUser, isProfileComplete, isValuesComplete]);
 
   const phaseRootRoute = useMemo<keyof RootStackParamList>(() => {
     switch (phase) {
@@ -163,8 +177,8 @@ export const AppNavigator: React.FC = () => {
         />
         <Stack.Screen
           name={ROUTES.SIGN_UP}
-          component={SignUpScreen}
-          options={{ title: 'Sign Up' }}
+          component={LoginScreen}
+          options={{ title: 'Sign In' }}
         />
         <Stack.Screen
           name={ROUTES.PROFILE_SETUP}

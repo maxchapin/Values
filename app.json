@@ -7,29 +7,48 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "values",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "plugins": [
-      ["expo-image-picker", {
-        "photosPermission": "This app uses your photos for your dating profile."
-      }]
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app uses your photos for your dating profile."
+        }
+      ],
+      [
+        "expo-apple-authentication",
+        {
+          "appleAuthentication": {
+            "enabled": true
+          }
+        }
+      ],
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.values.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "package": "com.values.app",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "googleClientId": ""
     }
   }
 }

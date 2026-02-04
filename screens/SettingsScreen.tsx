@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useUserStore } from '../store/userStore';
+import { useAuth } from '../contexts/AuthContext';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { trackScreenView } from '../services/analytics';
@@ -16,7 +17,8 @@ type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'
  * Account settings, notification preferences, and help/support
  */
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
-  const { currentUser, updateSettings, deleteAccount, logout } = useUserStore();
+  const { currentUser, updateSettings, deleteAccount } = useUserStore();
+  const { signOut } = useAuth(); // Use unified auth signOut
   const [isProfileVisible, setIsProfileVisible] = useState(true);
   const [notifications, setNotifications] = useState({
     newMatch: true,
@@ -198,8 +200,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         <TouchableOpacity
           style={[styles.settingRow, styles.logoutRow]}
           onPress={async () => {
-            await logout();
-            // Navigation will automatically update based on isAuthenticated state
+            try {
+              await signOut();
+              // Navigation will automatically update via AuthGate when user becomes null
+            } catch (error) {
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
           }}
           activeOpacity={0.7}
         >

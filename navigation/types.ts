@@ -7,6 +7,8 @@
 export type AuthStackParamList = {
   Welcome: undefined;
   SignUp: undefined;
+  PhoneSignIn: undefined;
+  PhoneCode: { phoneNumber: string };
   ProfileSetup: undefined;
 };
 
@@ -58,6 +60,8 @@ export const ROUTES = {
   // Auth
   WELCOME: 'Welcome',
   SIGN_UP: 'SignUp',
+  PHONE_SIGN_IN: 'PhoneSignIn',
+  PHONE_CODE: 'PhoneCode',
   PROFILE_SETUP: 'ProfileSetup',
   // Values
   VALUES_SELECTION: 'ValuesSelection',

@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { AuthUser, AuthProvider, AuthSession, PhoneAuthState } from '../types/auth';
 import { AuthError } from '../types/auth';
 import { authService } from '../services/authService';
+import { supabase } from '../services/supabase';
 
 const AUTH_SESSION_KEY = 'auth_session';
 const AUTH_USER_KEY = 'auth_user';
@@ -49,34 +50,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [phoneAuthState, setPhoneAuthState] = useState<PhoneAuthState | null>(null);
 
   /**
-   * Load persisted auth session on mount
+   * Convert Supabase user to AuthUser format
+   */
+  const convertSupabaseUserToAuthUser = useCallback((supabaseUser: any): AuthUser => {
+    const userMetadata = supabaseUser.user_metadata || {};
+    return {
+      id: supabaseUser.id,
+      displayName: userMetadata.full_name || userMetadata.name || supabaseUser.email?.split('@')[0],
+      firstName: userMetadata.given_name || userMetadata.first_name,
+      lastName: userMetadata.family_name || userMetadata.last_name,
+      email: supabaseUser.email || undefined,
+      photoUrl: userMetadata.avatar_url || userMetadata.picture,
+      authProvider: userMetadata.provider || 'google',
+      createdAt: supabaseUser.created_at,
+      updatedAt: supabaseUser.updated_at,
+      isOnboardingComplete: userMetadata.isOnboardingComplete,
+      isProfileComplete: userMetadata.isProfileComplete,
+      isValuesComplete: userMetadata.isValuesComplete,
+    };
+  }, []);
+
+  /**
+   * Load persisted auth session on mount and listen for Supabase auth changes
    */
   useEffect(() => {
     let isMounted = true;
 
     const loadPersistedSession = async () => {
       try {
-        // Try to load session and user from secure storage
-        const sessionJson = await SecureStore.getItemAsync(AUTH_SESSION_KEY);
-        const userJson = await SecureStore.getItemAsync(AUTH_USER_KEY);
+        // First, check if Supabase has an active session
+        const { data: { session: supabaseSession }, error } = await supabase.auth.getSession();
 
-        if (sessionJson && userJson) {
-          const session: AuthSession = JSON.parse(sessionJson);
-          const persistedUser: AuthUser = JSON.parse(userJson);
+        if (supabaseSession && supabaseSession.user && isMounted) {
+          // Convert Supabase session to AuthUser and AuthSession
+          const authUser = convertSupabaseUserToAuthUser(supabaseSession.user);
+          const authSession: AuthSession = {
+            userId: authUser.id,
+            authProvider: authUser.authProvider,
+            token: supabaseSession.access_token,
+            refreshToken: supabaseSession.refresh_token,
+            expiresAt: supabaseSession.expires_at ? supabaseSession.expires_at * 1000 : undefined,
+          };
 
-          // Validate session
-          const isValid = await authService.validateSession(session);
-          if (isValid && isMounted) {
-            setUser(persistedUser);
-            if (__DEV__) {
-              console.log('[AuthContext] Restored session:', persistedUser.id);
-            }
-          } else if (isMounted) {
-            // Session expired or invalid - clear storage
-            await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
-            await SecureStore.deleteItemAsync(AUTH_USER_KEY);
-            if (__DEV__) {
-              console.log('[AuthContext] Session expired, cleared storage');
+          // Persist to secure storage
+          await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
+          await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
+          setUser(authUser);
+          // Set loading to false immediately after restoring session
+          setLoading(false);
+
+          if (__DEV__) {
+            console.log('[AuthContext] ✅ Restored Supabase session:', authUser.id);
+            console.log('[AuthContext] ✅ Loading set to false after session restore');
+          }
+        } else {
+          // Fallback to legacy secure storage if no Supabase session
+          const sessionJson = await SecureStore.getItemAsync(AUTH_SESSION_KEY);
+          const userJson = await SecureStore.getItemAsync(AUTH_USER_KEY);
+
+          if (sessionJson && userJson) {
+            const session: AuthSession = JSON.parse(sessionJson);
+            const persistedUser: AuthUser = JSON.parse(userJson);
+
+            // Validate session
+            const isValid = await authService.validateSession(session);
+            if (isValid && isMounted) {
+              setUser(persistedUser);
+              if (__DEV__) {
+                console.log('[AuthContext] Restored session:', persistedUser.id);
+              }
+            } else if (isMounted) {
+              // Session expired or invalid - clear storage
+              await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
+              await SecureStore.deleteItemAsync(AUTH_USER_KEY);
+              if (__DEV__) {
+                console.log('[AuthContext] Session expired, cleared storage');
+              }
             }
           }
         }
@@ -100,10 +149,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     loadPersistedSession();
 
+    // Listen for Supabase auth state changes (e.g., when OAuth redirect completes)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
+      if (__DEV__) {
+        console.log('[AuthContext] Supabase auth state changed:', event, session?.user?.id);
+      }
+
+      if (event === 'SIGNED_IN' && session?.user) {
+        // Convert Supabase user to AuthUser
+        const authUser = convertSupabaseUserToAuthUser(session.user);
+        const authSession: AuthSession = {
+          userId: authUser.id,
+          authProvider: authUser.authProvider,
+          token: session.access_token,
+          refreshToken: session.refresh_token,
+          expiresAt: session.expires_at ? session.expires_at * 1000 : undefined,
+        };
+
+        // Persist to secure storage
+        try {
+          await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
+          await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
+          setUser(authUser);
+          // CRITICAL: Set loading to false immediately so navigation can happen
+          setLoading(false);
+          if (__DEV__) {
+            console.log('[AuthContext] ✅ User signed in via Supabase:', authUser.id);
+            console.log('[AuthContext] ✅ Loading set to false, navigation should happen now');
+          }
+        } catch (error) {
+          if (__DEV__) {
+            console.error('[AuthContext] Error persisting Supabase session:', error);
+          }
+          // Even on error, set loading to false so app doesn't hang
+          setLoading(false);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        // Clear user and storage
+        setUser(null);
+        try {
+          await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
+          await SecureStore.deleteItemAsync(AUTH_USER_KEY);
+        } catch (error) {
+          // Ignore clear errors
+        }
+      }
+    });
+
     return () => {
       isMounted = false;
+      subscription.unsubscribe();
     };
-  }, []);
+  }, [convertSupabaseUserToAuthUser]);
 
   /**
    * Persist auth session and user to secure storage
@@ -289,11 +388,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /**
    * Sign out
    * Clears all auth data from secure storage and local state
-   * Also clears UserStore to ensure complete logout
+   * Also clears Supabase session and UserStore to ensure complete logout
    */
   const signOut = useCallback(async () => {
     try {
       setLoading(true);
+      
+      // Sign out from Supabase first
+      try {
+        await supabase.auth.signOut();
+      } catch (supabaseError) {
+        if (__DEV__) {
+          console.warn('[AuthContext] Error signing out from Supabase:', supabaseError);
+        }
+      }
       
       // Clear auth data from secure storage
       await clearAuth();

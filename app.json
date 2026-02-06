@@ -48,7 +48,8 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "googleClientId": ""
+      "googleClientId": "",
+      "supabaseRedirectTo": "https://nkcaaujkovelpqahmuug.supabase.co/auth/v1/callback"
     }
   }
 }

@@ -1,17 +1,18 @@
 /**
  * Auth Service
  * Handles authentication with Google, Apple, and Phone providers
- * Uses expo-auth-session for Google OAuth (production-ready)
+ * Uses Supabase for Google OAuth (production-ready)
  */
 
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import * as Crypto from 'expo-crypto';
+import * as AuthSession from 'expo-auth-session';
 import type { AuthUser, AuthProvider, AuthSession as AuthSessionType, PhoneAuthState } from '../types/auth';
 import { AuthError } from '../types/auth';
-import { loginWithGoogle, loginWithApple, verifyPhoneCode } from './backendAuthApi';
+import { loginWithApple, verifyPhoneCode } from './backendAuthApi';
+import { supabase } from './supabase';
+import Constants from 'expo-constants';
 
 // Complete web browser auth session for proper OAuth flow
 WebBrowser.maybeCompleteAuthSession();
@@ -32,162 +33,483 @@ function generateOTPCode(): string {
  */
 export const authService = {
   /**
-   * Sign in with Google using OAuth 2.0
-   * Uses expo-auth-session for production-ready Google authentication
+   * Sign in with Google using Supabase OAuth
+   * Supabase handles the OAuth flow and redirects automatically for Expo
    * 
    * Flow:
-   * 1. Request Google OAuth authorization code
-   * 2. Exchange code for ID token (via backend or directly)
-   * 3. Send ID token to backend for validation
-   * 4. Backend returns user + session
+   * 1. Supabase opens webview for Google sign-in
+   * 2. User signs in → Supabase proxy → back to Expo app
+   * 3. Supabase session is created automatically via onAuthStateChange
+   * 4. AuthContext converts Supabase user to AuthUser format
+   * 
+   * Note: This function initiates the OAuth flow. The actual session creation
+   * happens asynchronously via the onAuthStateChange listener in AuthContext.
+   * We wait for the session to be established by polling or using a promise.
    */
   async signInWithGoogle(): Promise<{ user: AuthUser; session: AuthSessionType }> {
     try {
-      // Generate code verifier for PKCE (recommended security)
-      // Code verifier should be a random string, then we hash it to get the challenge
-      const randomBytes = await Crypto.getRandomBytesAsync(32);
-      // Convert Uint8Array to base64url string (URL-safe base64)
-      // PKCE spec requires base64url encoding (RFC 7636)
-      const base64 = btoa(String.fromCharCode(...Array.from(randomBytes)))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '');
-      const codeVerifier = base64;
+      // DEBUG: Comprehensive logging
+      console.log('[DEBUG] ===== Google Sign-In Debug Start =====');
+      console.log('[DEBUG] Supabase client exists:', !!supabase);
+      console.log('[DEBUG] Supabase client URL:', supabase ? supabase.supabaseUrl : 'N/A');
       
-      // Generate code challenge from verifier using SHA256
-      // expo-crypto only supports BASE64 and HEX, so we use BASE64 then convert to BASE64URL
-      const base64Digest = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        codeVerifier,
-        { encoding: Crypto.CryptoEncoding.BASE64 }
-      );
-      
-      // Convert BASE64 to BASE64URL (URL-safe) for PKCE compliance
-      // Replace + with -, / with _, and remove = padding
-      const codeChallenge = base64Digest
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '');
+      // Check environment variables (masked for security)
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+      console.log('[DEBUG] Environment config:', {
+        url: supabaseUrl || 'MISSING',
+        key: supabaseKey ? `${supabaseKey.slice(0, 10)}...${supabaseKey.slice(-5)}` : 'MISSING',
+        keyLength: supabaseKey?.length || 0,
+      });
 
-      // Google OAuth configuration
-      // Get client ID from environment or app.json extra config
-      const Constants = require('expo-constants').default;
-      const clientId = 
-        process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || 
-        Constants.expoConfig?.extra?.googleClientId || 
-        '';
-      
+      // Generate redirect URI using expo-auth-session (recommended for Expo)
+      // This ensures the redirect URL is properly formatted for Expo deep linking
       const redirectUri = AuthSession.makeRedirectUri({
         scheme: Constants.expoConfig?.scheme || 'values',
-        path: 'auth',
+        path: 'auth/callback',
       });
-
-      if (!clientId) {
-        throw new AuthError(
-          'Google Client ID not configured. Please set EXPO_PUBLIC_GOOGLE_CLIENT_ID in your environment.',
-          'GOOGLE_CONFIG_ERROR',
-          'google'
-        );
-      }
-
-      // Request authorization using OAuth 2.0 with OpenID Connect
-      // Using code flow with PKCE for security
-      const request = new AuthSession.AuthRequest({
-        clientId,
-        scopes: ['openid', 'profile', 'email'],
-        responseType: AuthSession.ResponseType.Code, // Use code flow
+      
+      console.log('[DEBUG] App redirect configuration:', {
+        scheme: Constants.expoConfig?.scheme || 'values',
         redirectUri,
-        usePKCE: true,
-        codeChallenge: codeChallenge,
-        codeChallengeMethod: AuthSession.CodeChallengeMethod.S256,
-        codeVerifier: codeVerifier,
-        additionalParameters: {
-          access_type: 'offline', // Request refresh token
-        },
+        generatedBy: 'makeRedirectUri',
       });
 
-      // Perform authentication
-      const result = await request.promptAsync({
-        authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-        useProxy: Platform.OS === 'web' ? false : true, // Use Expo proxy for native, direct for web
-      });
-
-      // Handle cancellation
-      if (result.type === 'cancel' || result.type === 'dismiss') {
-        throw new AuthError('Sign in cancelled by user', 'USER_CANCELLED', 'google');
+      // Test Supabase connection first
+      console.log('[DEBUG] Testing Supabase connection...');
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        console.log('[DEBUG] Supabase getSession test:', {
+          hasSession: !!sessionData.session,
+          error: sessionError?.message || null,
+        });
+      } catch (testError) {
+        console.error('[DEBUG] Supabase connection test failed:', testError);
       }
 
-      // Handle error
-      if (result.type === 'error') {
-        const error = result.error || 'Unknown error';
-        const errorDescription = (result.params as any)?.error_description || '';
+      // Initiate OAuth flow - this opens the webview
+      console.log('[DEBUG] Calling signInWithOAuth...');
+      let oauthData: any = null;
+      let oauthError: any = null;
+      
+      try {
+        console.log('[DEBUG] OAuth options:', {
+          provider: 'google',
+          redirectTo: redirectUri,
+        });
+
+        const result = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            // Use expo-auth-session's makeRedirectUri for proper Expo deep linking
+            // This redirect URI must be added to Supabase Dashboard → Authentication → URL Configuration
+            redirectTo: redirectUri,
+          },
+        });
+        oauthData = result.data;
+        oauthError = result.error;
+        console.log('[DEBUG] OAuth response received:', {
+          hasData: !!oauthData,
+          hasUrl: !!oauthData?.url,
+          url: oauthData?.url ? oauthData.url.substring(0, 100) + '...' : null,
+          error: oauthError ? {
+            message: oauthError.message,
+            status: oauthError.status,
+            name: oauthError.name,
+          } : null,
+        });
+      } catch (oauthException) {
+        console.error('[DEBUG] OAuth exception caught:', oauthException);
+        if (oauthException instanceof Error) {
+          console.error('[DEBUG] Exception details:', {
+            name: oauthException.name,
+            message: oauthException.message,
+            stack: oauthException.stack?.split('\n').slice(0, 5).join('\n'),
+          });
+        }
+        throw oauthException;
+      }
+
+      if (oauthError) {
+        console.error('[DEBUG] OAuth error detected:', {
+          message: oauthError.message,
+          status: oauthError.status,
+          name: oauthError.name,
+        });
+        
+        // Handle cancellation (user closed the webview)
+        if (oauthError.message?.includes('cancel') || oauthError.message?.includes('dismiss')) {
+          throw new AuthError('Sign in cancelled by user', 'USER_CANCELLED', 'google');
+        }
         throw new AuthError(
-          `Google sign-in failed: ${error}${errorDescription ? ` - ${errorDescription}` : ''}`,
+          `Google sign-in failed: ${oauthError.message}`,
           'GOOGLE_SIGN_IN_ERROR',
           'google'
         );
       }
 
-      // Extract authorization code
-      if (result.type !== 'success' || !result.params?.code) {
-        throw new AuthError('No authorization code received from Google', 'NO_AUTH_CODE', 'google');
-      }
-
-      const authCode = result.params.code as string;
-
-      // Exchange authorization code for ID token
-      // In production, this should be done on your backend for security
-      // For now, we'll use Google's token endpoint directly (development only)
-      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: clientId,
-          code: authCode,
-          grant_type: 'authorization_code',
-          redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
-        }).toString(),
-      });
-
-      if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
+      // Check if we got a URL (means webview should open)
+      if (!oauthData?.url) {
+        console.error('[DEBUG] No URL in OAuth response - webview will not open');
         throw new AuthError(
-          `Token exchange failed: ${errorText}`,
-          'TOKEN_EXCHANGE_ERROR',
+          'OAuth flow did not return a URL. Check Supabase Google provider configuration.',
+          'OAUTH_NO_URL',
           'google'
         );
       }
 
-      const tokenData = await tokenResponse.json();
-      const idToken = tokenData.id_token;
+      console.log('[DEBUG] OAuth URL received:', oauthData.url);
+      
+      // In Expo, we need to manually open the OAuth URL
+      // Supabase doesn't automatically open the browser like it does on web
+      console.log('[DEBUG] Opening OAuth URL in browser...');
+      
+      // Use the same redirect URL we passed to Supabase
+      // This ensures the browser redirects back to our app
+      console.log('[DEBUG] Redirect configuration for browser:', {
+        redirectUrl: redirectUri,
+      });
 
-      if (!idToken) {
-        throw new AuthError('No ID token in token response', 'NO_ID_TOKEN', 'google');
+      console.log('[DEBUG] Opening browser with OAuth URL...');
+      console.log('[DEBUG] OAuth URL (first 150 chars):', oauthData.url.substring(0, 150));
+
+      // Set up a deep link listener as fallback in case WebBrowser doesn't catch the redirect
+      // This handles cases where Supabase redirects to localhost or other URLs
+      let deepLinkUrl: string | null = null;
+      const linkingSubscription = Linking.addEventListener('url', (event) => {
+        console.log('[DEBUG] Deep link received:', event.url);
+        if (event.url.includes('access_token') || event.url.includes('code=')) {
+          deepLinkUrl = event.url;
+        }
+      });
+
+      // Open the OAuth URL in browser
+      // WebBrowser will handle the redirect back to the app
+      // The redirectUrl should match what we passed to Supabase OAuth
+      let browserResult: WebBrowser.WebBrowserAuthSessionResult;
+      try {
+        browserResult = await WebBrowser.openAuthSessionAsync(
+          oauthData.url,
+          redirectUri, // This is where Supabase will redirect after OAuth
+          {
+            preferEphemeralSession: false,
+          }
+        );
+      } catch (browserError) {
+        console.error('[DEBUG] Error opening browser:', browserError);
+        linkingSubscription.remove();
+        throw new AuthError(
+          'Failed to open browser for Google sign-in',
+          'BROWSER_ERROR',
+          'google'
+        );
       }
 
-      if (__DEV__) {
-        console.log('[authService] Google OAuth successful, exchanging token with backend...');
+      console.log('[DEBUG] Browser result:', {
+        type: browserResult.type,
+        url: browserResult.type === 'success' ? browserResult.url?.substring(0, 100) + '...' : null,
+      });
+
+      // Remove the deep link listener
+      linkingSubscription.remove();
+
+      // Handle browser cancellation
+      if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
+        throw new AuthError('Sign in cancelled by user', 'USER_CANCELLED', 'google');
       }
 
-      // Exchange ID token with backend (or process locally in dev)
-      const { user, session } = await loginWithGoogle(idToken);
+      // Determine which URL to use for token extraction
+      // Prefer browserResult.url, but fall back to deepLinkUrl if browserResult doesn't have tokens
+      const redirectUrl = browserResult.type === 'success' && browserResult.url 
+        ? browserResult.url 
+        : deepLinkUrl;
 
-      if (__DEV__) {
-        console.log('[authService] Google sign-in complete:', user.id);
+      console.log('[DEBUG] Using redirect URL for token extraction:', {
+        fromBrowserResult: browserResult.type === 'success' && !!browserResult.url,
+        fromDeepLink: !!deepLinkUrl,
+        url: redirectUrl ? redirectUrl.substring(0, 200) : null,
+      });
+
+      // If we got a URL back (from browser or deep link), try to extract session from it
+      if (redirectUrl) {
+        console.log('[DEBUG] ===== Browser Redirect Received =====');
+        console.log('[DEBUG] Full redirect URL:', redirectUrl);
+        console.log('[DEBUG] Expected redirect URI:', redirectUri);
+        console.log('[DEBUG] URL matches expected:', redirectUrl.startsWith(redirectUri) || redirectUrl.includes('access_token') || redirectUrl.includes('code='));
+        
+        // Try to extract tokens from the redirect URL
+        // Supabase redirects with tokens in the URL fragment: #access_token=...&refresh_token=...
+        // OR in query params: ?access_token=...&refresh_token=...
+        // OR with an authorization code: ?code=... (which we'll exchange for tokens)
+        try {
+          const urlString = redirectUrl;
+          let accessToken: string | null = null;
+          let refreshToken: string | null = null;
+          
+          // Check for hash fragment first (most common)
+          const hashIndex = urlString.indexOf('#');
+          if (hashIndex !== -1) {
+            const hash = urlString.substring(hashIndex + 1);
+            const params = new URLSearchParams(hash);
+            accessToken = params.get('access_token');
+            refreshToken = params.get('refresh_token');
+            console.log('[DEBUG] Found tokens in URL hash fragment');
+          }
+          
+          // If no hash, check query params
+          if (!accessToken) {
+            const queryIndex = urlString.indexOf('?');
+            if (queryIndex !== -1) {
+              const query = urlString.substring(queryIndex + 1);
+              const params = new URLSearchParams(query);
+              accessToken = params.get('access_token');
+              refreshToken = params.get('refresh_token');
+              console.log('[DEBUG] Found tokens in URL query params');
+            }
+          }
+          
+          // Try regex as fallback (handles malformed URLs)
+          if (!accessToken) {
+            const tokenMatch = urlString.match(/[#&?]access_token=([^&]+)/);
+            const refreshMatch = urlString.match(/[#&?]refresh_token=([^&]+)/);
+            if (tokenMatch) {
+              accessToken = decodeURIComponent(tokenMatch[1]);
+              refreshToken = refreshMatch ? decodeURIComponent(refreshMatch[1]) : null;
+              console.log('[DEBUG] Found tokens using regex fallback');
+            }
+          }
+          
+          console.log('[DEBUG] Token extraction result:', {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            accessTokenLength: accessToken?.length || 0,
+          });
+          
+          if (accessToken) {
+            console.log('[DEBUG] Setting session from redirect URL tokens...');
+            const { data: { session }, error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            });
+            
+            if (sessionError) {
+              console.error('[DEBUG] Error setting session:', {
+                message: sessionError.message,
+                status: sessionError.status,
+                name: sessionError.name,
+              });
+            } else if (session) {
+              console.log('[DEBUG] ✅ Session set successfully from redirect URL');
+              console.log('[DEBUG] Session user ID:', session.user?.id);
+            } else {
+              console.log('[DEBUG] ⚠️ No session returned from setSession, but no error');
+            }
+          } else {
+            console.log('[DEBUG] ⚠️ No access token found in redirect URL');
+            console.log('[DEBUG] URL structure:', {
+              hasHash: urlString.includes('#'),
+              hasQuery: urlString.includes('?'),
+              urlLength: urlString.length,
+            });
+          }
+        } catch (urlError) {
+          console.error('[DEBUG] ❌ Error parsing redirect URL:', urlError);
+          if (urlError instanceof Error) {
+            console.error('[DEBUG] Error details:', {
+              name: urlError.name,
+              message: urlError.message,
+              stack: urlError.stack?.split('\n').slice(0, 5).join('\n'),
+            });
+          }
+        }
+        console.log('[DEBUG] ========================================');
+      } else {
+        console.log('[DEBUG] ⚠️ Browser result type:', browserResult.type);
+        if (browserResult.type === 'cancel') {
+          console.log('[DEBUG] User cancelled the OAuth flow');
+        } else if (browserResult.type === 'dismiss') {
+          console.log('[DEBUG] OAuth flow was dismissed');
+        } else {
+          console.log('[DEBUG] ⚠️ Browser result type is not success, but checking for deep link...');
+          // Even if browser result isn't success, check if we got a deep link
+          if (deepLinkUrl) {
+            console.log('[DEBUG] Found deep link URL despite browser result failure, attempting token extraction...');
+            // Try to extract tokens from deep link
+            try {
+              const urlString = deepLinkUrl;
+              const hashIndex = urlString.indexOf('#');
+              let accessToken: string | null = null;
+              let refreshToken: string | null = null;
+              
+              if (hashIndex !== -1) {
+                const hash = urlString.substring(hashIndex + 1);
+                const params = new URLSearchParams(hash);
+                accessToken = params.get('access_token');
+                refreshToken = params.get('refresh_token');
+              }
+              
+              if (accessToken) {
+                console.log('[DEBUG] Found tokens in deep link, setting session...');
+                const { data: { session }, error: sessionError } = await supabase.auth.setSession({
+                  access_token: accessToken,
+                  refresh_token: refreshToken || '',
+                });
+                
+                if (!sessionError && session) {
+                  console.log('[DEBUG] ✅ Session set from deep link');
+                }
+              }
+            } catch (deepLinkError) {
+              console.error('[DEBUG] Error processing deep link:', deepLinkError);
+            }
+          }
+        }
       }
 
-      return { user, session };
+      console.log('[DEBUG] Checking for immediate session after redirect...');
+
+      // Try to get session immediately (might already be set from redirect URL handling above)
+      const { data: { session: immediateSession }, error: immediateError } = await supabase.auth.getSession();
+      
+      if (immediateSession && immediateSession.user) {
+        console.log('[DEBUG] ✅ Found immediate session, resolving without waiting...');
+        
+        // Convert Supabase user to AuthUser
+        const userMetadata = immediateSession.user.user_metadata || {};
+        const authUser: AuthUser = {
+          id: immediateSession.user.id,
+          displayName: userMetadata.full_name || userMetadata.name || immediateSession.user.email?.split('@')[0],
+          firstName: userMetadata.given_name || userMetadata.first_name,
+          lastName: userMetadata.family_name || userMetadata.last_name,
+          email: immediateSession.user.email || undefined,
+          photoUrl: userMetadata.avatar_url || userMetadata.picture,
+          authProvider: 'google',
+          createdAt: immediateSession.user.created_at,
+          updatedAt: immediateSession.user.updated_at,
+          isOnboardingComplete: userMetadata.isOnboardingComplete,
+          isProfileComplete: userMetadata.isProfileComplete,
+          isValuesComplete: userMetadata.isValuesComplete,
+        };
+
+        // Create AuthSession
+        const authSession: AuthSessionType = {
+          userId: authUser.id,
+          authProvider: authUser.authProvider,
+          token: immediateSession.access_token,
+          refreshToken: immediateSession.refresh_token,
+          expiresAt: immediateSession.expires_at ? immediateSession.expires_at * 1000 : undefined,
+        };
+
+        console.log('[DEBUG] ✅ Returning user and session immediately');
+        return { user: authUser, session: authSession };
+      }
+
+      console.log('[DEBUG] No immediate session found, waiting for auth state change (SIGNED_IN event)...');
+      console.log('[DEBUG] Immediate session check result:', {
+        hasSession: !!immediateSession,
+        hasUser: !!immediateSession?.user,
+        error: immediateError?.message || null,
+      });
+
+      // Fallback: Wait for the session to be established after redirect
+      // This handles cases where the session isn't immediately available
+      return new Promise<{ user: AuthUser; session: AuthSessionType }>((resolve, reject) => {
+        let subscription: { unsubscribe: () => void } | null = null;
+        
+        const timeout = setTimeout(() => {
+          if (subscription) {
+            subscription.unsubscribe();
+          }
+          console.error('[DEBUG] ❌ Timeout waiting for auth state change');
+          reject(
+            new AuthError(
+              'Session not established after Google sign-in. Please try again.',
+              'SESSION_TIMEOUT',
+              'google'
+            )
+          );
+        }, 10000); // Reduced to 10 seconds since we should have session by now
+
+        // Listen for auth state changes
+        console.log('[DEBUG] Setting up auth state change listener...');
+        const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log('[DEBUG] ===== Auth State Change Event =====');
+          console.log('[DEBUG] Event:', event);
+          console.log('[DEBUG] Has session:', !!session);
+          console.log('[DEBUG] Has user:', !!session?.user);
+          console.log('[DEBUG] User ID:', session?.user?.id || 'N/A');
+          console.log('[DEBUG] ====================================');
+
+          if (event === 'SIGNED_IN' && session && session.user) {
+            clearTimeout(timeout);
+            if (authSubscription) {
+              authSubscription.unsubscribe();
+            }
+
+            // Convert Supabase user to AuthUser format
+            const supabaseUser = session.user;
+            const userMetadata = supabaseUser.user_metadata || {};
+
+            const authUser: AuthUser = {
+              id: supabaseUser.id,
+              displayName: userMetadata.full_name || userMetadata.name || supabaseUser.email?.split('@')[0],
+              firstName: userMetadata.given_name || userMetadata.first_name,
+              lastName: userMetadata.family_name || userMetadata.last_name,
+              email: supabaseUser.email || undefined,
+              photoUrl: userMetadata.avatar_url || userMetadata.picture,
+              authProvider: 'google',
+              createdAt: supabaseUser.created_at,
+              updatedAt: supabaseUser.updated_at,
+              isOnboardingComplete: userMetadata.isOnboardingComplete,
+              isProfileComplete: userMetadata.isProfileComplete,
+              isValuesComplete: userMetadata.isValuesComplete,
+            };
+
+            const authSession: AuthSessionType = {
+              userId: authUser.id,
+              authProvider: 'google',
+              token: session.access_token,
+              refreshToken: session.refresh_token,
+              expiresAt: session.expires_at ? session.expires_at * 1000 : undefined,
+            };
+
+            if (__DEV__) {
+              console.log('[authService] ✅ Google sign-in complete via Supabase:', authUser.id);
+            }
+
+            resolve({ user: authUser, session: authSession });
+          } else if (event === 'SIGNED_OUT') {
+            console.log('[DEBUG] SIGNED_OUT event received');
+            clearTimeout(timeout);
+            if (authSubscription) {
+              authSubscription.unsubscribe();
+            }
+            reject(new AuthError('Sign in was cancelled', 'USER_CANCELLED', 'google'));
+          } else {
+            console.log('[DEBUG] Other auth event:', event);
+          }
+        });
+
+        subscription = authSubscription;
+        console.log('[DEBUG] Auth state listener set up, waiting for events...');
+      });
     } catch (error) {
+      console.error('[DEBUG] ===== Error in signInWithGoogle =====');
+      console.error('[DEBUG] Error type:', error?.constructor?.name || typeof error);
+      console.error('[DEBUG] Error message:', error instanceof Error ? error.message : String(error));
+      if (error instanceof Error) {
+        console.error('[DEBUG] Error stack:', error.stack?.split('\n').slice(0, 10).join('\n'));
+      }
+      console.error('[DEBUG] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      console.error('[DEBUG] ======================================');
+
       if (error instanceof AuthError) {
         throw error;
       }
 
       // Handle network errors
       if (error instanceof Error) {
-        if (error.message.includes('Network')) {
+        if (error.message.includes('Network') || error.message.includes('network')) {
           throw new AuthError(
             'Network error. Please check your internet connection.',
             'NETWORK_ERROR',

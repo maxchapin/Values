@@ -49,7 +49,7 @@
     },
     "extra": {
       "googleClientId": "",
-      "supabaseRedirectTo": "https://nkcaaujkovelpqahmuug.supabase.co/auth/v1/callback"
+      "supabaseRedirectTo": "${EXPO_PUBLIC_SUPABASE_URL}/auth/v1/callback"
     }
   }
 }

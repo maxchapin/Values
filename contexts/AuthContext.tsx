@@ -5,10 +5,11 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import type { AuthUser, AuthProvider, AuthSession, PhoneAuthState } from '../types/auth';
+import type { AuthUser, AuthProvider as AuthProviderType, AuthSession, PhoneAuthState } from '../types/auth';
 import { AuthError } from '../types/auth';
 import { authService } from '../services/authService';
 import { supabase } from '../services/supabase';
+import { upsertSupabaseProfile } from '../services/supabaseProfile';
 
 const AUTH_SESSION_KEY = 'auth_session';
 const AUTH_USER_KEY = 'auth_user';
@@ -61,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lastName: userMetadata.family_name || userMetadata.last_name,
       email: supabaseUser.email || undefined,
       photoUrl: userMetadata.avatar_url || userMetadata.picture,
-      authProvider: userMetadata.provider || 'google',
+      authProvider: (userMetadata.provider || 'google') as AuthProviderType,
       createdAt: supabaseUser.created_at,
       updatedAt: supabaseUser.updated_at,
       isOnboardingComplete: userMetadata.isOnboardingComplete,
@@ -179,6 +180,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('[AuthContext] ✅ User signed in via Supabase:', authUser.id);
             console.log('[AuthContext] ✅ Loading set to false, navigation should happen now');
           }
+
+          // Create/update profile in Supabase database (non-blocking)
+          // This ensures profile exists in Supabase for RLS and future queries
+          upsertSupabaseProfile(authUser)
+            .then(() => {
+              if (__DEV__) {
+                console.log('[AuthContext] ✅ Profile created/updated in Supabase');
+              }
+            })
+            .catch((profileError) => {
+              // Log but don't fail auth - profile can be created later
+              if (__DEV__) {
+                console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
+              }
+            });
         } catch (error) {
           if (__DEV__) {
             console.error('[AuthContext] Error persisting Supabase session:', error);
@@ -247,6 +263,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (__DEV__) {
         console.log('[AuthContext] Persisted session:', user.id);
       }
+
+      // Create/update profile in Supabase database (non-blocking)
+      // This ensures profile exists in Supabase for RLS and future queries
+      // Note: For Supabase OAuth, onAuthStateChange listener also handles this
+      upsertSupabaseProfile(user)
+        .then(() => {
+          if (__DEV__) {
+            console.log('[AuthContext] ✅ Profile created/updated in Supabase');
+          }
+        })
+        .catch((profileError) => {
+          // Log but don't fail auth - profile can be created later
+          if (__DEV__) {
+            console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
+          }
+        });
     } catch (error) {
       if (__DEV__) {
         console.error('[AuthContext] Error persisting session:', error);

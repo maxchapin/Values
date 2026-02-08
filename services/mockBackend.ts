@@ -123,6 +123,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-15T10:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(1),
   },
   {
     id: 'u2',
@@ -161,6 +162,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-16T11:30:00Z',
+    lastLoginAt: lastLoginDaysAgo(5),
   },
   {
     id: 'u3',
@@ -197,6 +199,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-17T14:20:00Z',
+    lastLoginAt: lastLoginDaysAgo(0),
   },
   {
     id: 'u4',
@@ -234,6 +237,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-18T09:15:00Z',
+    lastLoginAt: lastLoginDaysAgo(7),
   },
   {
     id: 'u5',
@@ -272,6 +276,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-19T16:45:00Z',
+    lastLoginAt: lastLoginDaysAgo(2),
   },
   {
     id: 'u6',
@@ -308,6 +313,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-20T12:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(0),
   },
   // u7–u12: extra mock users so Discover has 12+ candidates and relaxation is rarely needed
   {
@@ -337,6 +343,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-21T10:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(14),
   },
   {
     id: 'u8',
@@ -366,6 +373,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-22T11:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(10),
   },
   {
     id: 'u9',
@@ -393,6 +401,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-23T14:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(3),
   },
   {
     id: 'u10',
@@ -421,6 +430,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-24T09:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(1),
   },
   {
     id: 'u11',
@@ -450,6 +460,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-25T16:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(30),
   },
   {
     id: 'u12',
@@ -477,6 +488,7 @@ const MOCK_USERS: User[] = [
       []
     ),
     createdAt: '2024-01-26T12:00:00Z',
+    lastLoginAt: lastLoginDaysAgo(0),
   },
 ];
 
@@ -542,8 +554,42 @@ function computeMatch(
 /** Default radius (miles) for mock mode when not specified. */
 const DEFAULT_RADIUS_MILES = 50;
 
+/** Returns an ISO string for "n days ago" (used for mock lastLoginAt variety). */
+function lastLoginDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
 /** Relaxed radius (miles) used when strict filters yield 0 candidates (mock-only fallback). */
 const RELAXED_RADIUS_MILES = 2500;
+
+/** Composite score: recency window (days). After this many days since last login, recencyScore = 0. */
+const RECENCY_WINDOW_DAYS = 14;
+/** Weight for similarity (values match) in composite score. */
+const W_SIMILARITY = 0.7;
+/** Weight for recency (last login) in composite score. */
+const W_RECENCY = 0.3;
+
+/**
+ * Recency score 0–100 from last login. Linear decay over RECENCY_WINDOW_DAYS.
+ * No lastLoginAt or invalid date → 0.
+ */
+function getRecencyScore(lastLoginAt: string | null | undefined): number {
+  if (!lastLoginAt || typeof lastLoginAt !== 'string') return 0;
+  const t = (Date.now() - new Date(lastLoginAt).getTime()) / (24 * 60 * 60 * 1000); // days since
+  if (t < 0) return 100; // future date → treat as just now
+  if (t >= RECENCY_WINDOW_DAYS) return 0;
+  return Math.max(0, 100 * (1 - t / RECENCY_WINDOW_DAYS));
+}
+
+/**
+ * Composite score for Discover ordering: blend similarity (values match) and recency (last login).
+ * compositeScore = W_SIMILARITY * similarityScore + W_RECENCY * recencyScore (both 0–100).
+ */
+function getCompositeScore(similarityScore: number, recencyScore: number): number {
+  return W_SIMILARITY * similarityScore + W_RECENCY * recencyScore;
+}
 
 /**
  * Returns true if the candidate's gender matches the viewer's "interested in" preference.
@@ -589,15 +635,19 @@ function buildMatchesForUser(
         currentUser,
         user
       );
-      return {
+      const recencyScore = getRecencyScore(user.lastLoginAt ?? null);
+      const compositeScore = getCompositeScore(similarityScore, recencyScore);
+      const match: Match = {
         user,
         similarityScore,
         sharedValues,
         sharedValuesCount: sharedValues.length,
         valuesExplanation,
       };
+      return { match, compositeScore };
     })
-    .sort((a, b) => b.similarityScore - a.similarityScore);
+    .sort((a, b) => b.compositeScore - a.compositeScore)
+    .map(({ match }) => match);
 }
 
 /**
@@ -675,13 +725,14 @@ export function getUserById(userId: string): Promise<User | null> {
  * unless we add them back in.
  */
 export function upsertMockUser(user: User): void {
+  const lastLoginAt = new Date().toISOString(); // so this user surfaces as "recently active" in others' Discover
   const existing = MOCK_USERS.find((u) => u.id === user.id);
   if (existing) {
-    Object.assign(existing, user);
+    Object.assign(existing, user, { lastLoginAt });
     return;
   }
 
-  MOCK_USERS.push(user);
+  MOCK_USERS.push({ ...user, lastLoginAt });
 }
 
 /**

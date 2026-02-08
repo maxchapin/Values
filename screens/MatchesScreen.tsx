@@ -27,6 +27,8 @@ import type { ConversationPreviewData } from '../store/matchesStore';
 
 const AVATAR_SIZE = 60;
 const MESSAGE_PREVIEW_MAX = 40;
+/** Used by getItemLayout for FlatList memory optimization. */
+const MATCH_ROW_HEIGHT = 88;
 
 /** Props for a single match row: match + conversation preview (MatchChat-equivalent). */
 export interface MatchRowProps {
@@ -309,6 +311,11 @@ export const MatchesScreen: React.FC = () => {
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={() => <View style={styles.divider} />}
         showsVerticalScrollIndicator={false}
+        windowSize={5}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={5}
+        initialNumToRender={5}
+        getItemLayout={(_data, index) => ({ length: MATCH_ROW_HEIGHT, offset: (MATCH_ROW_HEIGHT + 1) * index, index })}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
         }

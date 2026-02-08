@@ -12,6 +12,7 @@ import type { PersistedUserData } from './utils/storage';
 import { theme } from './theme';
 import { User } from './types/user';
 
+
 /**
  * Loading screen shown while rehydrating persisted data
  */
@@ -42,6 +43,13 @@ export default function App() {
   } | null>(null);
   const { rehydrate: rehydrateUser } = useUserStore();
   const { rehydrate: rehydrateMatches } = useMatchesStore();
+
+  // DEV: log memory every 15s to track optimization (target 200–250MB)
+  useEffect(() => {
+    if (!__DEV__) return () => {};
+    const { monitorMemory } = require('./services/memoryMonitor');
+    return monitorMemory();
+  }, []);
 
   useEffect(() => {
     // Only run once on mount - don't depend on store functions
@@ -132,6 +140,8 @@ export default function App() {
             const computedProfileComplete = checkProfileComplete(user);
             const computedValuesComplete = checkValuesComplete(user);
             rehydrateUser(user, computedProfileComplete, computedValuesComplete, keepSignedIn);
+            // Explicitly mark hydrated so the gate never waits on rehydrate() implementation (same as other branches).
+            useUserStore.setState({ isHydrated: true });
 
             // Ensure mock backend recognizes this persisted user on cold start.
             // Without this, `findMatches(user.id)` can return [] forever because the userId

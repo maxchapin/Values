@@ -172,7 +172,7 @@ export const DiscoverScreen: React.FC = () => {
   return (
     <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
       <View style={styles.container}>
-        {/* Header - extends into status bar */}
+        {/* Header: Filters (left) + Values (centered) */}
         <View style={[styles.headerBar, { paddingTop: insets.top + theme.spacing.lg, backgroundColor: theme.colors.headerBackground }]}>
           <TouchableOpacity
             style={styles.filterButton}
@@ -180,10 +180,14 @@ export const DiscoverScreen: React.FC = () => {
             onLongPress={handleFilterPress}
           >
             <Text style={styles.filterButtonText}>Filters</Text>
-            <Text style={styles.filterBadge}>
+            {/*<Text style={styles.filterBadge}>
               {typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : 50} mi
-            </Text>
+            </Text> */}
           </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            Values
+          </Text>
+          <View style={styles.headerSpacer} />
         </View>
 
         {/*{__DEV__ && (
@@ -247,12 +251,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerBar: {
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.base,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: theme.spacing.md,
+    gap: theme.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.headerBorder,
   },
@@ -273,9 +277,20 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.semibold,
   },
   filterBadge: {
-    fontSize: theme.typography.fontSize.xs,
+    fontSize: 10,
     color: theme.colors.headerTintSecondary,
     fontWeight: theme.typography.fontWeight.medium,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.headerTint,
+    textAlign: 'center',
+    marginHorizontal: theme.spacing.sm,
+  },
+  headerSpacer: {
+    width: 72,
   },
   cardArea: {
     flex: 1,

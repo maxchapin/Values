@@ -12,3 +12,5 @@ export type {
 } from './useForm';
 
 export { useDebugAccess } from './useDebugAccess';
+export { usePhotoLibraryPermission } from './usePhotoLibraryPermission';
+export type { MediaLibraryPermissionStatus } from './usePhotoLibraryPermission';

@@ -8,6 +8,8 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "values",
+    "imageMaxAge": 60,
+    "assetBundlePatterns": ["**/*"],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -17,7 +19,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "This app uses your photos for your dating profile."
+          "photosPermission": "We use your photos only so you can choose profile pictures to show to potential matches."
         }
       ],
       [

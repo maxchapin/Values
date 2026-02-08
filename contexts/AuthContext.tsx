@@ -9,7 +9,7 @@ import type { AuthUser, AuthProvider as AuthProviderType, AuthSession, PhoneAuth
 import { AuthError } from '../types/auth';
 import { authService } from '../services/authService';
 import { supabase } from '../services/supabase';
-import { upsertSupabaseProfile } from '../services/supabaseProfile';
+import { upsertSupabaseProfile, touchLastLoginAt } from '../services/supabaseProfile';
 
 const AUTH_SESSION_KEY = 'auth_session';
 const AUTH_USER_KEY = 'auth_user';
@@ -97,6 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
           await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
           setUser(authUser);
+          touchLastLoginAt().catch(() => {}); // Update last_login_at for Discover composite score
 
           if (__DEV__) {
             console.log('[AuthContext] ✅ Restored Supabase session:', authUser.id);
@@ -171,6 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
           await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
           setUser(authUser);
+          touchLastLoginAt().catch(() => {}); // Update last_login_at for Discover composite score
           // CRITICAL: Set loading to false immediately so navigation can happen
           setLoading(false);
           if (__DEV__) {

@@ -39,11 +39,13 @@ export interface SupabaseProfile {
   is_onboarding_complete: boolean;
   created_at: string;
   updated_at: string;
+  /** Last app open / sign-in; used for Discover composite score (similarity + recency). */
+  last_login_at: string | null;
 }
 
-/** Columns to select when fetching discovery candidates (includes gender for card and Interested In filtering). */
+/** Lean discovery select: only columns needed for cards + match scoring. Avoid select('*') for memory. */
 const DISCOVERY_SELECT =
-  'id, first_name, age, gender, photos, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, prompts, selected_values, is_profile_complete, is_values_complete, created_at, updated_at';
+  'id, first_name, age, gender, photos, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, prompts, selected_values, is_profile_complete, is_values_complete, created_at, updated_at, last_login_at';
 
 /** Map app User.gender to Supabase profiles.gender. */
 function userGenderToProfileGender(g: User['gender']): ProfileGender {
@@ -144,6 +146,7 @@ export async function upsertSupabaseProfile(
       is_onboarding_complete: false, // Will be computed
     }),
     updated_at: new Date().toISOString(),
+    last_login_at: new Date().toISOString(), // So this user appears recently active in others' Discover
   };
 
   // Compute onboarding completion
@@ -153,14 +156,14 @@ export async function upsertSupabaseProfile(
       !!profileData.is_values_complete;
   }
 
-  // Upsert profile (insert or update)
+  // Upsert profile (insert or update). Explicit select to avoid select('*') and keep payload lean.
   const { data, error } = await supabase
     .from('profiles')
     .upsert(profileData, {
       onConflict: 'id',
       ignoreDuplicates: false,
     })
-    .select()
+    .select('id, email, display_name, first_name, last_name, photo_url, auth_provider, age, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at')
     .single();
 
   if (error) {
@@ -173,6 +176,27 @@ export async function upsertSupabaseProfile(
   }
 
   return data as SupabaseProfile;
+}
+
+/**
+ * Update the current user's last_login_at to now.
+ * Call on app open (session restore) and after sign-in so Discover composite score treats them as recently active.
+ */
+export async function touchLastLoginAt(): Promise<void> {
+  const { user, error: authError } = await ensureSession();
+  if (authError || !user) return;
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      last_login_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id);
+
+  if (error && __DEV__) {
+    console.warn('[supabaseProfile] touchLastLoginAt failed:', error.message);
+  }
 }
 
 /**
@@ -189,7 +213,7 @@ export async function getSupabaseProfile(): Promise<SupabaseProfile | null> {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, display_name, first_name, last_name, photo_url, auth_provider, age, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at')
+    .select('id, email, display_name, first_name, last_name, photo_url, auth_provider, age, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at')
     .eq('id', user.id)
     .single();
 
@@ -229,12 +253,14 @@ export interface DiscoveryProfileRow {
   is_values_complete: boolean;
   created_at: string;
   updated_at: string;
+  last_login_at: string | null;
 }
 
 /**
  * Fetch profiles for the Discover screen.
- * Selects gender so the card can display it and so Interested In filtering can be applied.
+ * Selects gender and last_login_at so the card can display it and composite ordering (similarity + recency) can be applied.
  * Excludes the viewer. Optionally filter by interestedIn (men -> gender=man, women -> gender=woman, everyone -> no filter).
+ * When building Match[] from rows, set user.lastLoginAt = row.last_login_at and use getRecencyScore/getCompositeScore from mockBackend for ordering.
  * SECURITY: Depends on RLS allowing read of other users' profiles for discovery.
  */
 export async function getDiscoveryProfiles(

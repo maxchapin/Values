@@ -231,6 +231,10 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
         keyExtractor={(item) => item.key}
         contentContainerStyle={[styles.listContent, listItems.length === 0 && styles.listContentEmpty]}
         keyboardShouldPersistTaps="handled"
+        windowSize={3}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        initialNumToRender={15}
         ListEmptyComponent={
           listItems.length === 0 ? (
             <View style={styles.emptyWrap}>

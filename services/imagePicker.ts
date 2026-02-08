@@ -1,10 +1,14 @@
 /**
  * Image Picker Service
- * Wraps expo-image-picker for profile photos: media library permission + launch.
- * Returns selected image URI(s) in a typed way; handles cancel gracefully.
+ *
+ * Wraps expo-image-picker for profile photos: ensures media library permission,
+ * quality 0.7 + 1:1 aspect for lower memory. Optional resizeProfileImage() for
+ * further compression (quality 0.6, max width 800) when saving profile photos.
  */
 
 import * as ImagePicker from 'expo-image-picker';
+import { ensurePhotoLibraryPermission } from './photoLibraryPermission';
+import { resizeProfileImage } from '../utils/imageUtils';
 
 export type PickImageResult =
   | { picked: true; uri: string }
@@ -12,21 +16,13 @@ export type PickImageResult =
   | { picked: false; canceled: false; error: string };
 
 /**
- * Request media library permission. Call before opening the picker so the user
- * sees the prompt at a predictable time.
- */
-export async function requestMediaLibraryPermission(): Promise<boolean> {
-  const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  return granted;
-}
-
-/**
- * Open the system image library, limited to images. Requests permission if needed.
- * Returns the selected image URI when the user picks one; returns a typed
- * "canceled" result when they dismiss without selecting. Never throws for cancel.
+ * Open the system image library for choosing a profile photo.
+ * Always checks/requests permission first via ensurePhotoLibraryPermission();
+ * only opens the picker when permission is granted. Handles canceled and
+ * limited-access (Selected Photos) without errors.
  */
 export async function pickImageFromLibrary(): Promise<PickImageResult> {
-  const granted = await requestMediaLibraryPermission();
+  const granted = await ensurePhotoLibraryPermission();
   if (!granted) {
     return { picked: false, canceled: false, error: 'Permission to access photos was denied.' };
   }
@@ -34,8 +30,8 @@ export async function pickImageFromLibrary(): Promise<PickImageResult> {
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     allowsEditing: true,
-    aspect: [3, 4],
-    quality: 1,
+    aspect: [1, 1],
+    quality: 0.7,
   });
 
   if (result.canceled) {
@@ -47,5 +43,9 @@ export async function pickImageFromLibrary(): Promise<PickImageResult> {
     return { picked: false, canceled: false, error: 'No image was returned.' };
   }
 
-  return { picked: true, uri: asset.uri };
+  // Resize/compress for profile (quality 0.6, max 800px) to save memory and bandwidth
+  const resized = await resizeProfileImage(asset.uri);
+  const uri = resized.ok ? resized.uri : asset.uri;
+
+  return { picked: true, uri };
 }

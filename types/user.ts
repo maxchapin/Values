@@ -64,6 +64,8 @@ export interface User {
   settings?: UserSettings; // User preferences and settings
   createdAt: string;
   updatedAt?: string;
+  /** Last login timestamp (ISO string). Used for Discover ordering: blend with similarity score so active users surface first. */
+  lastLoginAt?: string | null;
 }
 
 export interface UserProfile {

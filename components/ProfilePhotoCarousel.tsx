@@ -94,11 +94,18 @@ export const ProfilePhotoCarousel = forwardRef<ProfilePhotoCarouselRef, ProfileP
         scrollEventThrottle={32}
         decelerationRate="fast"
       >
-        {safePhotos.map((uri, i) => (
-          <View key={`${uri}-${i}`} style={[styles.slide, { width: slideWidth, height }]}>
-            <Image source={{ uri }} style={styles.image} resizeMode="cover" />
-          </View>
-        ))}
+        {safePhotos.map((uri, i) => {
+          const isVisible = i >= page - 1 && i <= page + 1;
+          return (
+            <View key={`${uri}-${i}`} style={[styles.slide, { width: slideWidth, height }]}>
+              {isVisible ? (
+                <Image source={{ uri }} style={styles.image} resizeMode="cover" />
+              ) : (
+                <View style={[styles.image, styles.imagePlaceholder]} />
+              )}
+            </View>
+          );
+        })}
       </ScrollView>
       <View style={styles.dots}>
         {safePhotos.map((_, i) => (
@@ -126,6 +133,9 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  imagePlaceholder: {
+    backgroundColor: theme.colors.backgroundSecondary,
   },
   slide: {
     overflow: 'hidden',

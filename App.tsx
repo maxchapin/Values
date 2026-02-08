@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthGate } from './components/AuthGate';
@@ -39,7 +40,7 @@ export default function App() {
     autoLogin: boolean;
     reason: string;
   } | null>(null);
-  const { rehydrate: rehydrateUser, isHydrated } = useUserStore();
+  const { rehydrate: rehydrateUser } = useUserStore();
   const { rehydrate: rehydrateMatches } = useMatchesStore();
 
   useEffect(() => {
@@ -104,6 +105,7 @@ export default function App() {
               interestedIn: persistedUser.interestedIn as User['interestedIn'],
               locationCoordinates: ud.locationCoordinates ?? null,
               locationLabel: ud.locationLabel ?? ud.location ?? null,
+              neighborhood: (persistedUser as { neighborhood?: string | null }).neighborhood ?? null,
               hometown: persistedUser.hometown,
               job: persistedUser.job,
               education: persistedUser.education,
@@ -235,42 +237,48 @@ export default function App() {
     };
   }, []); // Empty dependency array - only run once on mount
 
-  if (isRehydrating || !isHydrated) {
-    return (
-      <ErrorBoundary>
-        <LoadingScreen />
-        {__DEV__ && (
-          <View style={styles.devStatusContainer}>
-            <Text style={styles.devStatusText}>{rehydrationStatus}</Text>
-            {rehydrationResult && (
-              <Text style={styles.devResultText}>
-                {rehydrationResult.autoLogin ? '✅' : '❌'} {rehydrationResult.reason}
-              </Text>
-            )}
-          </View>
-        )}
-        <StatusBar style="auto" />
-      </ErrorBoundary>
-    );
-  }
+  // Use only local state for the gate to avoid a race between setIsRehydrating(false)
+  // and the store subscription for isHydrated. We always set the store's isHydrated
+  // before setting isRehydrating to false, so opening the gate on !isRehydrating is safe.
+  const showMainApp = !isRehydrating;
 
-  // Note: AuthProvider handles its own session restoration from secure storage
-  // The old App.tsx rehydration (userStore-based) is kept for backward compatibility
-  // but AuthContext is now the source of truth for authentication state
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <AuthGate />
-        {__DEV__ && rehydrationResult && (
-          <View style={styles.devResultContainer}>
-            <Text style={styles.devResultText}>
-              {rehydrationResult.autoLogin ? '✅ Auto-logged in' : '❌ Showing login'}
-            </Text>
-          </View>
-        )}
-        <StatusBar style="auto" />
-      </AuthProvider>
-    </ErrorBoundary>
+    <>
+      <StatusBar
+        style={showMainApp ? 'dark' : 'auto'}
+        backgroundColor={showMainApp ? theme.colors.headerBackground : undefined}
+      />
+      {!showMainApp ? (
+        <ErrorBoundary>
+          <LoadingScreen />
+          {__DEV__ && (
+            <View style={styles.devStatusContainer}>
+              <Text style={styles.devStatusText}>{rehydrationStatus}</Text>
+              {rehydrationResult && (
+                <Text style={styles.devResultText}>
+                  {rehydrationResult.autoLogin ? '✅' : '❌'} {rehydrationResult.reason}
+                </Text>
+              )}
+            </View>
+          )}
+        </ErrorBoundary>
+      ) : (
+        <ErrorBoundary>
+          <SafeAreaProvider>
+            <AuthProvider>
+              <AuthGate />
+              {__DEV__ && rehydrationResult && (
+                <View style={styles.devResultContainer}>
+                  <Text style={styles.devResultText}>
+                    {rehydrationResult.autoLogin ? '✅ Auto-logged in' : '❌ Showing login'}
+                  </Text>
+                </View>
+              )}
+            </AuthProvider>
+          </SafeAreaProvider>
+        </ErrorBoundary>
+      )}
+    </>
   );
 }
 

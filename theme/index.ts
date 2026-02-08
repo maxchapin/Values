@@ -7,6 +7,12 @@
 
 export const theme = {
   colors: {
+    // App-wide header (status bar + header bar) - single color from notch to content
+    headerBackground: '#e3f5ff',
+    headerTint: '##e3f5ff',
+    headerTintSecondary: '#666666',
+    headerBorder: 'rgba(0,0,0,0.12)',
+
     // Primary colors
     primary: '#007AFF',
     primaryDark: '#0051D5',

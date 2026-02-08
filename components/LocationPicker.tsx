@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { theme } from '../theme';
-import { searchPlaces, reverseGeocode, type GeocodeResult } from '../services/geocoding';
+import { searchPlaces, reverseGeocodeDetailed, type GeocodeResult } from '../services/geocoding';
 
 /** Default map center when no saved location (Cambridge, MA) */
 const DEFAULT_REGION: Region = {
@@ -29,9 +29,9 @@ export interface LocationCoordinates {
 export interface LocationPickerProps {
   /** Current or initial coordinates. If null, map uses default center and no pin. */
   coordinates: LocationCoordinates | null;
-  /** Current or initial human-readable label from reverse geocoding. */
+  /** Current or initial label to show (e.g. neighborhood like "Harvard Square"). */
   locationLabel: string | null;
-  /** Called when the user sets/moves the pin or selects a search result. */
+  /** Called when the user sets/moves the pin or selects a search result. Passes coordinates and neighborhood (or fallback label). */
   onChange: (coordinates: LocationCoordinates, locationLabel: string | null) => void;
   /** Optional validation error message. */
   error?: string | null;
@@ -119,7 +119,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         longitudeDelta: 0.05,
       });
 
-      const label = await reverseGeocode(item.lat, item.lon);
+      const result = await reverseGeocodeDetailed(item.lat, item.lon);
+      const label = result?.neighborhood ?? result?.displayName ?? null;
       onChange(coords, label);
     },
     [onChange]
@@ -129,7 +130,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
     async (e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
       const { latitude, longitude } = e.nativeEvent.coordinate;
       const coords: LocationCoordinates = { latitude, longitude };
-      const label = await reverseGeocode(latitude, longitude);
+      const result = await reverseGeocodeDetailed(latitude, longitude);
+      const label = result?.neighborhood ?? result?.displayName ?? null;
       onChange(coords, label);
     },
     [onChange]
@@ -139,7 +141,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
     async (e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
       const { latitude, longitude } = e.nativeEvent.coordinate;
       const coords: LocationCoordinates = { latitude, longitude };
-      const label = await reverseGeocode(latitude, longitude);
+      const result = await reverseGeocodeDetailed(latitude, longitude);
+      const label = result?.neighborhood ?? result?.displayName ?? null;
       onChange(coords, label);
     },
     [onChange]
@@ -147,8 +150,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Location *</Text>
-      <Text style={styles.hint}>Tap the map or drag the pin to set your location. You can also search below.</Text>
+      <Text style={styles.label}>Location</Text>
+      <Text style={styles.hint}>Tap the map or drag the pin to set your location; the label shown is your neighborhood. You can also search below.</Text>
 
       <View style={[styles.searchWrap]}>
         <TextInput
@@ -210,9 +213,9 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         </MapView>
       </View>
 
-      {locationLabel && (
-        <Text style={styles.selectedLabel}>Selected: {locationLabel}</Text>
-      )}
+      {locationLabel ? (
+        <Text style={styles.selectedLabel}>Neighborhood: {locationLabel}</Text>
+      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>

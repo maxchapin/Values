@@ -23,6 +23,7 @@ export type ScreenName =
   | 'Discover'
   | 'Matches'
   | 'Profile'
+  | 'EditProfile'
   | 'Home'
   | 'Details';
 

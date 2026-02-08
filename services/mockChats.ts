@@ -11,7 +11,7 @@ function lastMessagePreview(messages: Message[], maxLen = PREVIEW_MAX_LEN): stri
   const sorted = [...messages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   for (let i = sorted.length - 1; i >= 0; i--) {
     const m = sorted[i];
-    const content = m.text ?? (m.imageUrl ? '📷 Photo' : '');
+    const content = m.text ?? '';
     if (content) {
       return content.length > maxLen ? content.slice(0, maxLen - 1) + '…' : content;
     }
@@ -71,8 +71,7 @@ const match1Messages: Message[] = [
   {
     id: 'm1-6',
     senderId: 'u1',
-    text: 'Here’s a photo of the place 😊',
-    imageUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400',
+    text: 'Looking forward to it 😊',
     timestamp: new Date(now - oneDay + 30 * 60 * 1000),
     isRead: false,
   },
@@ -129,8 +128,7 @@ const match3Messages: Message[] = [
   {
     id: 'm3-3',
     senderId: 'u3',
-    text: 'This is from my last trip',
-    imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400',
+    text: 'This is from my last trip — such a great view!',
     timestamp: new Date(now - oneDay),
     isRead: true,
   },

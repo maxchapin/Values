@@ -4,8 +4,26 @@
 
 export type Gender = 'male' | 'female' | 'non-binary' | 'prefer-not-to-say';
 
+/**
+ * Gender values as stored in Supabase `profiles.gender`.
+ * Use for DB reads/writes and display labels (Man, Woman, Nonbinary).
+ */
+export type ProfileGender = 'man' | 'woman' | 'nonbinary' | null;
+
 // Who the user wants to see (match preference)
 export type InterestedIn = 'men' | 'women' | 'everyone';
+
+/**
+ * Supabase profiles table row shape.
+ * Use for type-safe selects; gender matches DB enum/value.
+ */
+export interface Profile {
+  id: string;
+  gender: ProfileGender;
+  /** Neighborhood/area name (e.g. "Harvard Square"); visible to all. */
+  neighborhood?: string | null;
+  /** Other fields omitted here; use SupabaseProfile for full row. */
+}
 
 export interface Prompt {
   id: string;
@@ -31,7 +49,9 @@ export interface User {
   locationCoordinates: LocationCoordinates | null;
   /** Human-readable label from reverse geocoding (e.g. "Cambridge, MA, USA"). */
   locationLabel: string | null;
-  /** Free text: "Where are you from?" — informational only, not used for matching. */
+  /** Neighborhood/area name (e.g. "Harvard Square", "Central Square"); visible to all, optional. */
+  neighborhood?: string | null;
+  /** Free text: "Where are you from?" — informational only, optional. */
   hometown?: string;
   job?: string;
   education?: string;
@@ -53,6 +73,7 @@ export interface UserProfile {
   interestedIn?: InterestedIn;
   locationCoordinates: LocationCoordinates | null;
   locationLabel: string | null;
+  neighborhood?: string | null;
   hometown?: string;
   job?: string;
   education?: string;
@@ -93,10 +114,9 @@ export interface UserFilters {
 export interface UserSettings {
   /** Whether profile is visible to others in Discover */
   isProfileVisible: boolean;
-  /** Notification preferences */
+  /** Notification preferences (push notifications) */
   notifications: {
     newMatch: boolean;
     newMessage: boolean;
-    newLikesYou: boolean;
   };
 }

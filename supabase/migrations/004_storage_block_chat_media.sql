@@ -1,0 +1,5 @@
+-- Block chat image/media uploads. Chat is text-only for safety.
+-- We do NOT create a storage bucket for chat media. Existing 002_storage_buckets.sql
+-- only allows INSERT on bucket_id = 'avatars'. So storage.objects INSERT for any
+-- other bucket (e.g. chat-media) has no matching policy and is denied by RLS.
+-- Do not add an INSERT policy for a chat-media or chat-images bucket.

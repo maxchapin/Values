@@ -63,6 +63,7 @@ export async function saveUserData(user: User, isProfileComplete: boolean, isVal
       interestedIn: user.interestedIn,
       locationCoordinates: user.locationCoordinates,
       locationLabel: user.locationLabel,
+      neighborhood: user.neighborhood,
       hometown: user.hometown,
       job: user.job,
       education: user.education,

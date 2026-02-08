@@ -1,29 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity, Alert, ScrollView, Linking } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as MailComposer from 'expo-mail-composer';
 import { useUserStore } from '../store/userStore';
 import { useAuth } from '../contexts/AuthContext';
 import { ScreenContainer } from '../components/ScreenContainer';
-import { PrimaryButton } from '../components/PrimaryButton';
 import { trackScreenView } from '../services/analytics';
 import { theme } from '../theme';
 import { RootStackParamList } from '../navigation/types';
 import { UserSettings } from '../types/user';
+import { updateSupabasePreferences, deleteSupabaseProfile } from '../services/supabaseProfile';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
+/** Support email – replace with your real address later */
+const SUPPORT_EMAIL = 'support@example.com';
+
 /**
  * Settings Screen
- * Account settings, notification preferences, and help/support
+ * Account settings, notification preferences (working toggles), help/support, logout, delete account.
  */
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
-  const { currentUser, updateSettings, deleteAccount } = useUserStore();
-  const { signOut } = useAuth(); // Use unified auth signOut
+  const { currentUser, updateSettings } = useUserStore();
+  const { signOut, user: authUser } = useAuth();
   const [isProfileVisible, setIsProfileVisible] = useState(true);
-  const [notifications, setNotifications] = useState({
+  const [notifications, setNotifications] = useState<UserSettings['notifications']>({
     newMatch: true,
     newMessage: true,
-    newLikesYou: true,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -31,21 +34,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     trackScreenView('Settings');
   }, []);
 
-  // Initialize settings from user profile
   useEffect(() => {
     if (currentUser?.settings) {
       setIsProfileVisible(currentUser.settings.isProfileVisible);
-      setNotifications(currentUser.settings.notifications);
+      setNotifications({
+        newMatch: currentUser.settings.notifications.newMatch,
+        newMessage: currentUser.settings.notifications.newMessage,
+      });
     }
   }, [currentUser]);
+
+  const syncPreferencesToSupabase = async (prefs: {
+    is_profile_visible: boolean;
+    push_new_match: boolean;
+    push_new_message: boolean;
+  }): Promise<void> => {
+    if (!authUser) return;
+    try {
+      await updateSupabasePreferences(prefs);
+    } catch (err) {
+      if (__DEV__) console.warn('[Settings] Supabase preferences sync failed:', err);
+    }
+  };
 
   const handleProfileVisibilityToggle = async (value: boolean): Promise<void> => {
     setIsProfileVisible(value);
     setIsSaving(true);
     try {
       await updateSettings({ isProfileVisible: value });
+      await syncPreferencesToSupabase({
+        is_profile_visible: value,
+        push_new_match: notifications.newMatch,
+        push_new_message: notifications.newMessage,
+      });
     } catch (error) {
-      // Revert on error
       setIsProfileVisible(!value);
       Alert.alert('Error', 'Failed to update profile visibility');
     } finally {
@@ -53,30 +75,67 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     }
   };
 
-  const handleNotificationToggle = async (key: keyof UserSettings['notifications'], value: boolean): Promise<void> => {
-    const updatedNotifications = { ...notifications, [key]: value };
-    setNotifications(updatedNotifications);
+  const handleNotificationToggle = async (
+    key: keyof UserSettings['notifications'],
+    value: boolean
+  ): Promise<void> => {
+    const updated = { ...notifications, [key]: value };
+    setNotifications(updated);
     setIsSaving(true);
     try {
-      await updateSettings({ notifications: updatedNotifications });
+      await updateSettings({ notifications: updated });
+      await syncPreferencesToSupabase({
+        is_profile_visible: isProfileVisible,
+        push_new_match: updated.newMatch,
+        push_new_message: updated.newMessage,
+      });
     } catch (error) {
-      // Revert on error
       setNotifications({ ...notifications, [key]: !value });
-      Alert.alert('Error', `Failed to update ${key} notification preference`);
+      Alert.alert('Error', `Failed to update ${key === 'newMatch' ? 'New Match' : 'New Message'} notification`);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleSubscriptionManagement = (): void => {
-    Alert.alert('Subscriptions', 'Subscription management coming soon!', [{ text: 'OK' }]);
+    Alert.alert('Subscriptions', 'Subscription management coming soon.', [{ text: 'OK' }]);
   };
 
-  const handleHelp = (): void => {
+  const handleHelp = async (): Promise<void> => {
+    const canCompose = await MailComposer.isAvailableAsync();
+    if (canCompose) {
+      await MailComposer.composeAsync({
+        recipients: [SUPPORT_EMAIL],
+        subject: 'Values App – Help & Support',
+        body: 'Please describe your question or issue:\n\n',
+      });
+    } else {
+      Alert.alert(
+        'Help & Support',
+        `Email us at ${SUPPORT_EMAIL} for help and support.`,
+        [{ text: 'OK' }, { text: 'Open Mail', onPress: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}`) }]
+      );
+    }
+  };
+
+  const handleLogout = (): void => {
     Alert.alert(
-      'Help & Support',
-      'For help and support, please contact us at support@valuesdatingapp.com',
-      [{ text: 'OK' }]
+      'Log out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -85,32 +144,29 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
       'Delete Account',
       'Are you sure you want to delete your account? This action cannot be undone. All your data will be permanently deleted.',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            // Second confirmation
+          onPress: () => {
             Alert.alert(
               'Final Confirmation',
               'This will permanently delete your account and all data. Are you absolutely sure?',
               [
-                {
-                  text: 'Cancel',
-                  style: 'cancel',
-                },
+                { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Yes, Delete',
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      await deleteAccount();
-                      // Navigation will automatically update based on isAuthenticated state
+                      await deleteSupabaseProfile();
+                    } catch (err) {
+                      if (__DEV__) console.warn('[Settings] Supabase profile delete failed:', err);
+                    }
+                    try {
+                      await signOut();
                     } catch (error) {
-                      Alert.alert('Error', 'Failed to delete account. Please try again.');
+                      Alert.alert('Error', 'Failed to complete account deletion. Please try again.');
                     }
                   },
                 },
@@ -133,16 +189,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   }
 
   return (
-    <ScreenContainer scrollable>
+    <ScreenContainer
+      scrollable
+      scrollViewProps={{
+        contentContainerStyle: styles.scrollContent,
+      }}
+    >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Settings & Help</Text>
       </View>
 
-      {/* Account Section */}
+      {/* Account */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
 
-        {/* Show Profile Toggle */}
         <View style={styles.settingRow}>
           <View style={styles.settingContent}>
             <Text style={styles.settingLabel}>Show profile</Text>
@@ -159,7 +219,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
           />
         </View>
 
-        {/* Email Display */}
         <View style={styles.settingRow}>
           <View style={styles.settingContent}>
             <Text style={styles.settingLabel}>Email</Text>
@@ -167,7 +226,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
           </View>
         </View>
 
-        {/* Subscription Management */}
         <TouchableOpacity
           style={styles.settingRow}
           onPress={handleSubscriptionManagement}
@@ -179,8 +237,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
+      </View>
 
-        {/* Delete Account */}
+      {/* Logout – above Delete Account */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={[styles.settingRow, styles.logoutRow]}
+          onPress={handleLogout}
+          activeOpacity={0.7}
+        >
+          <View style={styles.settingContent}>
+            <Text style={[styles.settingLabel, styles.logoutText]}>Logout</Text>
+            <Text style={[styles.settingDescription, styles.logoutText]}>
+              Sign out of your account
+            </Text>
+          </View>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.settingRow, styles.destructiveRow]}
           onPress={handleDeleteAccount}
@@ -195,34 +268,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         </TouchableOpacity>
       </View>
 
-      {/* Logout Section */}
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={[styles.settingRow, styles.logoutRow]}
-          onPress={async () => {
-            try {
-              await signOut();
-              // Navigation will automatically update via AuthGate when user becomes null
-            } catch (error) {
-              Alert.alert('Error', 'Failed to sign out. Please try again.');
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={styles.settingContent}>
-            <Text style={[styles.settingLabel, styles.logoutText]}>Logout</Text>
-            <Text style={[styles.settingDescription, styles.logoutText]}>
-              Sign out of your account
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {/* Notifications Section */}
+      {/* Notifications – working toggles, no "New Likes You" */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Notifications</Text>
 
-        {/* New Match */}
         <View style={styles.settingRow}>
           <View style={styles.settingContent}>
             <Text style={styles.settingLabel}>New Match</Text>
@@ -239,7 +288,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
           />
         </View>
 
-        {/* New Message */}
         <View style={styles.settingRow}>
           <View style={styles.settingContent}>
             <Text style={styles.settingLabel}>New Message</Text>
@@ -255,52 +303,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
             thumbColor={theme.colors.background}
           />
         </View>
-
-        {/* New Likes You */}
-        <View style={styles.settingRow}>
-          <View style={styles.settingContent}>
-            <Text style={styles.settingLabel}>New "Likes You"</Text>
-            <Text style={styles.settingDescription}>
-              Get notified when someone likes your profile
-            </Text>
-          </View>
-          <Switch
-            value={notifications.newLikesYou}
-            onValueChange={(value) => handleNotificationToggle('newLikesYou', value)}
-            disabled={isSaving}
-            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-            thumbColor={theme.colors.background}
-          />
-        </View>
       </View>
 
-      {/* Help & Support Section */}
+      {/* Help & Support – mail composer */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Help & Support</Text>
 
-        <TouchableOpacity
-          style={styles.settingRow}
-          onPress={handleHelp}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={styles.settingRow} onPress={handleHelp} activeOpacity={0.7}>
           <View style={styles.settingContent}>
             <Text style={styles.settingLabel}>Help / FAQ</Text>
-            <Text style={styles.settingDescription}>Get help and answers to common questions</Text>
+            <Text style={styles.settingDescription}>Email us for help and answers</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Settings are saved automatically
-        </Text>
+        <Text style={styles.footerText}>Settings are saved automatically</Text>
       </View>
     </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    paddingHorizontal: theme.spacing['2xl'],
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing['2xl'],
+  },
   header: {
     marginBottom: theme.spacing['2xl'],
   },

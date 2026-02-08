@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMatchesStore } from '../store/matchesStore';
 import { useUserStore } from '../store/userStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -132,6 +133,7 @@ export const MatchRow: React.FC<MatchRowProps> = ({
 
 export const MatchesScreen: React.FC = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const currentUserId = useUserStore((s) => s.currentUser?.id ?? null);
   const availableMatches = useMatchesStore((s) => s.availableMatches);
   const likedUserIds = useMatchesStore((s) => s.likedUserIds);
@@ -235,7 +237,7 @@ export const MatchesScreen: React.FC = () => {
   };
 
   const ListHeader = () => (
-    <View style={styles.header}>
+    <View style={[styles.header, { paddingTop: insets.top + theme.spacing.xl, backgroundColor: theme.colors.headerBackground }]}>
       <Text style={styles.headerTitle}>Matches</Text>
       <Text style={styles.headerSubtitle}>
         {safeLikedMatches.length} match{safeLikedMatches.length !== 1 ? 'es' : ''}
@@ -261,38 +263,49 @@ export const MatchesScreen: React.FC = () => {
 
   if (error) {
     return (
-      <ScreenContainer>
-        <ErrorState
-          message={error}
-          actionLabel="Try Again"
-          onAction={() => loadMatches(currentUserId)}
-        />
+      <ScreenContainer headerBackgroundColor={theme.colors.headerBackground}>
+        <View style={[styles.header, { paddingTop: insets.top + theme.spacing.xl, backgroundColor: theme.colors.headerBackground }]}>
+          <Text style={styles.headerTitle}>Matches</Text>
+          <Text style={styles.headerSubtitle}>Error</Text>
+        </View>
+        <View style={styles.emptyStateWrap}>
+          <ErrorState
+            message={error}
+            actionLabel="Try Again"
+            onAction={() => loadMatches(currentUserId)}
+          />
+        </View>
       </ScreenContainer>
     );
   }
 
   if (safeLikedMatches.length === 0) {
     return (
-      <ScreenContainer>
-        <ListHeader />
-        <EmptyState
-          icon="💕"
-          title="No matches yet—keep exploring!"
-          message="Start swiping in Discover. Your matches will appear here."
-          actionLabel="Go to Discover"
-          onAction={() => navigation.navigate(ROUTES.DISCOVER as 'Discover')}
-        />
+      <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
+        <>
+          <ListHeader />
+          <View style={styles.emptyStateWrap}>
+            <EmptyState
+              icon="💕"
+              title="No matches yet—keep exploring!"
+              message="Start swiping in Discover. Your matches will appear here."
+              actionLabel="Go to Discover"
+              onAction={() => navigation.navigate(ROUTES.DISCOVER as 'Discover')}
+            />
+          </View>
+        </>
       </ScreenContainer>
     );
   }
 
   return (
-    <ScreenContainer contentPadding={false}>
+    <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
       <FlatList
         data={safeLikedMatches}
         renderItem={renderMatchCard}
         keyExtractor={(item) => item.user.id}
         ListHeaderComponent={ListHeader}
+        style={styles.list}
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={() => <View style={styles.divider} />}
         showsVerticalScrollIndicator={false}
@@ -309,21 +322,22 @@ export default MatchesScreen;
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.xl,
     paddingBottom: theme.spacing.base,
-    backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.headerBorder,
   },
   headerTitle: {
     fontSize: theme.typography.fontSize['3xl'],
     fontWeight: theme.typography.fontWeight.bold,
-    color: theme.colors.text,
+    color: theme.colors.headerTint,
     marginBottom: theme.spacing.xs,
   },
   headerSubtitle: {
     fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
+    color: theme.colors.headerTintSecondary,
+  },
+  list: {
+    backgroundColor: theme.colors.background,
   },
   listContent: {
     paddingBottom: theme.spacing['2xl'],
@@ -456,5 +470,10 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.borderLight,
     marginLeft: AVATAR_SIZE + theme.spacing.md + theme.spacing.base,
+  },
+  emptyStateWrap: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    justifyContent: 'center',
   },
 });

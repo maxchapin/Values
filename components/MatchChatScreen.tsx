@@ -11,9 +11,6 @@ import {
   FlatList,
   TextInput,
   Pressable,
-  Image,
-  Modal,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ListRenderItem,
@@ -96,12 +93,13 @@ export const DayHeader: React.FC<DayHeaderProps> = ({ label }) => (
 export interface ChatBubbleProps {
   message: Message;
   isMe: boolean;
-  onImagePress?: (imageUrl: string) => void;
 }
 
-export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe, onImagePress }) => {
+/** Text-only bubbles. Legacy imageUrl is not rendered (chat is text-only for safety). */
+export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe }) => {
   const timeStr = formatMessageTime(new Date(message.timestamp));
   const readReceipt = isMe ? (message.isRead ? '✓✓' : '✓') : null;
+  const displayText = message.text ?? (message.imageUrl ? '[Media not available]' : '');
 
   return (
     <View style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowThem]}>
@@ -112,20 +110,8 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe, onImagePr
           isMe ? styles.bubbleTailMe : styles.bubbleTailThem,
         ]}
       >
-        {message.imageUrl ? (
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => onImagePress?.(message.imageUrl!)}
-          >
-            <Image
-              source={{ uri: message.imageUrl }}
-              style={styles.bubbleImage}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        ) : null}
-        {message.text ? (
-          <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{message.text}</Text>
+        {displayText ? (
+          <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{displayText}</Text>
         ) : null}
         <View style={styles.bubbleFooter}>
           <Text style={[styles.bubbleTime, isMe && styles.bubbleTimeMe]}>{timeStr}</Text>
@@ -139,35 +125,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe, onImagePr
 };
 
 // -----------------------------------------------------------------------------
-// ImageModal
-// -----------------------------------------------------------------------------
-
-export interface ImageModalProps {
-  visible: boolean;
-  imageUrl: string | null;
-  onClose: () => void;
-}
-
-export const ImageModal: React.FC<ImageModalProps> = ({ visible, imageUrl, onClose }) => (
-  <Modal visible={visible} transparent animationType="fade">
-    <TouchableOpacity
-      style={styles.modalBackdrop}
-      activeOpacity={1}
-      onPress={onClose}
-    >
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={styles.fullscreenImage}
-          resizeMode="contain"
-        />
-      ) : null}
-    </TouchableOpacity>
-  </Modal>
-);
-
-// -----------------------------------------------------------------------------
-// MatchChatScreen
+// MatchChatScreen (text-only; no attachment button, no image modal)
 // -----------------------------------------------------------------------------
 
 /** Use chatService: pass matchId + currentUserId. Real-time updates and optimistic send. */
@@ -178,11 +136,11 @@ export interface MatchChatScreenServiceProps {
   simulateSendFailure?: boolean;
 }
 
-/** Controlled mode: parent owns data and onSendMessage. */
+/** Controlled mode: parent owns data and onSendMessage. Text only; no attachments. */
 export interface MatchChatScreenControlledProps {
   matchChat: MatchChat;
   currentUserId: string;
-  onSendMessage: (text: string, imageUrl?: string) => void;
+  onSendMessage: (text: string) => void;
 }
 
 export type MatchChatScreenProps = MatchChatScreenServiceProps | MatchChatScreenControlledProps;
@@ -194,7 +152,6 @@ function isServiceProps(props: MatchChatScreenProps): props is MatchChatScreenSe
 export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
   const currentUserId = props.currentUserId;
   const [inputText, setInputText] = useState('');
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const listRef = useRef<FlatList<ListItem>>(null);
   const prevMessageCountRef = useRef(0);
 
@@ -256,13 +213,7 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
         return <DayHeader label={item.label} />;
       }
       const isMe = item.message.senderId === currentUserId;
-      return (
-        <ChatBubble
-          message={item.message}
-          isMe={isMe}
-          onImagePress={setFullscreenImage}
-        />
-      );
+      return <ChatBubble message={item.message} isMe={isMe} />;
     },
     [currentUserId]
   );
@@ -311,12 +262,6 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
           <Text style={styles.sendBtnText}>Send</Text>
         </Pressable>
       </View>
-
-      <ImageModal
-        visible={!!fullscreenImage}
-        imageUrl={fullscreenImage}
-        onClose={() => setFullscreenImage(null)}
-      />
     </KeyboardAvoidingView>
   );
 };
@@ -390,12 +335,6 @@ const styles = StyleSheet.create({
   bubbleTextMe: {
     color: theme.colors.textInverse,
   },
-  bubbleImage: {
-    width: 200,
-    height: 200,
-    borderRadius: theme.borderRadius.base,
-    marginBottom: theme.spacing.xs,
-  },
   bubbleFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -452,15 +391,5 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.textInverse,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullscreenImage: {
-    width: '100%',
-    height: '100%',
   },
 });

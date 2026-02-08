@@ -204,6 +204,7 @@ const ValueBubble: React.FC<ValueBubbleProps> = ({ value, onPress, isBlocked = f
 export const ValuesCloud: React.FC<ValuesCloudProps> = ({
   values,
   onValuePress,
+  blockedBubbleId,
 }) => {
   // Sort values by tier importance (top5 first, then top10, etc.)
   const sortedValues = sortValuesByTier(values);
@@ -220,6 +221,7 @@ export const ValuesCloud: React.FC<ValuesCloudProps> = ({
             key={value.id}
             value={value}
             onPress={onValuePress}
+            isBlocked={value.id === blockedBubbleId}
           />
         ))}
       </View>

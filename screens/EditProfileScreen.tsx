@@ -1,12 +1,23 @@
 /**
  * EditProfileScreen
- * Allows users to edit their profile information and values
- * Reuses components and validation from ProfileSetupScreen
+ * Edit profile with generous spacing, optional location (neighborhood), optional hometown/bio.
+ * Unsaved-changes guard with Discard changes? [Save] [Exit].
  */
 
-import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal } from 'react-native';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Modal,
+  Alert,
+  ScrollView,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { HeaderBackButton } from '@react-navigation/elements';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SecondaryButton } from '../components/SecondaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
@@ -14,46 +25,76 @@ import { TextInputField } from '../components/TextInputField';
 import { TagPill } from '../components/TagPill';
 import { ProfilePhotosPicker } from '../components/ProfilePhotosPicker';
 import { ProfilePromptsEditor } from '../components/ProfilePromptsEditor';
-import { LocationPicker } from '../components/LocationPicker';
-import type { LocationCoordinates } from '../types/user';
 import { trackScreenView } from '../services/analytics';
 import { theme } from '../theme';
 import { useUserStore } from '../store/userStore';
+import { useAuth } from '../contexts/AuthContext';
 import { useValuesOnboardingStore } from '../store/valuesOnboardingStore';
 import { useForm, validators } from '../hooks/useForm';
 import { RootStackParamList } from '../navigation/types';
 import { Gender, InterestedIn, Prompt } from '../types/user';
+import { upsertSupabaseProfile } from '../services/supabaseProfile';
+import { supabase } from '../lib/supabase';
+import { LocationPicker, type LocationCoordinates } from '../components/LocationPicker';
 
 type EditProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
+
+const EDIT_AREA_PADDING = 28;
 
 interface ProfileFormData {
   name: string;
   age: string;
+  neighborhood: string;
   hometown: string;
   job: string;
   education: string;
   bio: string;
 }
 
+function getFormSnapshot(
+  values: ProfileFormData,
+  opts: { gender: Gender; interestedIn: InterestedIn | null; photos: string[]; prompts: Prompt[]; locationCoordinates: LocationCoordinates | null }
+): string {
+  return JSON.stringify({
+    ...values,
+    gender: opts.gender,
+    interestedIn: opts.interestedIn,
+    photos: opts.photos,
+    prompts: opts.prompts,
+    locationCoordinates: opts.locationCoordinates,
+  });
+}
+
 export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation }) => {
   const { currentUser, updateProfile, isLoading } = useUserStore();
+  const { user: authUser } = useAuth();
   const ageRef = useRef<TextInput>(null);
+  const neighborhoodRef = useRef<TextInput>(null);
   const hometownRef = useRef<TextInput>(null);
   const jobRef = useRef<TextInput>(null);
   const educationRef = useRef<TextInput>(null);
   const bioRef = useRef<TextInput>(null);
+  const originalSnapshotRef = useRef<string>('');
+  const isDirtyRef = useRef(false);
+  const allowBackRef = useRef(false);
+  const [locationCoordinates, setLocationCoordinates] = useState<LocationCoordinates | null>(
+    currentUser?.locationCoordinates ?? null
+  );
 
   useEffect(() => {
     trackScreenView('EditProfile');
   }, []);
 
-  if (!currentUser) {
-    // Should not happen, but handle gracefully
-    navigation.goBack();
-    return null;
-  }
+  const initialFormValues: ProfileFormData = {
+    name: currentUser?.name ?? '',
+    age: currentUser?.age?.toString() ?? '',
+    neighborhood: currentUser?.neighborhood ?? '',
+    hometown: currentUser?.hometown ?? '',
+    job: currentUser?.job ?? '',
+    education: currentUser?.education ?? '',
+    bio: currentUser?.bio ?? '',
+  };
 
-  // Form state using useForm hook - initialized with current user data
   const {
     values,
     errors,
@@ -63,14 +104,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
     handleSubmit,
     reset: resetForm,
   } = useForm<ProfileFormData>(
-    {
-      name: currentUser.name || '',
-      age: currentUser.age.toString() || '',
-      hometown: currentUser.hometown || '',
-      job: currentUser.job || '',
-      education: currentUser.education || '',
-      bio: currentUser.bio || '',
-    },
+    initialFormValues,
     {
       name: [
         validators.required('First name is required'),
@@ -79,63 +113,130 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
       age: [
         validators.required('Age is required'),
         (value: string) => {
-          if (!value.trim()) {
-            return undefined;
-          }
+          if (!value.trim()) return undefined;
           const ageNum = parseInt(value, 10);
-          if (isNaN(ageNum)) {
-            return 'Age must be a number';
-          }
-          if (ageNum < 18 || ageNum > 100) {
-            return 'Age must be between 18 and 100';
-          }
+          if (isNaN(ageNum)) return 'Age must be a number';
+          if (ageNum < 18 || ageNum > 100) return 'Age must be between 18 and 100';
           return undefined;
         },
       ],
-      hometown: [
-        validators.required('Where you are from is required'),
-        validators.minLength(2, 'Please enter where you are from'),
-      ],
+      neighborhood: [],
+      hometown: [],
       job: [],
       education: [],
-      bio: [
-        validators.required('Bio is required'),
-        validators.minLength(10, 'Bio must be at least 10 characters'),
-      ],
+      bio: [],
     }
   );
 
-  // Separate state for complex fields - initialized from current user
-  const [gender, setGender] = useState<Gender>(currentUser.gender || 'prefer-not-to-say');
-  const [interestedIn, setInterestedIn] = useState<InterestedIn | null>(
-    currentUser.interestedIn ?? null
-  );
+  const [gender, setGender] = useState<Gender>(currentUser?.gender ?? 'prefer-not-to-say');
+  const [interestedIn, setInterestedIn] = useState<InterestedIn | null>(currentUser?.interestedIn ?? null);
   const [interestedInError, setInterestedInError] = useState<string | null>(null);
   const [promptsError, setPromptsError] = useState<string | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
   const [showGenderPicker, setShowGenderPicker] = useState(false);
-  const [locationCoordinates, setLocationCoordinates] = useState<LocationCoordinates | null>(
-    currentUser.locationCoordinates ?? null
-  );
-  const [locationLabel, setLocationLabel] = useState<string | null>(
-    currentUser.locationLabel ?? null
-  );
-  const [photos, setPhotos] = useState<string[]>(
-    Array.isArray(currentUser.photos) ? currentUser.photos : []
-  );
+  const [photos, setPhotos] = useState<string[]>(Array.isArray(currentUser?.photos) ? currentUser.photos : []);
   const [prompts, setPrompts] = useState<Prompt[]>(() => {
-    const makeLocalId = (): string =>
-      `prompt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const mapped = (currentUser.prompts ?? []).map((p) => ({
+    const makeId = () => `prompt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const raw = currentUser?.prompts ?? [];
+    const mapped = raw.map((p) => ({
       id: p.id,
       question: p.question ?? '',
       answer: p.answer ?? '',
-      isCustom: typeof (p as any).isCustom === 'boolean' ? (p as any).isCustom : false,
+      isCustom: typeof (p as { isCustom?: boolean }).isCustom === 'boolean' ? (p as { isCustom: boolean }).isCustom : false,
     }));
-    return mapped.length > 0 ? mapped : [{ id: makeLocalId(), question: '', answer: '', isCustom: false }];
+    return mapped.length > 0 ? mapped : [{ id: makeId(), question: '', answer: '', isCustom: false }];
   });
 
-  // Validation for prompts
+  useFocusEffect(
+    useCallback(() => {
+      const user = useUserStore.getState().currentUser;
+      if (!user) return;
+      setValue('name', user.name ?? '', false);
+      setValue('age', user.age?.toString() ?? '', false);
+      setValue('neighborhood', user.neighborhood ?? '', false);
+      setValue('hometown', user.hometown ?? '', false);
+      setValue('job', user.job ?? '', false);
+      setValue('education', user.education ?? '', false);
+      setValue('bio', user.bio ?? '', false);
+      setGender(user.gender ?? 'prefer-not-to-say');
+      setInterestedIn(user.interestedIn ?? null);
+      setPhotos(Array.isArray(user.photos) ? user.photos : []);
+      const raw = user.prompts ?? [];
+      const mapped = raw.map((p) => ({
+        id: p.id,
+        question: p.question ?? '',
+        answer: p.answer ?? '',
+        isCustom: typeof (p as { isCustom?: boolean }).isCustom === 'boolean' ? (p as { isCustom: boolean }).isCustom : false,
+      }));
+      setPrompts(mapped.length > 0 ? mapped : [{ id: `prompt-${Date.now()}`, question: '', answer: '', isCustom: false }]);
+      setLocationCoordinates(user.locationCoordinates ?? null);
+      originalSnapshotRef.current = getFormSnapshot(
+        {
+          name: user.name ?? '',
+          age: user.age?.toString() ?? '',
+          neighborhood: user.neighborhood ?? '',
+          hometown: user.hometown ?? '',
+          job: user.job ?? '',
+          education: user.education ?? '',
+          bio: user.bio ?? '',
+        },
+        {
+          gender: user.gender ?? 'prefer-not-to-say',
+          interestedIn: user.interestedIn ?? null,
+          photos: Array.isArray(user.photos) ? user.photos : [],
+          prompts: mapped.length > 0 ? mapped : [],
+          locationCoordinates: user.locationCoordinates ?? null,
+        }
+      );
+    }, [setValue])
+  );
+
+  const currentSnapshot = getFormSnapshot(values, { gender, interestedIn, photos, prompts, locationCoordinates });
+  const isDirty = originalSnapshotRef.current !== currentSnapshot;
+  isDirtyRef.current = isDirty;
+
+  const showDiscardAlert = useCallback(() => {
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Save before leaving?',
+      [
+        { text: 'Exit', style: 'destructive', onPress: () => { allowBackRef.current = true; navigation.goBack(); } },
+        { text: 'Save', onPress: () => handleSubmit(handleSave)() },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [navigation]);
+
+  const handleBackPress = useCallback(() => {
+    if (allowBackRef.current) {
+      navigation.goBack();
+      return;
+    }
+    if (isDirtyRef.current) {
+      showDiscardAlert();
+    } else {
+      navigation.goBack();
+    }
+  }, [navigation, showDiscardAlert]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerBackTitle: 'Profile',
+      headerLeft: (props) => (
+        <HeaderBackButton {...props} onPress={handleBackPress} />
+      ),
+    });
+  }, [navigation, handleBackPress]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (allowBackRef.current) return;
+      if (!isDirtyRef.current) return;
+      e.preventDefault();
+      showDiscardAlert();
+    });
+    return unsubscribe;
+  }, [navigation, showDiscardAlert]);
+
   const getValidPrompts = (): Prompt[] => {
     const safe = Array.isArray(prompts) ? prompts : [];
     const cleaned = safe
@@ -145,29 +246,17 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
         answer: (p.answer ?? '').trim(),
         isCustom: !!p.isCustom,
       }))
-      .filter((p) => p.question.length > 0 || p.answer.length > 0);
-
-    return cleaned.filter((p) => p.question.length > 0 && p.answer.length > 0).slice(0, 3);
+      .filter((p) => p.question.length > 0 && p.answer.length > 0);
+    return cleaned.slice(0, 3);
   };
 
-  const hasValidPrompts = (): boolean => getValidPrompts().length >= 1;
-
   const handleSave = async (formValues: ProfileFormData): Promise<void> => {
-    // Validate interestedIn
+    if (!currentUser) return;
     if (!interestedIn) {
       setInterestedInError('Please select who you are interested in');
       return;
     }
     setInterestedInError(null);
-
-    // Require location
-    if (!locationCoordinates || typeof locationCoordinates.latitude !== 'number' || typeof locationCoordinates.longitude !== 'number') {
-      setLocationError('Please set your location on the map');
-      return;
-    }
-    setLocationError(null);
-
-    // Validate prompts
     const validPrompts = getValidPrompts();
     if (validPrompts.length < 1) {
       setPromptsError('Please add at least one prompt and answer');
@@ -176,336 +265,283 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
     setPromptsError(null);
 
     const ageNum = parseInt(formValues.age, 10);
-
     const profileData = {
       name: formValues.name.trim(),
       age: ageNum,
       gender,
       interestedIn,
-      locationCoordinates,
-      locationLabel,
-      hometown: formValues.hometown.trim(),
+      locationCoordinates: locationCoordinates ?? undefined,
+      locationLabel: formValues.neighborhood.trim() || null,
+      neighborhood: formValues.neighborhood.trim() || null,
+      hometown: formValues.hometown.trim() || undefined,
       job: formValues.job.trim() || undefined,
       education: formValues.education.trim() || undefined,
-      bio: formValues.bio.trim(),
+      bio: formValues.bio.trim() || '',
       photos,
       prompts: validPrompts,
     };
 
-    await updateProfile(profileData);
-    
-    // Navigate back to Profile screen
-    navigation.goBack();
+    try {
+      await updateProfile(profileData);
+      const updatedUser = useUserStore.getState().currentUser;
+      if (authUser && updatedUser) {
+        if (__DEV__) {
+          const { data: { session } } = await supabase.auth.getSession();
+          console.log('[EditProfile] Before upsert – session:', !!session, 'userId:', session?.user?.id, 'authUser.id:', authUser.id);
+        }
+        try {
+          await upsertSupabaseProfile(authUser, updatedUser);
+        } catch (supabaseErr) {
+          if (__DEV__) console.warn('[EditProfile] Supabase upsert failed:', supabaseErr);
+          Alert.alert('Saved locally', 'Profile saved. Sync to cloud may have failed.');
+        }
+      }
+      allowBackRef.current = true;
+      navigation.goBack();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save profile';
+      Alert.alert('Error', message);
+    }
   };
 
   const handleCancel = (): void => {
-    // Discard changes and go back
-    navigation.goBack();
+    if (isDirty) {
+      showDiscardAlert();
+    } else {
+      allowBackRef.current = true;
+      navigation.goBack();
+    }
   };
 
   const handleEditValues = (): void => {
-    // Initialize values store with current user's values profile
-    if (currentUser.valuesProfile) {
+    if (currentUser?.valuesProfile) {
       useValuesOnboardingStore.getState().initializeFromProfile(currentUser.valuesProfile);
     }
-    
-    // Navigate to values onboarding flow with edit mode flag
     navigation.navigate('ValuesOnboarding', { fromEditProfile: true });
   };
 
-  // Get top 5 values for display
-  const top5Values = currentUser.valuesProfile?.top5Ids
-    .map((id) => {
-      const value = currentUser.valuesProfile?.allValues.find((v) => v.id === id);
-      return value?.label || id;
-    })
-    .filter(Boolean) || [];
+  if (!currentUser) {
+    navigation.goBack();
+    return null;
+  }
+
+  const top5Values =
+    currentUser.valuesProfile?.top5Ids
+      ?.map((id) => currentUser.valuesProfile!.allValues.find((v) => v.id === id)?.label || id)
+      .filter(Boolean) ?? [];
 
   return (
     <ScreenContainer
       scrollable
       keyboardAvoiding
-      scrollViewProps={{ contentContainerStyle: styles.contentContainer }}
+      scrollViewProps={{ contentContainerStyle: styles.scrollContent }}
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Edit Profile</Text>
-        <Text style={styles.subtitle}>Update your profile information</Text>
-      </View>
-
-      <View style={styles.form}>
-        {/* Photos */}
-        <ProfilePhotosPicker photos={photos} onChange={setPhotos} />
-
-        {/* First Name */}
-        <TextInputField
-          label="First Name *"
-          placeholder="Enter your first name"
-          value={values.name}
-          onChangeText={(text) => {
-            setValue('name', text, true);
-          }}
-          onBlur={() => setFieldTouched('name')}
-          error={touched.name ? errors.name : undefined}
-          autoCapitalize="words"
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => ageRef.current?.focus()}
-        />
-
-        {/* Age */}
-        <TextInputField
-          ref={ageRef}
-          label="Age *"
-          placeholder="Enter your age"
-          value={values.age}
-          onChangeText={(text) => {
-            setValue('age', text, true);
-          }}
-          onBlur={() => setFieldTouched('age')}
-          error={touched.age ? errors.age : undefined}
-          keyboardType="number-pad"
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => hometownRef.current?.focus()}
-        />
-
-        {/* Gender */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Gender *</Text>
-          <TouchableOpacity
-            style={styles.input}
-            onPress={() => setShowGenderPicker(true)}
-          >
-            <Text style={styles.pickerText}>
-              {gender === 'male' ? 'Male' :
-               gender === 'female' ? 'Female' :
-               gender === 'non-binary' ? 'Non-binary' :
-               'Prefer not to say'}
-            </Text>
-          </TouchableOpacity>
-          <Modal
-            visible={showGenderPicker}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setShowGenderPicker(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Select Gender</Text>
-                {(['male', 'female', 'non-binary', 'prefer-not-to-say'] as Gender[]).map((g) => (
-                  <TouchableOpacity
-                    key={g}
-                    style={[styles.modalOption, gender === g && styles.modalOptionSelected]}
-                    onPress={() => {
-                      setGender(g);
-                      setShowGenderPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.modalOptionText, gender === g && styles.modalOptionTextSelected]}>
-                      {g === 'male' ? 'Male' :
-                       g === 'female' ? 'Female' :
-                       g === 'non-binary' ? 'Non-binary' :
-                       'Prefer not to say'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={styles.modalCancel}
-                  onPress={() => setShowGenderPicker(false)}
-                >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
+      <View style={styles.editArea}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Edit Profile</Text>
+          <Text style={styles.subtitle}>Update your profile information</Text>
         </View>
 
-        {/* Interested In */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>I am interested in *</Text>
-          <View style={styles.pillRow}>
-            <TagPill
-              label="Men"
-              selected={interestedIn === 'men'}
-              onPress={() => {
-                setInterestedIn('men');
-                setInterestedInError(null);
-              }}
-            />
-            <TagPill
-              label="Women"
-              selected={interestedIn === 'women'}
-              onPress={() => {
-                setInterestedIn('women');
-                setInterestedInError(null);
-              }}
-              style={{ marginLeft: theme.spacing.sm }}
-            />
-            <TagPill
-              label="Everyone"
-              selected={interestedIn === 'everyone'}
-              onPress={() => {
-                setInterestedIn('everyone');
-                setInterestedInError(null);
-              }}
-              style={{ marginLeft: theme.spacing.sm }}
+        <View style={styles.form}>
+          <ProfilePhotosPicker photos={photos} onChange={setPhotos} />
+
+          <TextInputField
+            label="First Name *"
+            placeholder="Enter your first name"
+            value={values.name}
+            onChangeText={(t) => setValue('name', t, true)}
+            onBlur={() => setFieldTouched('name')}
+            error={touched.name ? errors.name : undefined}
+            autoCapitalize="words"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => ageRef.current?.focus()}
+          />
+
+          <TextInputField
+            ref={ageRef}
+            label="Age *"
+            placeholder="Enter your age"
+            value={values.age}
+            onChangeText={(t) => setValue('age', t, true)}
+            onBlur={() => setFieldTouched('age')}
+            error={touched.age ? errors.age : undefined}
+            keyboardType="number-pad"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => neighborhoodRef.current?.focus()}
+          />
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Gender *</Text>
+            <TouchableOpacity style={styles.input} onPress={() => setShowGenderPicker(true)}>
+              <Text style={styles.pickerText}>
+                {gender === 'male' ? 'Male' : gender === 'female' ? 'Female' : gender === 'non-binary' ? 'Non-binary' : 'Prefer not to say'}
+              </Text>
+            </TouchableOpacity>
+            <Modal visible={showGenderPicker} transparent animationType="slide" onRequestClose={() => setShowGenderPicker(false)}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Select Gender</Text>
+                  {(['male', 'female', 'non-binary', 'prefer-not-to-say'] as Gender[]).map((g) => (
+                    <TouchableOpacity
+                      key={g}
+                      style={[styles.modalOption, gender === g && styles.modalOptionSelected]}
+                      onPress={() => { setGender(g); setShowGenderPicker(false); }}
+                    >
+                      <Text style={[styles.modalOptionText, gender === g && styles.modalOptionTextSelected]}>
+                        {g === 'male' ? 'Male' : g === 'female' ? 'Female' : g === 'non-binary' ? 'Non-binary' : 'Prefer not to say'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity style={styles.modalCancel} onPress={() => setShowGenderPicker(false)}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>I am interested in *</Text>
+            <View style={styles.pillRow}>
+              <TagPill label="Men" selected={interestedIn === 'men'} onPress={() => { setInterestedIn('men'); setInterestedInError(null); }} />
+              <TagPill label="Women" selected={interestedIn === 'women'} onPress={() => { setInterestedIn('women'); setInterestedInError(null); }} style={{ marginLeft: theme.spacing.sm }} />
+              <TagPill label="Everyone" selected={interestedIn === 'everyone'} onPress={() => { setInterestedIn('everyone'); setInterestedInError(null); }} style={{ marginLeft: theme.spacing.sm }} />
+            </View>
+            {interestedInError ? <Text style={styles.errorText}>{interestedInError}</Text> : null}
+          </View>
+
+          <LocationPicker
+            coordinates={locationCoordinates}
+            locationLabel={values.neighborhood || null}
+            onChange={(coords, label) => {
+              setLocationCoordinates(coords);
+              setValue('neighborhood', label ?? '', true);
+            }}
+            searchPlaceholder="Search for a neighborhood or address..."
+            mapHeight={220}
+          />
+
+          <TextInputField
+            ref={neighborhoodRef}
+            label="Neighborhood"
+            placeholder="e.g. Harvard Square, Central Square (or pick on map above)"
+            value={values.neighborhood}
+            onChangeText={(t) => setValue('neighborhood', t, true)}
+            onBlur={() => setFieldTouched('neighborhood')}
+            error={touched.neighborhood ? errors.neighborhood : undefined}
+            autoCapitalize="words"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => hometownRef.current?.focus()}
+          />
+
+          <TextInputField
+            ref={hometownRef}
+            label="Where are you from?"
+            placeholder="e.g. Chicago, IL"
+            value={values.hometown}
+            onChangeText={(t) => setValue('hometown', t, true)}
+            onBlur={() => setFieldTouched('hometown')}
+            error={touched.hometown ? errors.hometown : undefined}
+            autoCapitalize="words"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => jobRef.current?.focus()}
+          />
+
+          <TextInputField
+            ref={jobRef}
+            label="Job"
+            placeholder="What do you do?"
+            value={values.job}
+            onChangeText={(t) => setValue('job', t, true)}
+            onBlur={() => setFieldTouched('job')}
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => educationRef.current?.focus()}
+          />
+
+          <TextInputField
+            ref={educationRef}
+            label="Education"
+            placeholder="Your education level or degree"
+            value={values.education}
+            onChangeText={(t) => setValue('education', t, true)}
+            onBlur={() => setFieldTouched('education')}
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => bioRef.current?.focus()}
+          />
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Bio</Text>
+            <TextInput
+              ref={bioRef}
+              style={[styles.input, styles.textArea]}
+              placeholder="Tell us about yourself..."
+              value={values.bio}
+              onChangeText={(t) => setValue('bio', t, true)}
+              onBlur={() => setFieldTouched('bio')}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              placeholderTextColor={theme.colors.textTertiary}
+              returnKeyType="done"
             />
           </View>
-          {interestedInError && <Text style={styles.errorText}>{interestedInError}</Text>}
-        </View>
 
-        {/* Location */}
-        <LocationPicker
-          coordinates={locationCoordinates}
-          locationLabel={locationLabel}
-          onChange={(coords, label) => {
-            setLocationCoordinates(coords);
-            setLocationLabel(label);
-            setLocationError(null);
-          }}
-          error={locationError ?? undefined}
-          mapHeight={240}
-          searchPlaceholder="Search for a city or address..."
-        />
+          <ProfilePromptsEditor prompts={prompts} onChange={setPrompts} error={promptsError} />
 
-        {/* Where are you from? */}
-        <TextInputField
-          label="Where are you from? *"
-          placeholder="e.g. Chicago, IL"
-          value={values.hometown}
-          onChangeText={(text) => {
-            setValue('hometown', text, true);
-          }}
-          onBlur={() => setFieldTouched('hometown')}
-          error={touched.hometown ? errors.hometown : undefined}
-          autoCapitalize="words"
-          ref={hometownRef}
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => jobRef.current?.focus()}
-        />
-
-        {/* Job */}
-        <TextInputField
-          label="Job"
-          placeholder="What do you do?"
-          value={values.job}
-          onChangeText={(text) => {
-            setValue('job', text, true);
-          }}
-          onBlur={() => setFieldTouched('job')}
-          error={touched.job ? errors.job : undefined}
-          autoCapitalize="words"
-          ref={jobRef}
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => educationRef.current?.focus()}
-        />
-
-        {/* Education */}
-        <TextInputField
-          label="Education"
-          placeholder="Your education level or degree"
-          value={values.education}
-          onChangeText={(text) => {
-            setValue('education', text, true);
-          }}
-          onBlur={() => setFieldTouched('education')}
-          error={touched.education ? errors.education : undefined}
-          autoCapitalize="words"
-          ref={educationRef}
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => bioRef.current?.focus()}
-        />
-
-        {/* Bio */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Bio *</Text>
-          <TextInput
-            ref={bioRef}
-            style={[
-              styles.input,
-              styles.textArea,
-              touched.bio && errors.bio && styles.inputError,
-            ]}
-            placeholder="Tell us about yourself..."
-            value={values.bio}
-            onChangeText={(text) => {
-              setValue('bio', text, true);
-            }}
-            onBlur={() => setFieldTouched('bio')}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-            placeholderTextColor={theme.colors.textTertiary}
-            returnKeyType="done"
-          />
-          {touched.bio && errors.bio && (
-            <Text style={styles.errorText}>{errors.bio}</Text>
-          )}
-        </View>
-
-        {/* Prompts */}
-        <ProfilePromptsEditor
-          prompts={prompts}
-          onChange={setPrompts}
-          error={promptsError}
-        />
-
-        {/* Edit Values Section */}
-        <View style={styles.valuesSection}>
-          <Text style={styles.sectionTitle}>Your Values</Text>
-          {top5Values.length > 0 ? (
-            <View style={styles.top5Container}>
-              <Text style={styles.top5Label}>Core 5 Values:</Text>
-              <View style={styles.top5Values}>
-                {top5Values.map((label, index) => (
-                  <View key={index} style={styles.top5Value}>
-                    <Text style={styles.top5ValueText}>{label}</Text>
-                  </View>
-                ))}
+          <View style={styles.valuesSection}>
+            <Text style={styles.sectionTitle}>Your Values</Text>
+            {top5Values.length > 0 ? (
+              <View style={styles.top5Container}>
+                <Text style={styles.top5Label}>Core 5 Values:</Text>
+                <View style={styles.top5Values}>
+                  {top5Values.map((label, index) => (
+                    <View key={index} style={styles.top5Value}>
+                      <Text style={styles.top5ValueText}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
-            </View>
-          ) : (
-            <Text style={styles.noValuesText}>No values selected</Text>
-          )}
-          <PrimaryButton
-            title="Edit Values"
-            onPress={handleEditValues}
-            style={styles.editValuesButton}
-          />
+            ) : (
+              <Text style={styles.noValuesText}>No values selected</Text>
+            )}
+            <PrimaryButton title="Edit Values" onPress={handleEditValues} style={styles.editValuesButton} />
+          </View>
         </View>
-      </View>
 
-      <View style={styles.footer}>
-        <View style={styles.buttonRow}>
-          <SecondaryButton
-            title="Cancel"
-            onPress={handleCancel}
-            style={styles.cancelButton}
-          />
-          <PrimaryButton
-            title="Save"
-            onPress={handleSubmit(handleSave)}
-            disabled={isLoading}
-            loading={isLoading}
-            style={styles.saveButton}
-          />
+        <View style={styles.footer}>
+          <View style={styles.buttonRow}>
+            <SecondaryButton
+              title="Cancel"
+              onPress={handleCancel}
+              style={styles.cancelButton}
+              textStyle={styles.cancelButtonText}
+            />
+            <PrimaryButton
+              title="Save"
+              onPress={handleSubmit(handleSave)}
+              disabled={isLoading}
+              loading={isLoading}
+              style={styles.saveButton}
+            />
+          </View>
         </View>
-        {(!hasValidPrompts() || Object.keys(errors).length > 0 || !locationCoordinates) && (
-          <Text style={styles.hint}>
-            Please fill in all required fields (*). Set your location on the map. Age 18–100. Add at least one prompt + answer.
-          </Text>
-        )}
       </View>
     </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  contentContainer: {
+  scrollContent: {
     paddingBottom: theme.spacing['2xl'],
+  },
+  editArea: {
+    padding: EDIT_AREA_PADDING,
   },
   header: {
     marginBottom: theme.spacing.xl,
@@ -541,9 +577,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.base,
     color: theme.colors.text,
     minHeight: 48,
-  },
-  inputError: {
-    borderColor: theme.colors.error,
   },
   textArea: {
     minHeight: 100,
@@ -620,19 +653,14 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: theme.spacing.md,
   },
-  top5Container: {
-    marginBottom: theme.spacing.md,
-  },
+  top5Container: { marginBottom: theme.spacing.md },
   top5Label: {
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.sm,
   },
-  top5Values: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
+  top5Values: { flexDirection: 'row', flexWrap: 'wrap' },
   top5Value: {
     backgroundColor: theme.colors.primary,
     borderRadius: theme.borderRadius.full,
@@ -652,9 +680,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginBottom: theme.spacing.md,
   },
-  editValuesButton: {
-    marginTop: theme.spacing.sm,
-  },
+  editValuesButton: { marginTop: theme.spacing.sm },
   footer: {
     marginTop: theme.spacing.xl,
     paddingTop: theme.spacing.lg,
@@ -669,13 +695,10 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: theme.spacing.md,
   },
-  saveButton: {
-    flex: 1,
+  cancelButtonText: {
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.primary,
   },
-  hint: {
-    marginTop: theme.spacing.sm,
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.textTertiary,
-    textAlign: 'center',
-  },
+  saveButton: { flex: 1 },
 });

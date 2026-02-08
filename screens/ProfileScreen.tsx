@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUserStore } from '../store/userStore';
+import { ScreenContainer } from '../components/ScreenContainer';
 import { EmptyState } from '../components/EmptyState';
 import { ProfilePhotoCarousel } from '../components/ProfilePhotoCarousel';
 import { useDebugAccess } from '../hooks/useDebugAccess';
@@ -16,6 +17,7 @@ import { theme } from '../theme';
 export const ProfileScreen: React.FC = () => {
   const { currentUser } = useUserStore();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { handlePress: handleTitlePress, isDebugMode } = useDebugAccess();
 
   useEffect(() => {
@@ -59,9 +61,9 @@ export const ProfileScreen: React.FC = () => {
     .filter(Boolean) || [];
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Top Action Bar */}
-      <View style={styles.topBar}>
+    <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
+      {/* Top Action Bar - extends into status bar */}
+      <View style={[styles.topBar, { paddingTop: insets.top + theme.spacing.sm, backgroundColor: theme.colors.headerBackground }]}>
         <TouchableOpacity
           onPress={handleEdit}
           style={styles.topBarButton}
@@ -94,11 +96,12 @@ export const ProfileScreen: React.FC = () => {
       </View>
 
       {/* Scrollable Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.scrollWrap}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
         {/* Photos Carousel - Full width minus padding */}
         <View style={styles.photosContainer}>
           <ProfilePhotoCarousel
@@ -196,8 +199,9 @@ export const ProfileScreen: React.FC = () => {
 
         {/* Bottom spacing for scroll */}
         <View style={styles.bottomSpacer} />
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </View>
+    </ScreenContainer>
   );
 };
 
@@ -208,16 +212,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  scrollWrap: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16, // 16px edge padding
-    paddingVertical: 12,
-    backgroundColor: theme.colors.background,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    minHeight: 44, // Thumb-friendly touch target
+    borderBottomColor: theme.colors.headerBorder,
+    minHeight: 44,
   },
   topBarButton: {
     flex: 1,
@@ -225,7 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    minHeight: 44, // Thumb-friendly touch target
+    minHeight: 44,
   },
   topBarButtonText: {
     fontSize: theme.typography.fontSize.base,
@@ -242,9 +249,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, // 16px horizontal padding for all content
   },
   photosContainer: {
-    marginTop: 0,
+    marginTop: 16,
     marginBottom: 24, // 24px section spacing
-    marginHorizontal: -16, // Negative margin to extend photos to edges
+    marginHorizontal: 0, // Photos respect content padding, don't extend to edges
   },
   identitySection: {
     alignItems: 'center',

@@ -423,7 +423,6 @@ export const useUserStore = create<UserStore>((set, get) => ({
         notifications: {
           newMatch: true,
           newMessage: true,
-          newLikesYou: true,
         },
       };
 

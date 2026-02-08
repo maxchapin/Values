@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { Match } from '../types/match';
 import { saveMatchesState } from '../services/persistence';
 
-import type { LocationCoordinates } from '../types/user';
+import type { LocationCoordinates, InterestedIn } from '../types/user';
 
 export interface MatchFilters {
   ageRange?: [number, number]; // [minAge, maxAge]
@@ -15,6 +15,8 @@ export interface MatchFilters {
   centerCoordinates?: LocationCoordinates;
   /** Radius in miles (imperial). */
   radiusMiles?: number;
+  /** Viewer's "interested in" preference; filters Discover candidates by gender. */
+  interestedIn?: InterestedIn;
 }
 
 export interface ConversationPreviewData {
@@ -80,6 +82,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
       const mergedFilters: MatchFilters = {
         ...(filters ?? get().filters ?? {}),
         centerCoordinates: (filters ?? get().filters)?.centerCoordinates ?? currentUser?.locationCoordinates ?? undefined,
+        interestedIn: (filters ?? get().filters)?.interestedIn ?? currentUser?.interestedIn ?? undefined,
       };
       const matches = await findMatches(userId, mergedFilters);
       

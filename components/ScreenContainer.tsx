@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, ScrollView, ScrollViewProps, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme';
 
 interface ScreenContainerProps {
@@ -10,6 +10,11 @@ interface ScreenContainerProps {
   scrollViewProps?: ScrollViewProps;
   safeAreaEdges?: ('top' | 'bottom' | 'left' | 'right')[];
   backgroundColor?: string;
+  /**
+   * When set, status bar / notch area uses this color and content starts below it.
+   * Use theme.colors.headerBackground for app-wide seamless header.
+   */
+  headerBackgroundColor?: string;
   /**
    * Enable KeyboardAvoidingView so inputs aren't covered by the keyboard.
    * Recommended for forms.
@@ -37,25 +42,30 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
   scrollViewProps,
   safeAreaEdges = ['top', 'bottom'],
   backgroundColor = theme.colors.background,
+  headerBackgroundColor,
   keyboardAvoiding = false,
   keyboardVerticalOffset = 0,
   contentPadding = true,
   topPadding = theme.spacing.lg,
 }) => {
+  const insets = useSafeAreaInsets();
   const containerStyle = [
     styles.container,
-    { backgroundColor },
+    { backgroundColor: headerBackgroundColor ?? backgroundColor },
     style,
   ];
 
-  // Content padding style
+  // When using header background, we draw it into the notch; SafeAreaView only gets bottom edge
+  const effectiveEdges = headerBackgroundColor ? (safeAreaEdges.filter((e) => e !== 'top') as ('bottom' | 'left' | 'right')[]) : safeAreaEdges;
+
+  // Content padding style (no extra top inset when headerBackgroundColor - SafeAreaView handles it)
   const contentStyle = contentPadding
     ? { paddingTop: topPadding }
     : undefined;
 
   const content = scrollable ? (
     <ScrollView
-      style={styles.scrollView}
+      style={[styles.scrollView, !headerBackgroundColor && { backgroundColor }]}
       contentContainerStyle={[
         styles.scrollContent,
         contentStyle,
@@ -68,12 +78,33 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.content, contentStyle]}>{children}</View>
+    <View style={[styles.content, contentStyle, !headerBackgroundColor && { backgroundColor }]}>{children}</View>
   );
+
+  if (headerBackgroundColor) {
+    // Status bar + header row use same color; SafeAreaView is transparent so screen's header shows through
+    return (
+      <View style={[styles.container, { backgroundColor: headerBackgroundColor }]}>
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          {keyboardAvoiding ? (
+            <KeyboardAvoidingView
+              style={styles.keyboardAvoiding}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              keyboardVerticalOffset={keyboardVerticalOffset}
+            >
+              {content}
+            </KeyboardAvoidingView>
+          ) : (
+            content
+          )}
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   if (keyboardAvoiding) {
     return (
-      <SafeAreaView style={containerStyle} edges={safeAreaEdges}>
+      <SafeAreaView style={containerStyle} edges={effectiveEdges}>
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -87,14 +118,14 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
 
   if (scrollable) {
     return (
-      <SafeAreaView style={containerStyle} edges={safeAreaEdges}>
+      <SafeAreaView style={containerStyle} edges={effectiveEdges}>
         {content}
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={containerStyle} edges={safeAreaEdges}>
+    <SafeAreaView style={containerStyle} edges={effectiveEdges}>
       {content}
     </SafeAreaView>
   );

@@ -1,13 +1,23 @@
 /**
  * Chat domain types
  * Message + MatchChat for 1:1 chat in values-based dating app.
- * Single source of truth: use this file for all chat-related types.
+ * Text-only: no image/photo/file attachments for safety.
  */
+
+/** Outgoing message payload: text only. No image/camera/file. */
+export interface SendMessagePayload {
+  text: string;
+}
 
 export interface Message {
   id: string;
   senderId: string;
+  /** Text content only. No image/photo/media in chat. */
   text?: string;
+  /**
+   * @deprecated Legacy only. Do not send or display; chat is text-only for safety.
+   * Kept for backwards compatibility with existing data.
+   */
   imageUrl?: string;
   /** Date when sent; may be number after JSON round-trip (normalize with new Date()). */
   timestamp: Date;

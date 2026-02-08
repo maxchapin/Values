@@ -29,7 +29,8 @@
         }
       ],
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-mail-composer"
     ],
     "ios": {
       "supportsTablet": true,

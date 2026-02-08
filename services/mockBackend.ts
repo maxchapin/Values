@@ -5,7 +5,7 @@
  * Can be easily swapped out for a real API later
  */
 
-import { User, LocationCoordinates, UserValuesProfile } from '../types/user';
+import { User, LocationCoordinates, UserValuesProfile, InterestedIn, Gender } from '../types/user';
 import { Value } from '../types/value';
 import { Match } from '../types/match';
 import { INITIAL_VALUES } from '../data/valuesConstants';
@@ -546,6 +546,17 @@ const DEFAULT_RADIUS_MILES = 50;
 const RELAXED_RADIUS_MILES = 2500;
 
 /**
+ * Returns true if the candidate's gender matches the viewer's "interested in" preference.
+ * Used to filter Discover candidates so users only see genders they're interested in.
+ */
+function matchesInterestedIn(viewerInterestedIn: InterestedIn | undefined, candidateGender: Gender): boolean {
+  if (!viewerInterestedIn || viewerInterestedIn === 'everyone') return true;
+  if (viewerInterestedIn === 'men') return candidateGender === 'male';
+  if (viewerInterestedIn === 'women') return candidateGender === 'female';
+  return true;
+}
+
+/**
  * Apply filters and build Match[] for a user. Used for strict pass and relaxed fallback.
  * All distances in miles.
  */
@@ -591,8 +602,8 @@ function buildMatchesForUser(
 
 /**
  * Find matches for a user.
- * All distances in miles. In mock mode: if strict filters yield 0 candidates,
- * retries with relaxed radius so Discover is never empty for testing.
+ * All distances in miles. Respects viewer's interestedIn (men/women/everyone).
+ * In mock mode: if strict filters yield 0 candidates, retries with relaxed radius so Discover is never empty for testing.
  */
 export function findMatches(
   userId: string,
@@ -600,6 +611,8 @@ export function findMatches(
     ageRange?: [number, number];
     centerCoordinates?: LocationCoordinates;
     radiusMiles?: number;
+    /** Viewer's "interested in" preference; used to filter candidates by gender. Falls back to currentUser.interestedIn if not provided. */
+    interestedIn?: InterestedIn;
   }
 ): Promise<Match[]> {
   return new Promise((resolve) => {
@@ -615,8 +628,13 @@ export function findMatches(
       const radiusMiles =
         typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : DEFAULT_RADIUS_MILES;
       const ageRange = filters?.ageRange;
+      const interestedIn = filters?.interestedIn ?? currentUser.interestedIn;
 
-      const candidates = MOCK_USERS.filter((u) => u.id !== userId);
+      const allCandidates = MOCK_USERS.filter((u) => u.id !== userId);
+      const candidates = interestedIn
+        ? allCandidates.filter((u) => matchesInterestedIn(interestedIn, u.gender))
+        : allCandidates;
+
       let matches = buildMatchesForUser(currentUser, candidates, {
         ageRange,
         center,
@@ -725,6 +743,7 @@ export function createOrUpdateUser(
         gender: profileData.gender || 'prefer-not-to-say',
         locationCoordinates: profileData.locationCoordinates ?? null,
         locationLabel: profileData.locationLabel ?? null,
+        neighborhood: profileData.neighborhood ?? null,
         interestedIn: profileData.interestedIn,
         hometown: profileData.hometown,
         job: profileData.job,

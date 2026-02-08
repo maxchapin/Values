@@ -8,6 +8,10 @@
 import { supabase } from './supabase';
 import type { AuthUser } from '../types/auth';
 import type { User } from '../types/user';
+import type { ProfileGender, InterestedIn } from '../types/user';
+
+/** Gender values stored in Supabase `profiles.gender` (matches Profile type). */
+export type { ProfileGender } from '../types/user';
 
 export interface SupabaseProfile {
   id: string; // Matches auth.users.id
@@ -18,11 +22,12 @@ export interface SupabaseProfile {
   photo_url: string | null;
   auth_provider: 'google' | 'apple' | 'phone';
   age: number | null;
-  gender: string | null;
+  gender: ProfileGender;
   bio: string | null;
   location_label: string | null;
   location_latitude: number | null;
   location_longitude: number | null;
+  neighborhood: string | null;
   hometown: string | null;
   job: string | null;
   education: string | null;
@@ -36,6 +41,59 @@ export interface SupabaseProfile {
   updated_at: string;
 }
 
+/** Columns to select when fetching discovery candidates (includes gender for card and Interested In filtering). */
+const DISCOVERY_SELECT =
+  'id, first_name, age, gender, photos, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, prompts, selected_values, is_profile_complete, is_values_complete, created_at, updated_at';
+
+/** Map app User.gender to Supabase profiles.gender. */
+function userGenderToProfileGender(g: User['gender']): ProfileGender {
+  if (!g) return null;
+  if (g === 'male') return 'man';
+  if (g === 'female') return 'woman';
+  if (g === 'non-binary') return 'nonbinary';
+  return null; // 'prefer-not-to-say' -> null in DB
+}
+
+/** Map Supabase profiles.gender to app User.gender (for building User from discovery rows). */
+export function profileGenderToUserGender(g: ProfileGender | null | undefined): User['gender'] {
+  if (!g) return 'prefer-not-to-say';
+  if (g === 'man') return 'male';
+  if (g === 'woman') return 'female';
+  if (g === 'nonbinary') return 'non-binary';
+  return 'prefer-not-to-say';
+}
+
+/**
+ * Ensure we have a valid session before making authenticated requests.
+ * Refreshes the session from storage and returns the current user.
+ */
+async function ensureSession(): Promise<{ user: { id: string }; error: Error | null }> {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (__DEV__) {
+    console.log('[supabaseProfile] Session check:', {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      sessionError: sessionError?.message ?? null,
+    });
+  }
+  if (session?.user) {
+    return { user: session.user, error: null };
+  }
+  const { data: { session: refreshed }, error: refreshError } = await supabase.auth.refreshSession();
+  if (__DEV__) {
+    console.log('[supabaseProfile] After refreshSession:', {
+      hasSession: !!refreshed,
+      userId: refreshed?.user?.id,
+      refreshError: refreshError?.message ?? null,
+    });
+  }
+  if (refreshed?.user) {
+    return { user: refreshed.user, error: null };
+  }
+  const msg = refreshError?.message || sessionError?.message || 'Auth session missing!';
+  return { user: null as any, error: new Error(msg) };
+}
+
 /**
  * Create or update user profile in Supabase after Google/Apple/Phone login
  * This is called automatically after successful authentication
@@ -46,10 +104,10 @@ export async function upsertSupabaseProfile(
   authUser: AuthUser,
   userData?: Partial<User>
 ): Promise<SupabaseProfile> {
-  const { data: { user: supabaseUser }, error: authError } = await supabase.auth.getUser();
-  
+  const { user: supabaseUser, error: authError } = await ensureSession();
+
   if (authError || !supabaseUser) {
-    throw new Error(`Authentication required: ${authError?.message || 'No user found'}`);
+    throw new Error(`Authentication required: ${authError?.message || 'Auth session missing!'}`);
   }
 
   // Ensure we're creating/updating the correct user's profile
@@ -69,11 +127,12 @@ export async function upsertSupabaseProfile(
     // Merge with existing user data if provided
     ...(userData && {
       age: userData.age || null,
-      gender: userData.gender || null,
+      gender: userData.gender ? userGenderToProfileGender(userData.gender) : null,
       bio: userData.bio || null,
       location_label: userData.locationLabel || null,
       location_latitude: userData.locationCoordinates?.latitude || null,
       location_longitude: userData.locationCoordinates?.longitude || null,
+      neighborhood: userData.neighborhood ?? null,
       hometown: userData.hometown || null,
       job: userData.job || null,
       education: userData.education || null,
@@ -130,7 +189,7 @@ export async function getSupabaseProfile(): Promise<SupabaseProfile | null> {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select('id, email, display_name, first_name, last_name, photo_url, auth_provider, age, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at')
     .eq('id', user.id)
     .single();
 
@@ -144,6 +203,64 @@ export async function getSupabaseProfile(): Promise<SupabaseProfile | null> {
   }
 
   return data as SupabaseProfile;
+}
+
+/**
+ * Row shape returned when fetching profiles for Discover.
+ * Includes gender for card display and for Interested In filtering.
+ */
+export interface DiscoveryProfileRow {
+  id: string;
+  first_name: string | null;
+  age: number | null;
+  gender: ProfileGender;
+  photos: string[] | null;
+  bio: string | null;
+  location_label: string | null;
+  location_latitude: number | null;
+  location_longitude: number | null;
+  neighborhood: string | null;
+  hometown: string | null;
+  job: string | null;
+  education: string | null;
+  prompts: Array<{ id: string; question: string; answer: string; isCustom: boolean }> | null;
+  selected_values: string[] | null;
+  is_profile_complete: boolean;
+  is_values_complete: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Fetch profiles for the Discover screen.
+ * Selects gender so the card can display it and so Interested In filtering can be applied.
+ * Excludes the viewer. Optionally filter by interestedIn (men -> gender=man, women -> gender=woman, everyone -> no filter).
+ * SECURITY: Depends on RLS allowing read of other users' profiles for discovery.
+ */
+export async function getDiscoveryProfiles(
+  viewerId: string,
+  options?: { interestedIn?: InterestedIn }
+): Promise<DiscoveryProfileRow[]> {
+  let query = supabase
+    .from('profiles')
+    .select(DISCOVERY_SELECT)
+    .neq('id', viewerId);
+
+  if (options?.interestedIn === 'men') {
+    query = query.eq('gender', 'man');
+  } else if (options?.interestedIn === 'women') {
+    query = query.eq('gender', 'woman');
+  }
+  // 'everyone' or undefined: no gender filter
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('[supabaseProfile] Error fetching discovery profiles:', error);
+    return [];
+  }
+
+  return (data ?? []) as DiscoveryProfileRow[];
 }
 
 /**
@@ -173,5 +290,54 @@ export async function updateProfileCompletion(
   if (error) {
     console.error('[supabaseProfile] Error updating completion flags:', error);
     throw new Error(`Failed to update profile: ${error.message}`);
+  }
+}
+
+/** Preferences shape stored in profiles.preferences (JSONB). */
+export interface SupabasePreferences {
+  is_profile_visible?: boolean;
+  push_new_match?: boolean;
+  push_new_message?: boolean;
+}
+
+/**
+ * Update only preferences for the current user in Supabase.
+ * Called from Settings when user toggles notifications or profile visibility.
+ */
+export async function updateSupabasePreferences(preferences: SupabasePreferences): Promise<void> {
+  const { user, error: authError } = await ensureSession();
+  if (authError || !user) {
+    throw new Error('Authentication required');
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      preferences,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id);
+
+  if (error) {
+    console.error('[supabaseProfile] Error updating preferences:', error);
+    throw new Error(`Failed to update preferences: ${error.message}`);
+  }
+}
+
+/**
+ * Delete the current user's profile row in Supabase (for Delete Account).
+ * Call before signOut so the session is still valid for RLS.
+ */
+export async function deleteSupabaseProfile(): Promise<void> {
+  const { user, error: authError } = await ensureSession();
+  if (authError || !user) {
+    throw new Error('Authentication required');
+  }
+
+  const { error } = await supabase.from('profiles').delete().eq('id', user.id);
+
+  if (error) {
+    console.error('[supabaseProfile] Error deleting profile:', error);
+    throw new Error(`Failed to delete profile: ${error.message}`);
   }
 }

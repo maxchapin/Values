@@ -5,7 +5,16 @@ import { TagPill } from './TagPill';
 import { ProfilePhotoCarousel, type ProfilePhotoCarouselRef } from './ProfilePhotoCarousel';
 import { MatchScoreInfoModal } from './MatchScoreInfoModal';
 import { theme } from '../theme';
-import { User } from '../types/user';
+import { User, Gender } from '../types/user';
+
+/** Display label for card; null means hide (e.g. prefer-not-to-say). */
+function getGenderDisplayLabel(gender: Gender | undefined): string | null {
+  if (!gender) return null;
+  if (gender === 'male') return 'Man';
+  if (gender === 'female') return 'Woman';
+  if (gender === 'non-binary') return 'Nonbinary';
+  return null; // prefer-not-to-say
+}
 
 export interface CandidateValueItem {
   id: string;
@@ -72,6 +81,7 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
     const score = typeof similarityScore === 'number' ? similarityScore : 0;
     const matchHeadline = `${score}% Match`;
     const [showScoreInfoModal, setShowScoreInfoModal] = useState(false);
+    const genderLabel = getGenderDisplayLabel(candidate.gender);
 
     // Reset photo carousel to first image whenever the active candidate changes (Like/Pass or index change)
     useEffect(() => {
@@ -103,11 +113,18 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
           <View style={styles.section}>
             <View style={styles.nameLocationRow}>
               <Text style={styles.name} numberOfLines={1}>
-                {candidate.name || 'Unknown'}{candidate.age ? `, ${candidate.age}` : ''}
+                {candidate.name || 'Unknown'}{candidate.age != null ? `, ${candidate.age}` : ''}
               </Text>
-              <Text style={styles.location} numberOfLines={1}>
-                {candidate.locationLabel ?? 'Location not set'}
-              </Text>
+              <View style={styles.locationGenderColumn}>
+                <Text style={styles.location} numberOfLines={1}>
+                  {candidate.locationLabel ?? 'Location not set'}
+                </Text>
+                {genderLabel ? (
+                  <Text style={styles.genderLabel} numberOfLines={1}>
+                    {genderLabel}
+                  </Text>
+                ) : null}
+              </View>
             </View>
             {showMatchScore ? (
               <>
@@ -223,7 +240,7 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.lg,
   },
   headerRow: {
-    flexDirection: 'row',
+    flexDirection: 'row', 
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.md,
@@ -233,6 +250,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.md,
+  },
+  locationGenderColumn: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: theme.spacing.xs,
   },
   name: {
     flex: 1,
@@ -246,6 +268,13 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     color: theme.colors.textSecondary,
     textAlign: 'right',
+  },
+  genderLabel: {
+    marginTop: theme.spacing.xs,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.medium,
+    color: theme.colors.textSecondary,
+    opacity: 0.85,
   },
   matchScoreRow: {
     flexDirection: 'row',

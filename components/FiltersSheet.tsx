@@ -13,17 +13,18 @@ interface FiltersSheetProps {
   onReset: () => Promise<void> | void;
 }
 
-const DEFAULT_AGE_RANGE: [number, number] = [18, 99];
-const DEFAULT_RADIUS_MILES = 50;
-const RADIUS_MIN_MILES = 5;
+const DEFAULT_AGE_RANGE: [number, number] = [18, 122];
+const DEFAULT_RADIUS_MILES = 20;
+const RADIUS_MIN_MILES = 1;
 const RADIUS_MAX_MILES = 100;
-const RADIUS_STEP_MILES = 5;
+const RADIUS_STEP_MILES = 1;
 
 export const FiltersSheet: React.FC<FiltersSheetProps> = ({
   visible,
   filters,
   onClose,
   onApply,
+  onReset,
 }) => {
   const initialAgeRange = useMemo<[number, number]>(() => {
     const ar = filters.ageRange;
@@ -52,6 +53,13 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
     onClose();
   };
 
+  /** Reset filters to defaults and notify parent. */
+  const handleReset = async (): Promise<void> => {
+    setAgeRange(DEFAULT_AGE_RANGE);
+    setRadiusMiles(DEFAULT_RADIUS_MILES);
+    await onReset();
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={saveAndClose}>
       <View style={styles.overlay} pointerEvents="box-none">
@@ -61,9 +69,14 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
         <View style={styles.sheet} pointerEvents="box-none">
           <View style={styles.header}>
             <Text style={styles.title}>Filters</Text>
-            <Pressable onPress={saveAndClose} hitSlop={12} accessibilityLabel="Close filters">
-              <Text style={styles.close}>✕</Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable onPress={handleReset} hitSlop={12} style={styles.resetButton} accessibilityLabel="Reset filters">
+                <Text style={styles.resetText}>Reset</Text>
+              </Pressable>
+              <Pressable onPress={saveAndClose} hitSlop={12} accessibilityLabel="Close filters">
+                <Text style={styles.close}>✕</Text>
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.section}>
@@ -127,6 +140,20 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize['2xl'],
     fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.text,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.base,
+  },
+  resetButton: {
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  resetText: {
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.primary,
   },
   close: {
     fontSize: theme.typography.fontSize['2xl'],

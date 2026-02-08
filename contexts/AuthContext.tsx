@@ -97,12 +97,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
           await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
           setUser(authUser);
-          // Set loading to false immediately after restoring session
-          setLoading(false);
 
           if (__DEV__) {
             console.log('[AuthContext] ✅ Restored Supabase session:', authUser.id);
-            console.log('[AuthContext] ✅ Loading set to false after session restore');
           }
         } else {
           // Fallback to legacy secure storage if no Supabase session

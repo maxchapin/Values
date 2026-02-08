@@ -28,6 +28,5 @@ export {
   MatchChatScreen,
   ChatBubble,
   DayHeader,
-  ImageModal,
 } from './MatchChatScreen';
-export type { MatchChatScreenProps, ChatBubbleProps, DayHeaderProps, ImageModalProps } from './MatchChatScreen';
+export type { MatchChatScreenProps, ChatBubbleProps, DayHeaderProps } from './MatchChatScreen';

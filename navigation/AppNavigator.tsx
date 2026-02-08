@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList, MainTabParamList, ROUTES } from './types';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
@@ -49,6 +50,7 @@ const MainTabNavigator: React.FC = () => {
         tabBarActiveTintColor: '#007AFF',
         tabBarInactiveTintColor: '#666',
         headerShown: false,
+        tabBarShowLabel: false,
       }}
     >
       <Tab.Screen
@@ -56,7 +58,9 @@ const MainTabNavigator: React.FC = () => {
         component={DiscoverScreen}
         options={{
           title: 'Discover',
-          tabBarIcon: () => null,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={focused ? 'compass' : 'compass-outline'} size={size ?? 24} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -64,7 +68,9 @@ const MainTabNavigator: React.FC = () => {
         component={MatchesScreen}
         options={{
           title: 'Matches',
-          tabBarIcon: () => null,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={focused ? 'heart' : 'heart-outline'} size={size ?? 24} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -72,7 +78,9 @@ const MainTabNavigator: React.FC = () => {
         component={ProfileScreen}
         options={{
           title: 'Profile',
-          tabBarIcon: () => null,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={size ?? 24} color={color} />
+          ),
         }}
       />
     </Tab.Navigator>
@@ -160,11 +168,11 @@ export const AppNavigator: React.FC = () => {
         initialRouteName={ROUTES.WELCOME}
         screenOptions={{
           headerStyle: {
-            backgroundColor: theme.colors.primary,
+            backgroundColor: theme.colors.headerBackground,
           },
-          headerTintColor: theme.colors.textInverse,
+          headerTintColor: theme.colors.headerTint,
           headerTitleStyle: {
-            fontWeight: theme.typography.fontWeight.bold,
+            fontWeight: theme.typography.fontWeight.semibold,
             fontSize: theme.typography.fontSize.lg,
           },
         }}
@@ -233,7 +241,7 @@ export const AppNavigator: React.FC = () => {
         <Stack.Screen
           name={ROUTES.EDIT_PROFILE}
           component={EditProfileScreen}
-          options={{ title: 'Edit Profile' }}
+          options={{ title: 'Edit Profile', headerBackTitle: 'Profile' }}
         />
         <Stack.Screen
           name={ROUTES.PROFILE_PREVIEW}
@@ -243,7 +251,15 @@ export const AppNavigator: React.FC = () => {
         <Stack.Screen
           name={ROUTES.SETTINGS}
           component={SettingsScreen}
-          options={{ title: 'Settings & Help' }}
+          options={{
+            title: 'Settings & Help',
+            headerBackTitle: 'Profile',
+            headerBackTitleStyle: {
+              fontSize: theme.typography.fontSize.base,
+              fontWeight: theme.typography.fontWeight.semibold,
+            },
+            headerTintColor: theme.colors.primary,
+          }}
         />
         <Stack.Screen
           name={ROUTES.MATCH_DETAIL}

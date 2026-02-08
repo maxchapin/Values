@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMatchesStore } from '../store/matchesStore';
 import { useUserStore } from '../store/userStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -16,6 +17,7 @@ import { formatExplanationLines } from '../services/matchingModel';
 import { theme } from '../theme';
 
 export const DiscoverScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { currentUser } = useUserStore();
   const {
     availableMatches,
@@ -168,11 +170,10 @@ export const DiscoverScreen: React.FC = () => {
   }
 
   return (
-    <ScreenContainer contentPadding={false}>
-      
+    <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.headerBar}>
+        {/* Header - extends into status bar */}
+        <View style={[styles.headerBar, { paddingTop: insets.top + theme.spacing.lg, backgroundColor: theme.colors.headerBackground }]}>
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setShowFilters(true)}
@@ -247,12 +248,13 @@ const styles = StyleSheet.create({
   },
   headerBar: {
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.lg,
     paddingBottom: theme.spacing.base,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.headerBorder,
   },
   filterButton: {
     flexDirection: 'row',
@@ -260,25 +262,26 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.base,
     paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.backgroundSecondary,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.headerBorder,
   },
   filterButtonText: {
-    color: theme.colors.primary,
+    color: theme.colors.headerTint,
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
   },
   filterBadge: {
     fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.textSecondary,
+    color: theme.colors.headerTintSecondary,
     fontWeight: theme.typography.fontWeight.medium,
   },
   cardArea: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
     minHeight: 0,
+    backgroundColor: theme.colors.background,
   },
   fixedBottomBar: {
     paddingHorizontal: theme.spacing.lg,

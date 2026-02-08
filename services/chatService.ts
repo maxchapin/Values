@@ -18,9 +18,9 @@ export interface MatchChatUpdate {
   lastMessageAt?: number;
 }
 
+/** Text only. No image/camera/file attachments (safety). */
 export interface SendMessageInput {
-  text?: string;
-  imageUrl?: string;
+  text: string;
 }
 
 type Unsubscribe = () => void;
@@ -115,13 +115,12 @@ export function sendMessage(
 ): Promise<void> {
   const chat = getChatStore();
   const text = input.text?.trim() ?? '';
-  const imageUrl = input.imageUrl;
 
-  if (!text && !imageUrl) {
+  if (!text) {
     return Promise.resolve();
   }
 
-  const msg = chat.sendMessage(matchId, currentUserId, text, imageUrl);
+  const msg = chat.sendMessage(matchId, currentUserId, text);
   notify(matchId);
 
   return new Promise((resolve, reject) => {

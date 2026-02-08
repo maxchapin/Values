@@ -39,6 +39,7 @@ export interface PersistedUserData {
     locationCoordinates: { latitude: number; longitude: number } | null;
     /** Human-readable label from reverse geocoding. */
     locationLabel: string | null;
+    neighborhood?: string | null;
     hometown?: string;
     job?: string;
     education?: string;
@@ -62,7 +63,6 @@ export interface PersistedUserData {
       notifications: {
         newMatch: boolean;
         newMessage: boolean;
-        newLikesYou: boolean;
       };
     };
     createdAt: string;

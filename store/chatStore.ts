@@ -19,7 +19,8 @@ interface ChatStore {
   _typingByMatch: Record<string, boolean>;
 
   getMessagesForMatch: (matchId: string) => Message[];
-  sendMessage: (matchId: string, currentUserId: string, text: string, imageUrl?: string) => Message;
+  /** Text only. No image/photo/media. */
+  sendMessage: (matchId: string, currentUserId: string, text: string) => Message;
   removeMessage: (matchId: string, messageId: string) => void;
   setTyping: (matchId: string, isTyping: boolean) => void;
   isTyping: (matchId: string) => boolean;
@@ -30,7 +31,7 @@ interface ChatStore {
 function lastMessagePreviewAndTime(messages: Message[], currentUserId: string): { preview: string; lastMessageAt?: number } {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    const content = m.text ?? (m.imageUrl ? '📷 Photo' : '');
+    const content = m.text ?? '';
     if (content) {
       const preview = content.length > PREVIEW_MAX_LEN ? content.slice(0, PREVIEW_MAX_LEN - 1) + '…' : content;
       const ts = m.timestamp != null ? new Date(m.timestamp as Date | number).getTime() : NaN;
@@ -59,13 +60,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     return [...normalized].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   },
 
-  sendMessage: (matchId: string, currentUserId: string, text: string, imageUrl?: string): Message => {
+  sendMessage: (matchId: string, currentUserId: string, text: string): Message => {
     const id = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const msg: Message = {
       id,
       senderId: currentUserId,
       text: text || undefined,
-      imageUrl: imageUrl || undefined,
       timestamp: new Date(),
       isRead: false,
     };
@@ -166,8 +166,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       {
         id: 'm6',
         senderId: otherUserId,
-        text: 'Here’s a photo of the place 😊',
-        imageUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400',
+        text: 'Looking forward to it 😊',
         timestamp: new Date(base + 86400000 + 60000),
         isRead: false,
       },

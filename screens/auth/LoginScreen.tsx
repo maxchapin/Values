@@ -18,6 +18,9 @@ import { theme } from '../../theme';
 import { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../services/supabase';
 
+const ENABLE_APPLE_SIGN_IN = false;
+const ENABLE_PHONE_SIGN_IN = false;
+
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
@@ -46,14 +49,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               }
             : null,
         });
-      }
-      
-      // Test Supabase URL
-      if (__DEV__) {
-        console.log('[DEBUG] Supabase URL test:', {
-          url: supabase.supabaseUrl,
-          isReachable: !!supabase.supabaseUrl,
-        });
+        console.log('[DEBUG] Supabase client test completed, session check ran successfully');
       }
     } catch (testError) {
       if (__DEV__) {
@@ -91,6 +87,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     }
   };
 
+  // Phone auth handlers are kept for future use but gated behind ENABLE_PHONE_SIGN_IN
+  const handleCancelPhoneAuth = () => {
+    if (!ENABLE_PHONE_SIGN_IN) return;
+    clearPhoneAuthState?.();
+    setShowOtpInput(false);
+    setOtpCode('');
+    setPhoneNumber('');
+  };
+
+  const handlePhoneCodeConfirm = async () => {
+    if (!ENABLE_PHONE_SIGN_IN) return;
+    if (!otpCode || otpCode.length !== 6 || !phoneAuthState?.phoneNumber) {
+      return;
+    }
+    try {
+      await confirmPhoneCode(otpCode);
+      setShowOtpInput(false);
+    } catch (error) {
+      logAuthError('LoginScreen', error);
+      showAuthError(error, 'Verification Error');
+    }
+  };
+
 
   if (loading) {
     return (
@@ -107,55 +126,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         <Text style={styles.title}>Sign In</Text>
         <Text style={styles.subtitle}>Choose your preferred sign-in method</Text>
 
-        {!showOtpInput ? (
+        {ENABLE_PHONE_SIGN_IN && showOtpInput ? (
           <>
-            {/* Social Sign-In Buttons */}
-            <View style={styles.buttonContainer}>
-              {/* Apple Sign-In (iOS only) - shown first on iOS per Apple guidelines */}
-              {Platform.OS === 'ios' && (
-                <AppleButton
-                  onPress={handleAppleSignIn}
-                  disabled={loading}
-                  loading={loading}
-                  variant="black"
-                  style={styles.appleButton}
-                />
-              )}
-              {/* DEBUG: Test Supabase button - remove after debugging */}
-              {__DEV__ && (
-                <PrimaryButton
-                  title="[DEBUG] Test Supabase"
-                  onPress={testSupabase}
-                  style={styles.googleButton}
-                />
-              )}
-              <GoogleButton
-                onPress={handleGoogleSignIn}
-                disabled={loading}
-                loading={loading}
-                style={styles.googleButton}
-              />
-            </View>
-
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* Phone Sign-In */}
-            <View style={styles.phoneContainer}>
-              <PrimaryButton
-                title="Continue with Phone"
-                onPress={() => navigation.navigate('PhoneSignIn')}
-                style={styles.button}
-              />
-            </View>
-          </>
-        ) : (
-          <>
-            {/* OTP Input */}
+            {/* OTP Input (phone sign-in) */}
             <View style={styles.otpContainer}>
               <Text style={styles.otpLabel}>Enter Verification Code</Text>
               <Text style={styles.otpSubtext}>
@@ -185,6 +158,56 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                 />
               </View>
             </View>
+          </>
+        ) : (
+          <>
+            {/* Social Sign-In Buttons */}
+            <View style={styles.buttonContainer}>
+              {/* Apple Sign-In (iOS only) - currently disabled at runtime */}
+              {Platform.OS === 'ios' && ENABLE_APPLE_SIGN_IN && (
+                <AppleButton
+                  onPress={handleAppleSignIn}
+                  disabled={loading}
+                  loading={loading}
+                  variant="black"
+                  style={styles.appleButton}
+                />
+              )}
+              {/* DEBUG: Test Supabase button - remove after debugging */}
+              {__DEV__ && (
+                <PrimaryButton
+                  title="[DEBUG] Test Supabase"
+                  onPress={testSupabase}
+                  style={styles.googleButton}
+                />
+              )}
+              <GoogleButton
+                onPress={handleGoogleSignIn}
+                disabled={loading}
+                loading={loading}
+                style={styles.googleButton}
+              />
+            </View>
+
+            {/* Phone Sign-In entry point - currently disabled at runtime */}
+            {ENABLE_PHONE_SIGN_IN && (
+              <>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <View style={styles.phoneContainer}>
+                  <PrimaryButton
+                    title="Continue with Phone"
+                    // Phone auth is currently disabled; casting avoids type errors while keeping the route name for future use.
+                    onPress={() => navigation.navigate('PhoneSignIn' as never)}
+                    style={styles.button}
+                  />
+                </View>
+              </>
+            )}
           </>
         )}
       </View>
@@ -252,5 +275,45 @@ const styles = StyleSheet.create({
   },
   phoneContainer: {
     gap: theme.spacing.md,
+  },
+  otpContainer: {
+    marginTop: theme.spacing.lg,
+    padding: theme.spacing.lg,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  otpLabel: {
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  otpSubtext: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+  },
+  otpInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    fontSize: theme.typography.fontSize.xl,
+    letterSpacing: 4,
+    textAlign: 'center',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.lg,
+  },
+  otpButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+  },
+  cancelButton: {
+    flex: 1,
+  },
+  verifyButton: {
+    flex: 1,
   },
 });

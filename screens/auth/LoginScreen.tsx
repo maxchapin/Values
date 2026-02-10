@@ -28,38 +28,54 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
   // DEBUG: Test Supabase connection
   const testSupabase = async () => {
-    console.log('[DEBUG] ===== Testing Supabase Connection =====');
+    if (__DEV__) {
+      console.log('[DEBUG] ===== Testing Supabase Connection =====');
+    }
     try {
       const { data, error } = await supabase.auth.getSession();
-      console.log('[DEBUG] Supabase getSession result:', {
-        hasSession: !!data.session,
-        hasUser: !!data.session?.user,
-        userId: data.session?.user?.id || null,
-        error: error ? {
-          message: error.message,
-          status: error.status,
-          name: error.name,
-        } : null,
-      });
+      if (__DEV__) {
+        console.log('[DEBUG] Supabase getSession result:', {
+          hasSession: !!data.session,
+          hasUser: !!data.session?.user,
+          userId: data.session?.user?.id || null,
+          error: error
+            ? {
+                message: error.message,
+                status: error.status,
+                name: error.name,
+              }
+            : null,
+        });
+      }
       
       // Test Supabase URL
-      console.log('[DEBUG] Supabase URL test:', {
-        url: supabase.supabaseUrl,
-        isReachable: !!supabase.supabaseUrl,
-      });
+      if (__DEV__) {
+        console.log('[DEBUG] Supabase URL test:', {
+          url: supabase.supabaseUrl,
+          isReachable: !!supabase.supabaseUrl,
+        });
+      }
     } catch (testError) {
-      console.error('[DEBUG] Supabase test failed:', testError);
+      if (__DEV__) {
+        console.error('[DEBUG] Supabase test failed:', testError);
+      }
     }
-    console.log('[DEBUG] ===== Supabase Test Complete =====');
+    if (__DEV__) {
+      console.log('[DEBUG] ===== Supabase Test Complete =====');
+    }
   };
 
   const handleGoogleSignIn = async () => {
-    console.log('[DEBUG] ===== Google Sign-In Button Pressed =====');
+    if (__DEV__) {
+      console.log('[DEBUG] ===== Google Sign-In Button Pressed =====');
+    }
     try {
       await signInWithGoogle();
       // Navigation will automatically update based on auth state
     } catch (error) {
-      console.error('[DEBUG] Google sign-in error in LoginScreen:', error);
+      if (__DEV__) {
+        console.error('[DEBUG] Google sign-in error in LoginScreen:', error);
+      }
       logAuthError('LoginScreen', error);
       showAuthError(error, 'Sign In Error');
     }

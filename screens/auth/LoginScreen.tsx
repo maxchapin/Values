@@ -37,10 +37,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     try {
       const { data, error } = await supabase.auth.getSession();
       if (__DEV__) {
+        const session = data?.session;
         console.log('[DEBUG] Supabase getSession result:', {
-          hasSession: !!data.session,
-          hasUser: !!data.session?.user,
-          userId: data.session?.user?.id || null,
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          userId: session?.user?.id || null,
           error: error
             ? {
                 message: error.message,

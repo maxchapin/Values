@@ -2,7 +2,7 @@
   "cli": {"version": ">= 14.0.0"},
   "build": {
     "preview": {
-      "distribution": "internal",
+      "distribution": "store",
       "ios": {"simulator": false}
     }
   },

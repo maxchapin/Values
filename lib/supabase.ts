@@ -6,7 +6,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { Platform, AppState } from 'react-native';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
@@ -20,17 +19,12 @@ if (!supabaseUrl || !supabaseKey) {
   throw error;
 }
 
-const redirectTo =
-  Constants.expoConfig?.extra?.supabaseRedirectTo ||
-  `${supabaseUrl}/auth/v1/callback`;
-
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: Platform.OS === 'web',
-    redirectTo,
   },
 });
 

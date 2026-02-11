@@ -79,10 +79,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const loadPersistedSession = async () => {
       try {
-        // First, check if Supabase has an active session
-        const { data: { session: supabaseSession }, error } = await supabase.auth.getSession();
+        // First, check if Supabase has an active session (guard against null/error in production)
+        const { data, error } = await supabase.auth.getSession();
+        const supabaseSession = data?.session ?? null;
 
-        if (supabaseSession && supabaseSession.user && isMounted) {
+        if (supabaseSession?.user && isMounted) {
           // Convert Supabase session to AuthUser and AuthSession
           const authUser = convertSupabaseUserToAuthUser(supabaseSession.user);
           const authSession: AuthSession = {

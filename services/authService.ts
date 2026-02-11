@@ -48,56 +48,44 @@ export const authService = {
    */
   async signInWithGoogle(): Promise<{ user: AuthUser; session: AuthSessionType }> {
     try {
-      // DEBUG: Comprehensive logging
-      console.log('[DEBUG] ===== Google Sign-In Debug Start =====');
-      console.log('[DEBUG] Supabase client exists:', !!supabase);
-      console.log('[DEBUG] Supabase client URL:', supabase ? supabase.supabaseUrl : 'N/A');
-      
-      // Check environment variables (masked for security)
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-      console.log('[DEBUG] Environment config:', {
-        url: supabaseUrl || 'MISSING',
-        key: supabaseKey ? `${supabaseKey.slice(0, 10)}...${supabaseKey.slice(-5)}` : 'MISSING',
-        keyLength: supabaseKey?.length || 0,
-      });
-
-      // Generate redirect URI using expo-auth-session (recommended for Expo)
-      // This ensures the redirect URL is properly formatted for Expo deep linking
-      const redirectUri = AuthSession.makeRedirectUri({
-        scheme: Constants.expoConfig?.scheme || 'values',
-        path: 'auth/callback',
-      });
-      
-      console.log('[DEBUG] App redirect configuration:', {
-        scheme: Constants.expoConfig?.scheme || 'values',
-        redirectUri,
-        generatedBy: 'makeRedirectUri',
-      });
-
-      // Test Supabase connection first
-      console.log('[DEBUG] Testing Supabase connection...');
-      try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        console.log('[DEBUG] Supabase getSession test:', {
-          hasSession: !!sessionData.session,
-          error: sessionError?.message || null,
+      if (__DEV__) {
+        console.log('[DEBUG] ===== Google Sign-In Debug Start =====');
+        console.log('[DEBUG] Supabase client exists:', !!supabase);
+        console.log('[DEBUG] Supabase client URL:', supabase ? (supabase as { supabaseUrl?: string }).supabaseUrl : 'N/A');
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+        console.log('[DEBUG] Environment config:', {
+          url: supabaseUrl || 'MISSING',
+          key: supabaseKey ? `${supabaseKey.slice(0, 10)}...${supabaseKey.slice(-5)}` : 'MISSING',
+          keyLength: supabaseKey?.length || 0,
         });
-      } catch (testError) {
-        console.error('[DEBUG] Supabase connection test failed:', testError);
       }
 
-      // Initiate OAuth flow - this opens the webview
-      console.log('[DEBUG] Calling signInWithOAuth...');
+      // Generate redirect URI using expo-auth-session (recommended for Expo)
+      const scheme = Constants.expoConfig?.scheme ?? 'values';
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme,
+        path: 'auth/callback',
+      });
+
+      if (__DEV__) {
+        console.log('[DEBUG] App redirect configuration:', { scheme, redirectUri });
+        try {
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+          console.log('[DEBUG] Supabase getSession test:', {
+            hasSession: !!sessionData?.session,
+            error: sessionError?.message || null,
+          });
+        } catch (testError) {
+          console.error('[DEBUG] Supabase connection test failed:', testError);
+        }
+        console.log('[DEBUG] Calling signInWithOAuth...');
+      }
+
       let oauthData: any = null;
       let oauthError: any = null;
-      
-      try {
-        console.log('[DEBUG] OAuth options:', {
-          provider: 'google',
-          redirectTo: redirectUri,
-        });
 
+      try {
         const result = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
@@ -108,34 +96,26 @@ export const authService = {
         });
         oauthData = result.data;
         oauthError = result.error;
-        console.log('[DEBUG] OAuth response received:', {
-          hasData: !!oauthData,
-          hasUrl: !!oauthData?.url,
-          url: oauthData?.url ? oauthData.url.substring(0, 100) + '...' : null,
-          error: oauthError ? {
-            message: oauthError.message,
-            status: oauthError.status,
-            name: oauthError.name,
-          } : null,
-        });
-      } catch (oauthException) {
-        console.error('[DEBUG] OAuth exception caught:', oauthException);
-        if (oauthException instanceof Error) {
-          console.error('[DEBUG] Exception details:', {
-            name: oauthException.name,
-            message: oauthException.message,
-            stack: oauthException.stack?.split('\n').slice(0, 5).join('\n'),
+        if (__DEV__) {
+          console.log('[DEBUG] OAuth response received:', {
+            hasData: !!oauthData,
+            hasUrl: !!oauthData?.url,
+            url: oauthData?.url ? oauthData.url.substring(0, 100) + '...' : null,
+            error: oauthError ? { message: oauthError.message, status: oauthError.status, name: oauthError.name } : null,
           });
+        }
+      } catch (oauthException) {
+        if (__DEV__) console.error('[DEBUG] OAuth exception caught:', oauthException);
+        if (__DEV__ && oauthException instanceof Error) {
+          console.error('[DEBUG] Exception details:', oauthException.name, oauthException.message);
         }
         throw oauthException;
       }
 
       if (oauthError) {
-        console.error('[DEBUG] OAuth error detected:', {
-          message: oauthError.message,
-          status: oauthError.status,
-          name: oauthError.name,
-        });
+        if (__DEV__) {
+          console.error('[DEBUG] OAuth error detected:', oauthError.message, oauthError.status);
+        }
         
         // Handle cancellation (user closed the webview)
         if (oauthError.message?.includes('cancel') || oauthError.message?.includes('dismiss')) {
@@ -150,7 +130,7 @@ export const authService = {
 
       // Check if we got a URL (means webview should open)
       if (!oauthData?.url) {
-        console.error('[DEBUG] No URL in OAuth response - webview will not open');
+        if (__DEV__) console.error('[DEBUG] No URL in OAuth response - webview will not open');
         throw new AuthError(
           'OAuth flow did not return a URL. Check Supabase Google provider configuration.',
           'OAUTH_NO_URL',
@@ -158,7 +138,7 @@ export const authService = {
         );
       }
 
-      console.log('[DEBUG] OAuth URL received:', oauthData.url);
+      if (__DEV__) console.log('[DEBUG] OAuth URL received:', oauthData.url);
       
       // In Expo, we need to manually open the OAuth URL
       // Supabase doesn't automatically open the browser like it does on web

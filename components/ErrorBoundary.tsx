@@ -46,10 +46,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    // Log error to console in development
-    if (__DEV__) {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
-    }
+    // Always log so device logs show the error in production (e.g. EAS build debugging)
+    console.error('ErrorBoundary caught an error:', error?.message ?? error, errorInfo?.componentStack ?? '');
 
     // Call custom error handler if provided
     if (this.props.onError) {

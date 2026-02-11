@@ -2,14 +2,16 @@
   "expo": {
     "name": "Values Dating",
     "slug": "values-dating",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "values",
     "imageMaxAge": 60,
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -36,7 +38,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.values.app"
+      "bundleIdentifier": "com.values.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -45,14 +50,20 @@
       },
       "package": "com.values.app",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "googleClientId": "",
-      "supabaseRedirectTo": "${EXPO_PUBLIC_SUPABASE_URL}/auth/v1/callback"
+      "supabaseRedirectTo": "${EXPO_PUBLIC_SUPABASE_URL}/auth/v1/callback",
+      "eas": {
+        "projectId": "5ba96ab4-b67a-4a67-be1c-547129534a1d"
+      }
     }
   }
 }

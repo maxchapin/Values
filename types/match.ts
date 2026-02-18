@@ -22,6 +22,8 @@ export interface Match {
   sharedValuesCount: number;
   /** Explanation buckets for UI; never expose math/tiers to user. */
   valuesExplanation?: ValuesExplanation;
+  /** Distance in miles from viewer to this match (when center coords available). Omitted if unavailable. */
+  distanceMiles?: number | null;
 }
 
 export interface MatchFilters {

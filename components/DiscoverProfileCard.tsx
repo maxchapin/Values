@@ -4,7 +4,10 @@ import { Card } from './Card';
 import { TagPill } from './TagPill';
 import { ProfilePhotoCarousel, type ProfilePhotoCarouselRef } from './ProfilePhotoCarousel';
 import { MatchScoreInfoModal } from './MatchScoreInfoModal';
+import { ValuesExplanationModal } from './ValuesExplanationModal';
 import { theme } from '../theme';
+import { sectionCardStyles } from '../styles/sectionCardStyles';
+import { formatDistanceMiles } from '../utils/geo';
 import { User, Gender } from '../types/user';
 
 /** Display label for card; null means hide (e.g. prefer-not-to-say). */
@@ -33,6 +36,8 @@ interface DiscoverProfileCardProps {
   sharedValuesCount?: number;
   /** Human-readable explanation lines from match buckets (strong / partial / friction). */
   explanationLines?: string[];
+  /** Distance in miles from viewer to candidate (from match or computed). Null/undefined = unavailable. */
+  distanceMiles?: number | null;
   mode?: 'self' | 'other';
   scrollViewProps?: Omit<ScrollViewProps, 'ref'>;
 }
@@ -65,6 +70,7 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
       similarityScore,
       sharedValuesCount,
       explanationLines,
+      distanceMiles,
       mode = 'other',
       scrollViewProps,
     },
@@ -81,7 +87,12 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
     const score = typeof similarityScore === 'number' ? similarityScore : 0;
     const matchHeadline = `${score}% Match`;
     const [showScoreInfoModal, setShowScoreInfoModal] = useState(false);
+    const [showValuesExplanationModal, setShowValuesExplanationModal] = useState(false);
     const genderLabel = getGenderDisplayLabel(candidate.gender);
+    const distanceLabel =
+      distanceMiles != null && Number.isFinite(distanceMiles)
+        ? formatDistanceMiles(distanceMiles)
+        : null;
 
     // Reset photo carousel to first image whenever the active candidate changes (Like/Pass or index change)
     useEffect(() => {
@@ -93,6 +104,11 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
         <MatchScoreInfoModal
           visible={showScoreInfoModal}
           onClose={() => setShowScoreInfoModal(false)}
+        />
+        <ValuesExplanationModal
+          visible={showValuesExplanationModal}
+          onClose={() => setShowValuesExplanationModal(false)}
+          lines={explanationLines ?? []}
         />
         <ScrollView
           ref={ref}
@@ -111,59 +127,118 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
           />
 
           <View style={styles.section}>
-            <View style={styles.nameLocationRow}>
+            {/* Name + age (left), X% Match (right) */}
+            <View style={styles.nameMatchRow}>
               <Text style={styles.name} numberOfLines={1}>
                 {candidate.name || 'Unknown'}{candidate.age != null ? `, ${candidate.age}` : ''}
               </Text>
-              <View style={styles.locationGenderColumn}>
-                <Text style={styles.location} numberOfLines={1}>
-                  {candidate.locationLabel ?? 'Location not set'}
-                </Text>
-                {genderLabel ? (
-                  <Text style={styles.genderLabel} numberOfLines={1}>
-                    {genderLabel}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-            {showMatchScore ? (
-              <>
+              {showMatchScore ? (
                 <View style={styles.matchScoreRow}>
                   <View style={styles.matchScorePill}>
                     <Text style={styles.matchScoreText}>{matchHeadline}</Text>
+                    <Pressable
+                      style={styles.matchScoreInfoButton}
+                      onPress={() => setShowScoreInfoModal(true)}
+                      accessibilityLabel="Learn how match score is calculated"
+                      accessibilityRole="button"
+                      accessibilityHint="Opens explanation of how match scores are calculated"
+                    >
+                      <Text style={styles.matchScoreInfoIcon}>ℹ️</Text>
+                    </Pressable>
                   </View>
-                  <Pressable
-                    style={styles.matchScoreInfoButton}
-                    onPress={() => setShowScoreInfoModal(true)}
-                    accessibilityLabel="Learn how match score is calculated"
-                    accessibilityRole="button"
-                    accessibilityHint="Opens explanation of how match scores are calculated"
-                  >
-                    <Text style={styles.matchScoreInfoIcon}>ℹ️</Text>
-                  </Pressable>
                 </View>
-                {explanationLines && explanationLines.length > 0 ? (
-                  <View style={styles.explanationBlock}>
-                    {explanationLines.map((line, i) => (
-                      <Text key={i} style={styles.explanationLine}>
-                        {line}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
+              ) : null}
+            </View>
 
             {hometown ? (
               <Text style={styles.subRow} numberOfLines={1}>
-                Where they’re from: {hometown}
+                Where they're from: {hometown}
               </Text>
             ) : null}
           </View>
 
+          {/* Details box: same wrapper and item format as Prompts */}
+          <View style={[styles.section, styles.sectionCard, styles.detailsCard]}>
+            <Text style={styles.sectionCardTitle}>Details</Text>
+            <View style={styles.detailsOneLine}>
+              <Text style={styles.detailsInline} numberOfLines={1}>
+                {candidate.locationLabel ?? 'Location not set'}
+              </Text>
+              {genderLabel != null ? (
+                <>
+                  <Text style={styles.detailsSeparator}> · </Text>
+                  <Text style={styles.detailsInline} numberOfLines={1}>{genderLabel}</Text>
+                </>
+              ) : null}
+            </View>
+            {/* Distance commented out for now
+            <View style={styles.promptItem}>
+              <Text style={styles.promptQ} numberOfLines={1}>Distance</Text>
+              <Text style={styles.promptA} numberOfLines={1}>
+                {distanceLabel ? `${distanceLabel} away` : 'Distance unavailable'}
+              </Text>
+            </View>
+            */}
+          </View>
+
+          {/* Values box: same wrapper as Prompts */}
+          <View style={[styles.section, styles.sectionCard, styles.valuesCard]}>
+            <View style={styles.valuesCardHeader}>
+              <Text style={styles.sectionCardTitle}>Values</Text>
+                {!isSelfMode && (explanationLines?.length ?? 0) > 0 ? (
+                  <Pressable
+                    style={styles.valuesInfoButton}
+                    onPress={() => setShowValuesExplanationModal(true)}
+                    accessibilityLabel="What these values mean"
+                    accessibilityRole="button"
+                    accessibilityHint="Opens explanation of how your values compare"
+                  >
+                    <Text style={styles.matchScoreInfoIcon}>ℹ️</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <Pressable
+                style={styles.valuesContentTouchable}
+                onPress={() => !isSelfMode && (explanationLines?.length ?? 0) > 0 && setShowValuesExplanationModal(true)}
+                accessibilityLabel="Values. Double tap to open explanation."
+                accessibilityRole="button"
+              >
+                {isSelfMode ? (
+                  displayValues.length > 0 ? (
+                    <View style={styles.tagsRow}>
+                      {displayValues.map((v) => (
+                        <TagPill key={v.id} label={v.label} size="sm" />
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.valuesLabel}>No values selected</Text>
+                  )
+                ) : (
+                  displayValues.length > 0 ? (
+                    <View style={styles.tagsRow}>
+                      {displayValues.map((v) => {
+                        const shared = sharedValueIds.has(v.id);
+                        return (
+                          <TagPill
+                            key={v.id}
+                            label={v.label}
+                            size="sm"
+                            style={shared ? styles.sharedPill : undefined}
+                            textStyle={shared ? styles.sharedPillText : undefined}
+                          />
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <Text style={styles.valuesLabel}>No values selected</Text>
+                  )
+                )}
+              </Pressable>
+            </View>
+
           {candidate.prompts && Array.isArray(candidate.prompts) && candidate.prompts.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Prompts</Text>
+            <View style={[styles.section, styles.sectionCard, styles.promptsCard]}>
+              <Text style={styles.sectionCardTitle}>Prompts</Text>
               {candidate.prompts.slice(0, 2).map((p) => (
                 <View key={p.id} style={styles.promptItem}>
                   <Text style={styles.promptQ} numberOfLines={1}>
@@ -176,41 +251,6 @@ export const DiscoverProfileCard = React.forwardRef<ScrollView, DiscoverProfileC
               ))}
             </View>
           ) : null}
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Values</Text>
-
-            {isSelfMode ? (
-              displayValues.length > 0 ? (
-                <View style={styles.tagsRow}>
-                  {displayValues.map((v) => (
-                    <TagPill key={v.id} label={v.label} size="sm" />
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.valuesLabel}>No values selected</Text>
-              )
-            ) : (
-              displayValues.length > 0 ? (
-                <View style={styles.tagsRow}>
-                  {displayValues.map((v) => {
-                    const shared = sharedValueIds.has(v.id);
-                    return (
-                      <TagPill
-                        key={v.id}
-                        label={v.label}
-                        size="sm"
-                        style={shared ? styles.sharedPill : undefined}
-                        textStyle={shared ? styles.sharedPillText : undefined}
-                      />
-                    );
-                  })}
-                </View>
-              ) : (
-                <Text style={styles.valuesLabel}>No values selected</Text>
-              )
-            )}
-          </View>
         </ScrollView>
       </Card>
     );
@@ -245,16 +285,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.spacing.md,
   },
-  nameLocationRow: {
+  nameMatchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.md,
-  },
-  locationGenderColumn: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: theme.spacing.xs,
   },
   name: {
     flex: 1,
@@ -263,27 +298,19 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.text,
   },
-  location: {
-    flexShrink: 0,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textAlign: 'right',
-  },
-  genderLabel: {
-    marginTop: theme.spacing.xs,
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.medium,
-    color: theme.colors.textSecondary,
-    opacity: 0.85,
-  },
   matchScoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    marginTop: theme.spacing.sm,
     gap: theme.spacing.xs,
+    flexShrink: 0,
+  },
+  detailsCard: {
+    marginTop: theme.spacing.sm,
   },
   matchScorePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
     backgroundColor: theme.colors.primaryLight + '25',
     paddingHorizontal: theme.spacing.base,
     paddingVertical: theme.spacing.sm,
@@ -292,13 +319,13 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.primary + '40',
   },
   matchScoreText: {
-    fontSize: theme.typography.fontSize.sm,
+    fontSize: theme.typography.fontSize.lg,
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.primary,
   },
   matchScoreInfoButton: {
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 28,
+    minHeight: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -306,14 +333,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     opacity: 0.9,
   },
-  explanationBlock: {
-    marginTop: theme.spacing.sm,
+  detailsOneLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
-  explanationLine: {
+  detailsInline: {
     fontSize: theme.typography.fontSize.sm,
     color: theme.colors.textSecondary,
-    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.relaxed,
-    marginBottom: theme.spacing.xs,
+  },
+  detailsSeparator: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textTertiary,
+  },
+  sectionCard: {
+    ...sectionCardStyles.card,
+  },
+  sectionCardTitle: {
+    ...sectionCardStyles.cardTitle,
+  },
+  valuesCard: {
+    marginTop: theme.spacing.sm,
+  },
+  promptsCard: {
+    marginTop: theme.spacing.sm,
+  },
+  valuesCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.sm,
+  },
+  valuesInfoButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  valuesContentTouchable: {
+    marginTop: 0,
   },
   subRow: {
     marginTop: theme.spacing.sm,

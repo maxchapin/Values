@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { ScreenContainer } from './ScreenContainer';
 import { PrimaryButton } from './PrimaryButton';
+import { SecondaryButton } from './SecondaryButton';
 import { theme } from '../theme';
 
 interface EmptyStateProps {
@@ -10,6 +11,9 @@ interface EmptyStateProps {
   message: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** Optional second action (e.g. "Feedback"). Rendered below the primary action. */
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
   fullScreen?: boolean;
   containerStyle?: ViewStyle;
   titleStyle?: TextStyle;
@@ -37,6 +41,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   message,
   actionLabel,
   onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
   fullScreen = true,
   containerStyle,
   titleStyle,
@@ -57,6 +63,15 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             title={actionLabel}
             onPress={onAction}
             style={styles.actionButton}
+          />
+        </View>
+      )}
+      {secondaryActionLabel && onSecondaryAction && (
+        <View style={styles.secondaryActionContainer}>
+          <SecondaryButton
+            title={secondaryActionLabel}
+            onPress={onSecondaryAction}
+            style={styles.secondaryActionButton}
           />
         </View>
       )}
@@ -112,6 +127,14 @@ const styles = StyleSheet.create({
     maxWidth: 300,
   },
   actionButton: {
+    width: '100%',
+  },
+  secondaryActionContainer: {
+    width: '100%',
+    maxWidth: 300,
+    marginTop: theme.spacing.base,
+  },
+  secondaryActionButton: {
     width: '100%',
   },
 });

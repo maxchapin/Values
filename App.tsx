@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
@@ -274,9 +275,10 @@ export default function App() {
         </ErrorBoundary>
       ) : (
         <ErrorBoundary>
-          <SafeAreaProvider>
-            <AuthProvider>
-              <AuthGate />
+          <GestureHandlerRootView style={styles.flex1}>
+            <SafeAreaProvider>
+              <AuthProvider>
+                <AuthGate />
               {__DEV__ && rehydrationResult && (
                 <View style={styles.devResultContainer}>
                   <Text style={styles.devResultText}>
@@ -284,8 +286,9 @@ export default function App() {
                   </Text>
                 </View>
               )}
-            </AuthProvider>
-          </SafeAreaProvider>
+              </AuthProvider>
+            </SafeAreaProvider>
+          </GestureHandlerRootView>
         </ErrorBoundary>
       )}
     </>
@@ -293,6 +296,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  flex1: { flex: 1 },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

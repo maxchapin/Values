@@ -9,6 +9,7 @@ import { User, LocationCoordinates, UserValuesProfile, InterestedIn, Gender } fr
 import { Value } from '../types/value';
 import { Match } from '../types/match';
 import { INITIAL_VALUES } from '../data/valuesConstants';
+import { haversineMiles } from '../utils/geo';
 import {
   userToWeightMap,
   computeModel3Score,
@@ -70,20 +71,6 @@ const DEFAULT_USER_PHOTOS: string[] = [
   'https://picsum.photos/seed/me2/900/1200',
   'https://picsum.photos/seed/me3/1200/800',
 ];
-
-/** Earth radius in miles (for Haversine). */
-const EARTH_RADIUS_MILES = 3959;
-
-/** Haversine distance in miles between two points. */
-function haversineMiles(a: LocationCoordinates, b: LocationCoordinates): number {
-  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
-  const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
-  const lat1 = (a.latitude * Math.PI) / 180;
-  const lat2 = (b.latitude * Math.PI) / 180;
-  const x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-  return EARTH_RADIUS_MILES * c;
-}
 
 // Mock users database with realistic dating profiles (approximate city coords)
 const MOCK_USERS: User[] = [
@@ -626,7 +613,7 @@ function buildMatchesForUser(
       }
       if (center && user.locationCoordinates) {
         const miles = haversineMiles(center, user.locationCoordinates);
-        if (miles > radiusMiles) return false;
+        if (miles == null || miles > radiusMiles) return false;
       }
       return true;
     })
@@ -637,12 +624,17 @@ function buildMatchesForUser(
       );
       const recencyScore = getRecencyScore(user.lastLoginAt ?? null);
       const compositeScore = getCompositeScore(similarityScore, recencyScore);
+      const distanceMiles =
+        center && user.locationCoordinates
+          ? haversineMiles(center, user.locationCoordinates)
+          : null;
       const match: Match = {
         user,
         similarityScore,
         sharedValues,
         sharedValuesCount: sharedValues.length,
         valuesExplanation,
+        distanceMiles: distanceMiles ?? undefined,
       };
       return { match, compositeScore };
     })

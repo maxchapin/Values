@@ -12,7 +12,9 @@ import { trackScreenView, trackMatchLiked, trackMatchPassed } from '../services/
 import { ScreenContainer } from '../components/ScreenContainer';
 import { DiscoverActionBar } from '../components/DiscoverActionBar';
 import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
+import { DiscoverSwipeCard } from '../components/DiscoverSwipeCard';
 import { FiltersSheet } from '../components/FiltersSheet';
+import { FeedbackModal } from '../components/FeedbackModal';
 import { formatExplanationLines } from '../services/matchingModel';
 import { theme } from '../theme';
 
@@ -37,6 +39,7 @@ export const DiscoverScreen: React.FC = () => {
   const matches = availableMatches ?? [];
 
   const [showFilters, setShowFilters] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const didInitialLoadRef = useRef(false);
   const cardScrollRef = useRef<ScrollView>(null);
@@ -141,31 +144,49 @@ export const DiscoverScreen: React.FC = () => {
   // No matches initially (empty list from backend)
   if (matches.length === 0) {
     return (
-      <EmptyState
-        icon="🔍"
-        title="No Matches Found"
-        message="We couldn't find any matches with your current filters. Try adjusting your age range or location preferences."
-        actionLabel="Adjust Filters"
-        onAction={() => setShowFilters(true)}
-      />
+      <>
+        <EmptyState
+          icon="🔍"
+          title="No Matches Found"
+          message="There are currently no more matches available. Try adjusting your filters, or send us feedback so we can improve."
+          actionLabel="Adjust Filters"
+          onAction={() => setShowFilters(true)}
+          secondaryActionLabel="Feedback"
+          onSecondaryAction={() => setShowFeedbackModal(true)}
+        />
+        <FeedbackModal
+          visible={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          context="discover_no_matches"
+        />
+      </>
     );
   }
 
   // Reached end of queue (seen all matches)
   if (!currentMatch || !candidate) {
     return (
-      <EmptyState
-        icon="💫"
-        title="You're All Caught Up"
-        message="You've seen all available matches. Try adjusting your filters or check back later for more!"
-        actionLabel="Refresh Matches"
-        onAction={() => {
-          if (currentUser) {
-            reset();
-            loadMatches(currentUser.id, filters);
-          }
-        }}
-      />
+      <>
+        <EmptyState
+          icon="💫"
+          title="You're All Caught Up"
+          message="There are currently no more matches to show. Adjust your filters or check back later—or send us feedback."
+          actionLabel="Refresh Matches"
+          onAction={() => {
+            if (currentUser) {
+              reset();
+              loadMatches(currentUser.id, filters);
+            }
+          }}
+          secondaryActionLabel="Feedback"
+          onSecondaryAction={() => setShowFeedbackModal(true)}
+        />
+        <FeedbackModal
+          visible={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          context="discover_all_caught_up"
+        />
+      </>
     );
   }
 
@@ -173,16 +194,13 @@ export const DiscoverScreen: React.FC = () => {
     <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
       <View style={styles.container}>
         {/* Header: Filters (left) + Values (centered) */}
-        <View style={[styles.headerBar, { paddingTop: insets.top + theme.spacing.lg, backgroundColor: theme.colors.headerBackground }]}>
+        <View style={[styles.headerBar, { paddingTop: insets.top + theme.spacing.sm, backgroundColor: theme.colors.headerBackground }]}>
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setShowFilters(true)}
             onLongPress={handleFilterPress}
           >
             <Text style={styles.filterButtonText}>Filters</Text>
-            {/*<Text style={styles.filterBadge}>
-              {typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : 50} mi
-            </Text> */}
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             Values
@@ -203,23 +221,31 @@ export const DiscoverScreen: React.FC = () => {
           </View>
         )}*/}
 
-        {/* Scrollable card area */}
+        {/* Scrollable card area: swipe wrapper so swipe right = like, swipe left = pass */}
         <View style={styles.cardArea}>
-          <DiscoverProfileCard
-            ref={cardScrollRef}
-            candidate={candidate}
-            sharedValueIds={sharedValueIds}
-            similarityScore={typeof currentMatch?.similarityScore === 'number' ? currentMatch.similarityScore : 0}
-            sharedValuesCount={typeof currentMatch?.sharedValuesCount === 'number' ? currentMatch.sharedValuesCount : 0}
-            explanationLines={
-              currentMatch?.valuesExplanation
-                ? formatExplanationLines(currentMatch.valuesExplanation)
-                : undefined
-            }
-            scrollViewProps={{
-              contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
-            }}
-          />
+          <DiscoverSwipeCard
+            onLike={handleLike}
+            onPass={handlePass}
+            disabled={!candidate}
+            cardKey={candidate?.id}
+          >
+            <DiscoverProfileCard
+              ref={cardScrollRef}
+              candidate={candidate}
+              sharedValueIds={sharedValueIds}
+              similarityScore={typeof currentMatch?.similarityScore === 'number' ? currentMatch.similarityScore : 0}
+              sharedValuesCount={typeof currentMatch?.sharedValuesCount === 'number' ? currentMatch.sharedValuesCount : 0}
+              explanationLines={
+                currentMatch?.valuesExplanation
+                  ? formatExplanationLines(currentMatch.valuesExplanation)
+                  : undefined
+              }
+              distanceMiles={currentMatch?.distanceMiles}
+              scrollViewProps={{
+                contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
+              }}
+            />
+          </DiscoverSwipeCard>
         </View>
 
         {/* Fixed bottom bar: Like/Pass (match score is on the card) */}
@@ -252,7 +278,7 @@ const styles = StyleSheet.create({
   },
   headerBar: {
     paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.base,
+    paddingBottom: theme.spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -276,11 +302,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
   },
-  filterBadge: {
-    fontSize: 10,
-    color: theme.colors.headerTintSecondary,
-    fontWeight: theme.typography.fontWeight.medium,
-  },
   headerTitle: {
     flex: 1,
     fontSize: theme.typography.fontSize.lg,
@@ -295,6 +316,7 @@ const styles = StyleSheet.create({
   cardArea: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
     minHeight: 0,
     backgroundColor: theme.colors.background,
   },

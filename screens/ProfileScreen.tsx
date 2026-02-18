@@ -9,6 +9,7 @@ import { ProfilePhotoCarousel } from '../components/ProfilePhotoCarousel';
 import { useDebugAccess } from '../hooks/useDebugAccess';
 import { trackScreenView } from '../services/analytics';
 import { theme } from '../theme';
+import { sectionCardStyles } from '../styles/sectionCardStyles';
 
 /**
  * Profile Screen - Redesigned with best practices
@@ -270,22 +271,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   card: {
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderRadius: theme.borderRadius.lg,
-    padding: 20, // Generous padding inside cards
-    marginBottom: 24, // 24px section spacing
-    // Subtle shadow for depth
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2, // Android shadow
+    ...sectionCardStyles.card,
   },
   cardTitle: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.bold,
-    color: theme.colors.text,
-    marginBottom: 16, // 16px spacing within cards
+    ...sectionCardStyles.cardTitle,
   },
   valuesContainer: {
     flexDirection: 'row',

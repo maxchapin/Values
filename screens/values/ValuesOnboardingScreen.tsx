@@ -23,6 +23,8 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { theme } from '../../theme';
 import { UserValuesProfile } from '../../types/user';
 import { RootStackParamList } from '../../navigation/types';
+import { useAuth } from '../../contexts/AuthContext';
+import { upsertSupabaseProfile } from '../../services/supabaseProfile';
 
 type ValuesOnboardingScreenProps = NativeStackScreenProps<RootStackParamList, 'ValuesOnboarding'>;
 
@@ -50,6 +52,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
   const countShakeAnim = useRef(new Animated.Value(0)).current;
 
   const stepInfo = getStepInfo();
+  const { user: authUser } = useAuth();
 
   // Get current count based on step
   const getCurrentCount = (): number => {
@@ -257,6 +260,25 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
     // Save to user store
     const { updateValuesProfile } = useUserStore.getState();
     await updateValuesProfile(valuesProfile);
+
+    // After values onboarding, sync tiered values into Supabase `profiles.selected_values`
+    // and update is_values_complete / is_onboarding_complete flags.
+    if (authUser) {
+      try {
+        const { currentUser } = useUserStore.getState();
+        if (currentUser) {
+          await upsertSupabaseProfile(authUser, currentUser);
+        }
+      } catch (error) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.error('[ValuesOnboardingScreen] Failed to upsert Supabase profile with values:', error);
+        }
+      }
+    } else if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[ValuesOnboardingScreen] No AuthUser when attempting to upsert Supabase profile');
+    }
 
     // Check if we're in edit mode (came from EditProfile)
     const fromEditProfile = route.params?.fromEditProfile;

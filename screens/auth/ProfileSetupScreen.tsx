@@ -15,6 +15,8 @@ import { useUserStore } from '../../store/userStore';
 import { useForm, validators } from '../../hooks/useForm';
 import { RootStackParamList } from '../../navigation/types';
 import { Gender, InterestedIn, Prompt } from '../../types/user';
+import { useAuth } from '../../contexts/AuthContext';
+import { upsertSupabaseProfile } from '../../services/supabaseProfile';
 
 type ProfileSetupScreenProps = NativeStackScreenProps<RootStackParamList, 'ProfileSetup'>;
 
@@ -29,6 +31,7 @@ interface ProfileFormData {
 
 export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation }) => {
   const { currentUser, createOrUpdateUser, isLoading } = useUserStore();
+  const { user: authUser } = useAuth();
   const ageRef = useRef<TextInput>(null);
   const hometownRef = useRef<TextInput>(null);
   const jobRef = useRef<TextInput>(null);
@@ -180,6 +183,38 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     };
 
     await createOrUpdateUser(profileData);
+
+    // Persist profile details into Supabase `profiles` table
+    // so that auth.users(id) → profiles(id) stays in sync after onboarding.
+    if (authUser) {
+      try {
+        // Get the freshest user from the store after createOrUpdateUser runs.
+        const { currentUser: updatedUser } = useUserStore.getState();
+        await upsertSupabaseProfile(authUser, updatedUser ?? {
+          age: ageNum,
+          gender,
+          interestedIn,
+          locationCoordinates,
+          locationLabel,
+          hometown: profileData.hometown,
+          job: profileData.job,
+          education: profileData.education,
+          bio: profileData.bio,
+          photos,
+          prompts: validPrompts,
+        });
+      } catch (error) {
+        if (__DEV__) {
+          // Log but don't block onboarding – user can still proceed.
+          // This ensures we notice Supabase profile sync issues in dev.
+          // eslint-disable-next-line no-console
+          console.error('[ProfileSetupScreen] Failed to upsert Supabase profile:', error);
+        }
+      }
+    } else if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[ProfileSetupScreen] No AuthUser when attempting to upsert Supabase profile');
+    }
 
     // Track profile completion
     trackProfileCompleted({

@@ -3,8 +3,17 @@
   "build": {
     "preview": {
       "distribution": "store",
-      "ios": {"simulator": false}
+      "ios": {"simulator": false},
+      "autoIncrement": true
+    },
+    "testflight": {
+      "distribution": "store",
+      "ios": {"simulator": false},
+      "autoIncrement": true
     }
   },
-  "submit": {"preview": {}}
+  "submit": {
+    "preview": {},
+    "testflight": {}
+  }
 }

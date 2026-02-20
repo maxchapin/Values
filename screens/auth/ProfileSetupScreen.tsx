@@ -8,7 +8,9 @@ import { TagPill } from '../../components/TagPill';
 import { ProfilePhotosPicker } from '../../components/ProfilePhotosPicker';
 import { ProfilePromptsEditor } from '../../components/ProfilePromptsEditor';
 import { LocationPicker } from '../../components/LocationPicker';
+import { BirthdayPicker } from '../../components/BirthdayPicker';
 import type { LocationCoordinates } from '../../types/user';
+import { calculateAge } from '../../utils/dateUtils';
 import { trackScreenView, trackProfileCompleted, setUserProperties } from '../../services/analytics';
 import { theme } from '../../theme';
 import { useUserStore } from '../../store/userStore';
@@ -22,7 +24,6 @@ type ProfileSetupScreenProps = NativeStackScreenProps<RootStackParamList, 'Profi
 
 interface ProfileFormData {
   name: string;
-  age: string;
   hometown: string;
   job: string;
   education: string;
@@ -32,7 +33,6 @@ interface ProfileFormData {
 export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation }) => {
   const { currentUser, createOrUpdateUser, isLoading } = useUserStore();
   const { user: authUser } = useAuth();
-  const ageRef = useRef<TextInput>(null);
   const hometownRef = useRef<TextInput>(null);
   const jobRef = useRef<TextInput>(null);
   const educationRef = useRef<TextInput>(null);
@@ -53,7 +53,6 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
   } = useForm<ProfileFormData>(
     {
       name: currentUser?.name || '',
-      age: currentUser?.age.toString() || '',
       hometown: currentUser?.hometown || '',
       job: currentUser?.job || '',
       education: currentUser?.education || '',
@@ -63,22 +62,6 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       name: [
         validators.required('First name is required'),
         validators.minLength(2, 'First name must be at least 2 characters'),
-      ],
-      age: [
-        validators.required('Age is required'),
-        (value: string) => {
-          if (!value.trim()) {
-            return undefined; // Let required handle empty
-          }
-          const ageNum = parseInt(value, 10);
-          if (isNaN(ageNum)) {
-            return 'Age must be a number';
-          }
-          if (ageNum < 18 || ageNum > 100) {
-            return 'Age must be between 18 and 100';
-          }
-          return undefined;
-        },
       ],
       hometown: [
         validators.required('Where you are from is required'),
@@ -108,6 +91,15 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
   const [locationLabel, setLocationLabel] = useState<string | null>(
     currentUser?.locationLabel ?? null
   );
+  const [birthday, setBirthday] = useState<Date | string | null>(() => {
+    if (currentUser?.birthday) return currentUser.birthday;
+    return null;
+  });
+  const [birthdayError, setBirthdayError] = useState<string | null>(null);
+  const [age, setAge] = useState<number>(() => {
+    if (currentUser?.birthday) return calculateAge(currentUser.birthday);
+    return currentUser?.age ?? 0;
+  });
   const [photos, setPhotos] = useState<string[]>(
     Array.isArray(currentUser?.photos) ? currentUser!.photos : []
   );
@@ -142,21 +134,18 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
   const hasValidPrompts = (): boolean => getValidPrompts().length >= 1;
 
   const onSubmit = async (formValues: ProfileFormData): Promise<void> => {
-    // Validate interestedIn (non-text field)
     if (!interestedIn) {
       setInterestedInError('Please select who you are interested in');
       return;
     }
     setInterestedInError(null);
 
-    // Require location (map pin) to be set
     if (!locationCoordinates || typeof locationCoordinates.latitude !== 'number' || typeof locationCoordinates.longitude !== 'number') {
       setLocationError('Please set your location on the map (tap or drag the pin, or search for a place)');
       return;
     }
     setLocationError(null);
 
-    // Additional validation for prompts
     const validPrompts = getValidPrompts();
     if (validPrompts.length < 1) {
       setPromptsError('Please add at least one prompt and answer');
@@ -164,12 +153,24 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     }
     setPromptsError(null);
 
-    const ageNum = parseInt(formValues.age, 10);
+    if (birthday == null) {
+      setBirthdayError('Please select your birthday');
+      return;
+    }
+    setBirthdayError(null);
+    const ageNum = age;
+    if (ageNum < 18 || ageNum > 100) {
+      setBirthdayError('You must be 18 or older to use this app');
+      return;
+    }
+
+    const birthdayISO = typeof birthday === 'string' ? birthday : new Date(birthday).toISOString();
 
     const profileData = {
       email: currentUser?.email || '',
       name: formValues.name.trim(),
       age: ageNum,
+      birthday: birthdayISO,
       gender,
       interestedIn,
       locationCoordinates,
@@ -192,6 +193,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
         const { currentUser: updatedUser } = useUserStore.getState();
         await upsertSupabaseProfile(authUser, updatedUser ?? {
           age: ageNum,
+          birthday: birthdayISO,
           gender,
           interestedIn,
           locationCoordinates,
@@ -268,24 +270,19 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           autoCapitalize="words"
           returnKeyType="next"
           blurOnSubmit={false}
-          onSubmitEditing={() => ageRef.current?.focus()}
+          onSubmitEditing={() => hometownRef.current?.focus()}
         />
 
-        {/* Age */}
-        <TextInputField
-          ref={ageRef}
-          label="Age *"
-          placeholder="Enter your age"
-          value={values.age}
-          onChangeText={(text) => {
-            setValue('age', text, true);
+        {/* Birthday */}
+        <BirthdayPicker
+          label="Birthday *"
+          value={birthday}
+          onChange={(_, ageYears, birthdayISO) => {
+            setBirthday(birthdayISO);
+            setAge(ageYears);
+            setBirthdayError(null);
           }}
-          onBlur={() => setFieldTouched('age')}
-          error={touched.age ? errors.age : undefined}
-          keyboardType="number-pad"
-          returnKeyType="next"
-          blurOnSubmit={false}
-          onSubmitEditing={() => hometownRef.current?.focus()}
+          error={birthdayError ?? undefined}
         />
 
         {/* Gender */}
@@ -482,7 +479,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
         />
         {(!hasValidPrompts() || Object.keys(errors).length > 0 || !locationCoordinates) && (
           <Text style={styles.hint}>
-            Please fill in all required fields (*). Set your location on the map. Age 18–100. Add at least one prompt + answer.
+            Please fill in all required fields (*). Set your location on the map. Select your birthday (18+). Add at least one prompt + answer.
           </Text>
         )}
       </View>

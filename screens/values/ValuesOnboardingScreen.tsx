@@ -52,7 +52,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
   const countShakeAnim = useRef(new Animated.Value(0)).current;
 
   const stepInfo = getStepInfo();
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshProfile } = useAuth();
 
   // Get current count based on step
   const getCurrentCount = (): number => {
@@ -96,8 +96,13 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
     const required = getRequiredCount();
 
     switch (currentStep) {
-      case 'broad':
-        return `Selected: ${current}`;
+      case 'broad': {
+        if (current === 5) return 'Perfect! 5/5';
+        if (current < 5) return `${current} selected (min 5)`;
+        if (current <= 10) return `Great! ${current} values – next: pick top 5`;
+        if (current <= 20) return `${current} values – next: pick top 10`;
+        return `${current} values – next: pick top 20`;
+      }
       case 'top20':
         return `${current} / 20 selected`;
       case 'top10':
@@ -170,20 +175,17 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
 
   const handleBack = (): void => {
     setValidationError('');
-    
-    // Check if we're in edit mode (came from EditProfile)
     const fromEditProfile = route.params?.fromEditProfile;
-    
-    if (fromEditProfile) {
-      // If in edit mode and not at first step, go to previous step
-      // Otherwise go back to EditProfile
+    const fromProfileCard = route.params?.fromProfileCard;
+    const isEditMode = fromEditProfile || fromProfileCard;
+
+    if (isEditMode) {
       if (currentStep !== 'broad') {
         goToPreviousStep();
       } else {
         navigation.goBack();
       }
     } else {
-      // Normal onboarding flow - go to previous step
       goToPreviousStep();
     }
   };
@@ -191,9 +193,9 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
   const handleValuePress = (id: string): void => {
     setValidationError(''); // Clear error on any interaction
     
-    // Check if we're in edit mode (from Edit Profile)
     const fromEditProfile = route.params?.fromEditProfile;
-    const isEditMode = fromEditProfile && currentStep === 'summary';
+    const fromProfileCard = route.params?.fromProfileCard;
+    const isEditMode = (fromEditProfile || fromProfileCard) && currentStep === 'summary';
     
     if (isEditMode) {
       // In edit mode, cycle through tiers hierarchically
@@ -268,6 +270,8 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
         const { currentUser } = useUserStore.getState();
         if (currentUser) {
           await upsertSupabaseProfile(authUser, currentUser);
+          // Refresh AuthContext profile so AppNavigator routes to main app
+          await refreshProfile();
         }
       } catch (error) {
         if (__DEV__) {
@@ -280,22 +284,20 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
       console.warn('[ValuesOnboardingScreen] No AuthUser when attempting to upsert Supabase profile');
     }
 
-    // Check if we're in edit mode (came from EditProfile)
     const fromEditProfile = route.params?.fromEditProfile;
-    
-    if (fromEditProfile) {
-      // Navigate back to EditProfile screen
+    const fromProfileCard = route.params?.fromProfileCard;
+
+    if (fromEditProfile || fromProfileCard) {
       navigation.goBack();
-    } else {
-      // Navigate to main app (onboarding complete)
-      // Navigation will be handled by AppNavigator based on isValuesComplete flag
     }
+    // Else: AppNavigator will show main app once profile.is_onboarding_complete is true (from refreshProfile)
   };
 
   // Render summary step with legend
   if (currentStep === 'summary') {
     const fromEditProfile = route.params?.fromEditProfile;
-    const isEditMode = fromEditProfile;
+    const fromProfileCard = route.params?.fromProfileCard;
+    const isEditMode = fromEditProfile || fromProfileCard;
     
     return (
       <ScreenContainer contentPadding={false}>
@@ -357,16 +359,16 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
             onPress={handleComplete}
             style={styles.doneButton}
           />
-          {!route.params?.fromEditProfile && (
+          {!route.params?.fromEditProfile && !route.params?.fromProfileCard && (
             <SecondaryButton
               title="Edit Values"
               onPress={handleEditValues}
               style={styles.editButton}
             />
           )}
-          {route.params?.fromEditProfile && (
+          {(route.params?.fromEditProfile || route.params?.fromProfileCard) && (
             <SecondaryButton
-              title="Cancel"
+              title="Back"
               onPress={() => navigation.goBack()}
               style={styles.editButton}
             />
@@ -420,10 +422,10 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
               />
             </View>
           )}
-          {currentStep === 'broad' && route.params?.fromEditProfile && (
+          {currentStep === 'broad' && (route.params?.fromEditProfile || route.params?.fromProfileCard) && (
             <View style={styles.backButton}>
               <SecondaryButton
-                title="Cancel"
+                title="Back"
                 onPress={() => navigation.goBack()}
               />
             </View>
@@ -447,7 +449,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
 
         {currentStep === 'broad' && initialCount() < 5 && (
           <Text style={styles.hint}>
-            Select at least 5 values to continue
+            Select at least 5 values to continue.
           </Text>
         )}
       </View>

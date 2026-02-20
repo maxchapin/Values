@@ -16,5 +16,17 @@ module.exports = {
           : appJson.expo.extra?.supabaseRedirectTo ?? '',
       googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? appJson.expo.extra?.googleClientId ?? '',
     },
+    // ADD THIS PLUGINS ARRAY
+    plugins: [
+      "@react-native-community/datetimepicker"
+    ],
+    // ADD THESE TWO BLOCKS FOR EAS UPDATE
+    updates: {
+      url: "https://u.expo.dev/5ba96ab4-b67a-4a67-be1c-547129534a1d",
+    },
+    runtimeVersion: {
+      policy: "appVersion"
+    },
   },
 };
+

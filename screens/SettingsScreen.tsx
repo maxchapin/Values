@@ -268,40 +268,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         </TouchableOpacity>
       </View>
 
-      {/* Notifications – working toggles, no "New Likes You" */}
-      <View style={styles.section}>
+      {/* Notifications – grayed out until implemented */}
+      <View style={styles.disabledSection}>
         <Text style={styles.sectionTitle}>Notifications</Text>
+        <Text style={styles.comingSoon}>Coming soon...</Text>
 
-        <View style={styles.settingRow}>
-          <View style={styles.settingContent}>
-            <Text style={styles.settingLabel}>New Match</Text>
-            <Text style={styles.settingDescription}>
-              Get notified when someone likes you back
-            </Text>
-          </View>
-          <Switch
-            value={notifications.newMatch}
-            onValueChange={(value) => handleNotificationToggle('newMatch', value)}
-            disabled={isSaving}
-            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-            thumbColor={theme.colors.background}
-          />
+        <View style={styles.disabledToggle}>
+          <Text style={styles.toggleLabel}>Match alerts</Text>
+          <View style={styles.disabledSwitch} />
         </View>
 
-        <View style={styles.settingRow}>
-          <View style={styles.settingContent}>
-            <Text style={styles.settingLabel}>New Message</Text>
-            <Text style={styles.settingDescription}>
-              Get notified when you receive a new message
-            </Text>
-          </View>
-          <Switch
-            value={notifications.newMessage}
-            onValueChange={(value) => handleNotificationToggle('newMessage', value)}
-            disabled={isSaving}
-            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-            thumbColor={theme.colors.background}
-          />
+        <View style={styles.disabledToggle}>
+          <Text style={styles.toggleLabel}>New messages</Text>
+          <View style={styles.disabledSwitch} />
         </View>
       </View>
 
@@ -420,5 +399,35 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: theme.typography.fontSize.base,
     color: theme.colors.textSecondary,
+  },
+  disabledSection: {
+    opacity: 0.6,
+    backgroundColor: theme.colors.backgroundSecondary,
+    padding: 16,
+    borderRadius: 12,
+    marginVertical: 8,
+  },
+  disabledToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    opacity: 0.8,
+  },
+  toggleLabel: {
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.textSecondary,
+  },
+  disabledSwitch: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: theme.colors.border,
+  },
+  comingSoon: {
+    color: theme.colors.textTertiary,
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginBottom: 12,
   },
 });

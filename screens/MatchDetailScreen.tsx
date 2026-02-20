@@ -18,7 +18,7 @@ import { useUserStore } from '../store/userStore';
 import { useMatchesStore } from '../store/matchesStore';
 import { useChatStore } from '../store/chatStore';
 import { MatchChatScreen } from '../components/MatchChatScreen';
-import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
+import { ProfileCard } from '../components/ProfileCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { EmptyState } from '../components/EmptyState';
 import * as chatService from '../services/chatService';
@@ -156,13 +156,12 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
         /* TAB 2: Profile – full-height Discovery card (read-only) + fixed Continue Chat button */
         <View style={styles.profileContainer}>
           <View style={styles.profileCardWrap}>
-            <DiscoverProfileCard
-              candidate={otherUser}
+            <ProfileCard
+              user={otherUser}
               sharedValueIds={sharedValueIds}
               similarityScore={match.similarityScore}
               sharedValuesCount={match.sharedValuesCount}
               explanationLines={explanationLines}
-              mode="other"
               scrollViewProps={{
                 contentContainerStyle: { paddingBottom: theme.spacing.lg },
               }}

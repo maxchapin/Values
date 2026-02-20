@@ -110,6 +110,7 @@ export default function App() {
               email: persistedUser.email,
               name: persistedUser.name,
               age: persistedUser.age,
+              birthday: (persistedUser as { birthday?: string | null }).birthday ?? undefined,
               gender: persistedUser.gender as User['gender'],
               interestedIn: persistedUser.interestedIn as User['interestedIn'],
               locationCoordinates: ud.locationCoordinates ?? null,

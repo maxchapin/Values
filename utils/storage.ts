@@ -33,6 +33,7 @@ export interface PersistedUserData {
     email: string;
     name: string;
     age: number;
+    birthday?: string | null;
     gender: string;
     interestedIn?: string;
     /** Map-picked coordinates; used for matching. */

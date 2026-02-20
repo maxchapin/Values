@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMatchesStore } from '../store/matchesStore';
 import { useUserStore } from '../store/userStore';
@@ -21,7 +22,7 @@ import { ScreenContainer } from '../components/ScreenContainer';
 import { formatExplanationOneLine } from '../services/matchingModel';
 import { Match } from '../types/match';
 import { theme } from '../theme';
-import { ROUTES } from '../navigation/types';
+import { ROUTES, type MainTabParamList } from '../navigation/types';
 import { formatRelativeTime } from '../utils/formatRelativeTime';
 import type { ConversationPreviewData } from '../store/matchesStore';
 
@@ -79,17 +80,19 @@ export const MatchRow: React.FC<MatchRowProps> = ({
           <View style={styles.main}>
             <View style={styles.row1}>
               <Text style={styles.name} numberOfLines={1}>
-                {name} ({age})
+                {`${name}, ${age}`}
               </Text>
               <View style={styles.scorePill}>
                 <Text style={styles.scoreText}>{score}%</Text>
               </View>
             </View>
+            {/* 
             {oneLineExplanation ? (
               <Text style={styles.explanationLine} numberOfLines={1}>
                 {oneLineExplanation}
               </Text>
             ) : null}
+            */}
             {messagePreview ? (
               <Text style={styles.messagePreview} numberOfLines={1}>
                 "{messagePreview}"
@@ -134,7 +137,7 @@ export const MatchRow: React.FC<MatchRowProps> = ({
 };
 
 export const MatchesScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList, 'Matches'>>();
   const insets = useSafeAreaInsets();
   const currentUserId = useUserStore((s) => s.currentUser?.id ?? null);
   const availableMatches = useMatchesStore((s) => s.availableMatches);
@@ -292,7 +295,7 @@ export const MatchesScreen: React.FC = () => {
               title="No matches yet—keep exploring!"
               message="Start swiping in Discover. Your matches will appear here."
               actionLabel="Go to Discover"
-              onAction={() => navigation.navigate(ROUTES.DISCOVER as 'Discover')}
+              onAction={() => navigation.navigate(ROUTES.DISCOVER)}
             />
           </View>
         </>

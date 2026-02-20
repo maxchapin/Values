@@ -59,6 +59,7 @@ export async function saveUserData(user: User, isProfileComplete: boolean, isVal
       email: user.email,
       name: user.name,
       age: user.age,
+      birthday: user.birthday ?? undefined,
       gender: user.gender,
       interestedIn: user.interestedIn,
       locationCoordinates: user.locationCoordinates,

@@ -6,6 +6,7 @@
  */
 
 import { supabase } from './supabase';
+import { calculateAge } from '../utils/dateUtils';
 import type { AuthUser } from '../types/auth';
 import type { User } from '../types/user';
 import type { ProfileGender, InterestedIn } from '../types/user';
@@ -22,6 +23,8 @@ export interface SupabaseProfile {
   photo_url: string | null;
   auth_provider: 'google' | 'apple' | 'phone';
   age: number | null;
+  /** Date of birth (ISO); used to compute age when present. */
+  birthday: string | null;
   gender: ProfileGender;
   bio: string | null;
   location_label: string | null;
@@ -63,6 +66,46 @@ export function profileGenderToUserGender(g: ProfileGender | null | undefined): 
   if (g === 'woman') return 'female';
   if (g === 'nonbinary') return 'non-binary';
   return 'prefer-not-to-say';
+}
+
+/** Build app User from Supabase profile row (e.g. for AuthContext → UserStore sync after login). */
+export function supabaseProfileToUser(profile: SupabaseProfile): User {
+  const selectedValues = profile.selected_values ?? [];
+  const age =
+    profile.birthday != null
+      ? calculateAge(profile.birthday)
+      : (profile.age ?? 0);
+  return {
+    id: profile.id,
+    email: profile.email ?? '',
+    name: profile.first_name ?? profile.display_name ?? 'User',
+    age,
+    birthday: profile.birthday ?? undefined,
+    gender: profileGenderToUserGender(profile.gender),
+    bio: profile.bio ?? '',
+    photos: Array.isArray(profile.photos) ? profile.photos : [],
+    prompts: Array.isArray(profile.prompts) ? profile.prompts : [],
+    selectedValues,
+    locationCoordinates:
+      profile.location_latitude != null && profile.location_longitude != null
+        ? { latitude: profile.location_latitude, longitude: profile.location_longitude }
+        : null,
+    locationLabel: profile.location_label ?? null,
+    neighborhood: profile.neighborhood ?? undefined,
+    hometown: profile.hometown ?? undefined,
+    job: profile.job ?? undefined,
+    education: profile.education ?? undefined,
+    createdAt: profile.created_at,
+    updatedAt: profile.updated_at,
+    lastLoginAt: profile.last_login_at ?? undefined,
+    valuesProfile: {
+      allValues: [],
+      top5Ids: selectedValues.slice(0, 5),
+      top10Ids: selectedValues.slice(0, 10),
+      top20Ids: selectedValues.slice(0, 20),
+      initialIds: selectedValues,
+    },
+  };
 }
 
 /**
@@ -128,7 +171,8 @@ export async function upsertSupabaseProfile(
     auth_provider: authUser.authProvider,
     // Merge with existing user data if provided
     ...(userData && {
-      age: userData.age || null,
+      age: userData.age ?? null,
+      birthday: userData.birthday ?? null,
       gender: userData.gender ? userGenderToProfileGender(userData.gender) : null,
       bio: userData.bio || null,
       location_label: userData.locationLabel || null,
@@ -141,7 +185,7 @@ export async function upsertSupabaseProfile(
       photos: userData.photos && userData.photos.length > 0 ? userData.photos : null,
       prompts: userData.prompts && userData.prompts.length > 0 ? userData.prompts : null,
       selected_values: userData.selectedValues && userData.selectedValues.length > 0 ? userData.selectedValues : null,
-      is_profile_complete: !!userData.age && !!userData.gender && !!userData.bio && (userData.photos?.length || 0) > 0,
+      is_profile_complete: (!!userData.birthday || !!userData.age) && !!userData.gender && !!userData.bio && (userData.photos?.length || 0) > 0,
       is_values_complete: (userData.selectedValues?.length || 0) >= 5,
       is_onboarding_complete: false, // Will be computed
     }),
@@ -163,7 +207,7 @@ export async function upsertSupabaseProfile(
       onConflict: 'id',
       ignoreDuplicates: false,
     })
-    .select('id, email, display_name, first_name, last_name, photo_url, auth_provider, age, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at')
+    .select(PROFILE_SELECT)
     .single();
 
   if (error) {
@@ -199,30 +243,43 @@ export async function touchLastLoginAt(): Promise<void> {
   }
 }
 
+const PROFILE_SELECT =
+  'id, email, display_name, first_name, last_name, photo_url, auth_provider, age, birthday, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at';
+
 /**
  * Get current user's profile from Supabase
- * 
+ *
  * SECURITY: Uses RLS policies - user can only read their own profile
  */
 export async function getSupabaseProfile(): Promise<SupabaseProfile | null> {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
-  
+
   if (authError || !user) {
     return null;
   }
 
+  return getSupabaseProfileByUserId(user.id);
+}
+
+/**
+ * Fetch profile row by user id (e.g. from session.user.id).
+ * Use when you already have a session and want to avoid an extra getUser() call.
+ * SECURITY: RLS ensures users can only read their own profile.
+ */
+export async function getSupabaseProfileByUserId(userId: string): Promise<SupabaseProfile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, display_name, first_name, last_name, photo_url, auth_provider, age, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at')
-    .eq('id', user.id)
+    .select(PROFILE_SELECT)
+    .eq('id', userId)
     .single();
 
   if (error) {
     if (error.code === 'PGRST116') {
-      // Profile doesn't exist yet
       return null;
     }
-    console.error('[supabaseProfile] Error fetching profile:', error);
+    if (__DEV__) {
+      console.error('[supabaseProfile] Error fetching profile:', error);
+    }
     return null;
   }
 

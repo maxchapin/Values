@@ -90,34 +90,31 @@ const MainTabNavigator: React.FC = () => {
 /**
  * Root App Navigator
  * Handles conditional navigation based on authentication and onboarding state
- * 
- * Navigation Phases:
- * 1. 'auth' - No authenticated user → Show Welcome/Login screens
- * 2. 'profile' - User authenticated but profile incomplete → Show ProfileSetupScreen
- * 3. 'values' - Profile complete but values incomplete → Show ValuesOnboardingScreen
- * 4. 'main' - Everything complete → Show MainTabNavigator (Discover, Matches, Profile)
- * 
- * Phase changes trigger navigation reset to prevent conflicting navigation states.
- * This ensures clean transitions between major app sections.
+ *
+ * Navigation uses Supabase profile as source of truth so returning users
+ * (with onboarding_completed in DB) go straight to main app.
+ *
+ * Phases:
+ * 1. 'auth' - No authenticated user → Welcome/Login
+ * 2. 'profile' - User authenticated but profile incomplete → ProfileSetupScreen
+ * 3. 'values' - Profile complete but values incomplete → ValuesOnboardingScreen
+ * 4. 'main' - Profile has is_onboarding_complete → MainTabNavigator
  */
 export const AppNavigator: React.FC = () => {
-  // Check auth state from AuthContext (unified auth layer)
-  // AuthContext is the source of truth for authentication
-  const { user: authUser } = useAuth();
-  
-  // Check UserStore for onboarding completion status
-  // These flags are computed from User data and synced to AuthUser via hooks
-  const isProfileComplete = useUserStore((state) => state.isProfileComplete);
-  const isValuesComplete = useUserStore((state) => state.isValuesComplete);
-  
-  // Decide which "phase" the app is in
-  // Only reset navigation when the phase changes (avoids fighting in-stack navigation / back gestures)
+  const { user: authUser, profile } = useAuth();
+
+  // Prefer Supabase profile for routing so logout → login respects onboarding_completed
+  const isProfileComplete = profile?.is_profile_complete ?? useUserStore((state) => state.isProfileComplete);
+  const isValuesComplete = profile?.is_values_complete ?? useUserStore((state) => state.isValuesComplete);
+  const isOnboardingComplete = profile?.is_onboarding_complete ?? (isProfileComplete && isValuesComplete);
+
   const phase = useMemo<'auth' | 'profile' | 'values' | 'main'>(() => {
     if (!authUser) return 'auth';
+    if (isOnboardingComplete) return 'main';
     if (!isProfileComplete) return 'profile';
     if (!isValuesComplete) return 'values';
     return 'main';
-  }, [authUser, isProfileComplete, isValuesComplete]);
+  }, [authUser, isOnboardingComplete, isProfileComplete, isValuesComplete]);
 
   const phaseRootRoute = useMemo<keyof RootStackParamList>(() => {
     switch (phase) {

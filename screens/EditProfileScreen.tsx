@@ -14,13 +14,15 @@ import {
   Modal,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { HeaderBackButton } from '@react-navigation/elements';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SecondaryButton } from '../components/SecondaryButton';
-import { ScreenContainer } from '../components/ScreenContainer';
 import { TextInputField } from '../components/TextInputField';
 import { TagPill } from '../components/TagPill';
 import { ProfilePhotosPicker } from '../components/ProfilePhotosPicker';
@@ -36,6 +38,8 @@ import { Gender, InterestedIn, Prompt } from '../types/user';
 import { upsertSupabaseProfile } from '../services/supabaseProfile';
 import { supabase } from '../lib/supabase';
 import { LocationPicker, type LocationCoordinates } from '../components/LocationPicker';
+import { BirthdayPicker } from '../components/BirthdayPicker';
+import { calculateAge } from '../utils/dateUtils';
 
 type EditProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
@@ -43,7 +47,6 @@ const EDIT_AREA_PADDING = 28;
 
 interface ProfileFormData {
   name: string;
-  age: string;
   neighborhood: string;
   hometown: string;
   job: string;
@@ -53,22 +56,18 @@ interface ProfileFormData {
 
 function getFormSnapshot(
   values: ProfileFormData,
-  opts: { gender: Gender; interestedIn: InterestedIn | null; photos: string[]; prompts: Prompt[]; locationCoordinates: LocationCoordinates | null }
+  opts: { gender: Gender; interestedIn: InterestedIn | null; photos: string[]; prompts: Prompt[]; locationCoordinates: LocationCoordinates | null; birthday: string | null; age: number }
 ): string {
   return JSON.stringify({
     ...values,
-    gender: opts.gender,
-    interestedIn: opts.interestedIn,
-    photos: opts.photos,
-    prompts: opts.prompts,
-    locationCoordinates: opts.locationCoordinates,
+    ...opts,
   });
 }
 
 export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation }) => {
-  const { currentUser, updateProfile, isLoading } = useUserStore();
+  const insets = useSafeAreaInsets();
+  const { currentUser, updateProfile } = useUserStore();
   const { user: authUser } = useAuth();
-  const ageRef = useRef<TextInput>(null);
   const neighborhoodRef = useRef<TextInput>(null);
   const hometownRef = useRef<TextInput>(null);
   const jobRef = useRef<TextInput>(null);
@@ -87,7 +86,6 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
 
   const initialFormValues: ProfileFormData = {
     name: currentUser?.name ?? '',
-    age: currentUser?.age?.toString() ?? '',
     neighborhood: currentUser?.neighborhood ?? '',
     hometown: currentUser?.hometown ?? '',
     job: currentUser?.job ?? '',
@@ -110,16 +108,6 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
         validators.required('First name is required'),
         validators.minLength(2, 'First name must be at least 2 characters'),
       ],
-      age: [
-        validators.required('Age is required'),
-        (value: string) => {
-          if (!value.trim()) return undefined;
-          const ageNum = parseInt(value, 10);
-          if (isNaN(ageNum)) return 'Age must be a number';
-          if (ageNum < 18 || ageNum > 100) return 'Age must be between 18 and 100';
-          return undefined;
-        },
-      ],
       neighborhood: [],
       hometown: [],
       job: [],
@@ -133,6 +121,13 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
   const [interestedInError, setInterestedInError] = useState<string | null>(null);
   const [promptsError, setPromptsError] = useState<string | null>(null);
   const [showGenderPicker, setShowGenderPicker] = useState(false);
+  const [birthday, setBirthday] = useState<Date | string | null>(() => currentUser?.birthday ?? null);
+  const [birthdayError, setBirthdayError] = useState<string | null>(null);
+  const [age, setAge] = useState<number>(() => {
+    if (currentUser?.birthday) return calculateAge(currentUser.birthday);
+    return currentUser?.age ?? 0;
+  });
+  const [isSaving, setIsSaving] = useState(false);
   const [photos, setPhotos] = useState<string[]>(Array.isArray(currentUser?.photos) ? currentUser.photos : []);
   const [prompts, setPrompts] = useState<Prompt[]>(() => {
     const makeId = () => `prompt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -151,7 +146,8 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
       const user = useUserStore.getState().currentUser;
       if (!user) return;
       setValue('name', user.name ?? '', false);
-      setValue('age', user.age?.toString() ?? '', false);
+      setBirthday(user.birthday ?? null);
+      setAge(user.birthday ? calculateAge(user.birthday) : (user.age ?? 0));
       setValue('neighborhood', user.neighborhood ?? '', false);
       setValue('hometown', user.hometown ?? '', false);
       setValue('job', user.job ?? '', false);
@@ -172,7 +168,6 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
       originalSnapshotRef.current = getFormSnapshot(
         {
           name: user.name ?? '',
-          age: user.age?.toString() ?? '',
           neighborhood: user.neighborhood ?? '',
           hometown: user.hometown ?? '',
           job: user.job ?? '',
@@ -185,22 +180,28 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
           photos: Array.isArray(user.photos) ? user.photos : [],
           prompts: mapped.length > 0 ? mapped : [],
           locationCoordinates: user.locationCoordinates ?? null,
+          birthday: user.birthday ?? null,
+          age: user.birthday ? calculateAge(user.birthday) : (user.age ?? 0),
         }
       );
     }, [setValue])
   );
 
-  const currentSnapshot = getFormSnapshot(values, { gender, interestedIn, photos, prompts, locationCoordinates });
+  const currentSnapshot = getFormSnapshot(values, { gender, interestedIn, photos, prompts, locationCoordinates, birthday, age });
   const isDirty = originalSnapshotRef.current !== currentSnapshot;
   isDirtyRef.current = isDirty;
 
+  /** Ref so popup Save always calls the current save handler */
+  const saveTriggerRef = useRef<() => void>(() => {});
+  saveTriggerRef.current = () => handleSubmit(handleSave)();
+
   const showDiscardAlert = useCallback(() => {
     Alert.alert(
-      'Discard changes?',
+      'Save changes?',
       'You have unsaved changes. Save before leaving?',
       [
         { text: 'Exit', style: 'destructive', onPress: () => { allowBackRef.current = true; navigation.goBack(); } },
-        { text: 'Save', onPress: () => handleSubmit(handleSave)() },
+        { text: 'Save', onPress: () => saveTriggerRef.current() },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
@@ -264,10 +265,21 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
     }
     setPromptsError(null);
 
-    const ageNum = parseInt(formValues.age, 10);
+    if (birthday == null) {
+      setBirthdayError('Please select your birthday');
+      return;
+    }
+    setBirthdayError(null);
+    if (age < 18 || age > 100) {
+      setBirthdayError('You must be 18 or older');
+      return;
+    }
+    const birthdayISO = typeof birthday === 'string' ? birthday : new Date(birthday).toISOString();
+
     const profileData = {
       name: formValues.name.trim(),
-      age: ageNum,
+      age,
+      birthday: birthdayISO,
       gender,
       interestedIn,
       locationCoordinates: locationCoordinates ?? undefined,
@@ -281,6 +293,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
       prompts: validPrompts,
     };
 
+    setIsSaving(true);
     try {
       await updateProfile(profileData);
       const updatedUser = useUserStore.getState().currentUser;
@@ -301,8 +314,15 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save profile';
       Alert.alert('Error', message);
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  /** Single save trigger used by both main Save button and "Save changes?" popup */
+  const onSavePress = useCallback(() => {
+    saveTriggerRef.current();
+  }, []);
 
   const handleCancel = (): void => {
     if (isDirty) {
@@ -331,18 +351,25 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
       .filter(Boolean) ?? [];
 
   return (
-    <ScreenContainer
-      scrollable
-      keyboardAvoiding
-      scrollViewProps={{ contentContainerStyle: styles.scrollContent }}
-    >
-      <View style={styles.editArea}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Edit Profile</Text>
-          <Text style={styles.subtitle}>Update your profile information</Text>
-        </View>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoiding}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.editArea}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Edit Profile</Text>
+              <Text style={styles.subtitle}>Update your profile information</Text>
+            </View>
 
-        <View style={styles.form}>
+            <View style={styles.form}>
           <ProfilePhotosPicker photos={photos} onChange={setPhotos} />
 
           <TextInputField
@@ -355,22 +382,24 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
             autoCapitalize="words"
             returnKeyType="next"
             blurOnSubmit={false}
-            onSubmitEditing={() => ageRef.current?.focus()}
-          />
-
-          <TextInputField
-            ref={ageRef}
-            label="Age *"
-            placeholder="Enter your age"
-            value={values.age}
-            onChangeText={(t) => setValue('age', t, true)}
-            onBlur={() => setFieldTouched('age')}
-            error={touched.age ? errors.age : undefined}
-            keyboardType="number-pad"
-            returnKeyType="next"
-            blurOnSubmit={false}
             onSubmitEditing={() => neighborhoodRef.current?.focus()}
           />
+
+          <BirthdayPicker
+            label="Birthday *"
+            value={birthday}
+            onChange={(_, ageYears, birthdayISO) => {
+              setBirthday(birthdayISO);
+              setAge(ageYears);
+              setBirthdayError(null);
+            }}
+            error={birthdayError ?? undefined}
+          />
+          {birthday != null && (
+            <Text style={styles.ageText}>
+              You're {calculateAge(birthday)} years old
+            </Text>
+          )}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Gender *</Text>
@@ -513,35 +542,51 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
             <PrimaryButton title="Edit Values" onPress={handleEditValues} style={styles.editValuesButton} />
           </View>
         </View>
-
-        <View style={styles.footer}>
-          <View style={styles.buttonRow}>
-            <SecondaryButton
-              title="Cancel"
-              onPress={handleCancel}
-              style={styles.cancelButton}
-              textStyle={styles.cancelButtonText}
-            />
-            <PrimaryButton
-              title="Save"
-              onPress={handleSubmit(handleSave)}
-              disabled={isLoading}
-              loading={isLoading}
-              style={styles.saveButton}
-            />
-          </View>
         </View>
-      </View>
-    </ScreenContainer>
+        </ScrollView>
+
+        <View style={[styles.fixedButtonBar, { paddingBottom: Math.max(insets.bottom, theme.spacing.md) }]}>
+          <TouchableOpacity
+            style={styles.cancelButtonFixed}
+            onPress={handleCancel}
+            disabled={isSaving}
+          >
+            <Text style={styles.cancelButtonFixedText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveButtonFixed, (!isDirty || isSaving) && styles.saveButtonDisabled]}
+            disabled={!isDirty || isSaving}
+            onPress={onSavePress}
+          >
+            <Text style={styles.saveButtonFixedText}>
+              {isSaving ? 'Saving...' : 'Save'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
+const FIXED_BAR_HEIGHT = 88;
+
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  keyboardAvoiding: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
-    paddingBottom: theme.spacing['2xl'],
+    paddingHorizontal: EDIT_AREA_PADDING,
+    paddingBottom: FIXED_BAR_HEIGHT,
   },
   editArea: {
-    padding: EDIT_AREA_PADDING,
+    paddingTop: theme.spacing.md,
   },
   header: {
     marginBottom: theme.spacing.xl,
@@ -681,24 +726,54 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   editValuesButton: { marginTop: theme.spacing.sm },
-  footer: {
-    marginTop: theme.spacing.xl,
+  ageText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
+    marginBottom: theme.spacing.lg,
+  },
+  fixedButtonBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    paddingHorizontal: EDIT_AREA_PADDING,
+    paddingVertical: theme.spacing.lg,
     paddingTop: theme.spacing.lg,
+    backgroundColor: theme.colors.background,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+    gap: theme.spacing.md,
   },
-  buttonRow: {
-    flexDirection: 'row',
-    marginBottom: theme.spacing.md,
-  },
-  cancelButton: {
+  cancelButtonFixed: {
     flex: 1,
-    marginRight: theme.spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.base,
+    borderRadius: theme.borderRadius.base,
+    backgroundColor: theme.colors.backgroundSecondary,
   },
-  cancelButtonText: {
+  cancelButtonFixedText: {
     fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.primary,
+    color: theme.colors.textSecondary,
   },
-  saveButton: { flex: 1 },
+  saveButtonFixed: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.base,
+    borderRadius: theme.borderRadius.base,
+    backgroundColor: theme.colors.primary,
+  },
+  saveButtonDisabled: {
+    backgroundColor: theme.colors.textTertiary,
+    opacity: 0.7,
+  },
+  saveButtonFixedText: {
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.textInverse,
+  },
 });

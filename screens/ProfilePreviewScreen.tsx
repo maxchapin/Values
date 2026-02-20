@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useUserStore } from '../store/userStore';
-import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
+import { ProfileCard } from '../components/ProfileCard';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { EmptyState } from '../components/EmptyState';
 import { trackScreenView } from '../services/analytics';
@@ -60,10 +60,9 @@ export const ProfilePreviewScreen: React.FC<ProfilePreviewScreenProps> = ({ navi
 
         {/* Card Area */}
         <View style={styles.cardArea}>
-          <DiscoverProfileCard
+          <ProfileCard
             ref={cardScrollRef}
-            candidate={publicUser}
-            mode="self"
+            user={publicUser}
             scrollViewProps={{
               contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
             }}

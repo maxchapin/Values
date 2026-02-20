@@ -9,13 +9,23 @@ import type { AuthUser, AuthProvider as AuthProviderType, AuthSession, PhoneAuth
 import { AuthError } from '../types/auth';
 import { authService } from '../services/authService';
 import { supabase } from '../services/supabase';
-import { upsertSupabaseProfile, touchLastLoginAt } from '../services/supabaseProfile';
+import {
+  upsertSupabaseProfile,
+  touchLastLoginAt,
+  getSupabaseProfileByUserId,
+  type SupabaseProfile,
+} from '../services/supabaseProfile';
 
 const AUTH_SESSION_KEY = 'auth_session';
 const AUTH_USER_KEY = 'auth_user';
 
+/** Profile is undefined = not yet fetched; null = no row or error; object = loaded. */
+export type AuthProfile = SupabaseProfile | null | undefined;
+
 interface AuthContextType {
   user: AuthUser | null;
+  /** When session exists, profile is fetched from Supabase before loading becomes false. */
+  profile: AuthProfile;
   loading: boolean;
   phoneAuthState: PhoneAuthState | null;
   signInWithGoogle: () => Promise<void>;
@@ -26,6 +36,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   clearPhoneAuthState: () => void;
   updateAuthUser: (updates: Partial<AuthUser>) => Promise<void>;
+  /** Refetch profile from Supabase (e.g. after onboarding completion). */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,8 +59,21 @@ export function useAuth(): AuthContextType {
  */
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [profile, setProfile] = useState<AuthProfile>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
   const [phoneAuthState, setPhoneAuthState] = useState<PhoneAuthState | null>(null);
+
+  /** Fetch profile from Supabase for the given user id. Returns null if no row or error. */
+  const fetchProfileForUser = useCallback(async (userId: string): Promise<SupabaseProfile | null> => {
+    try {
+      return await getSupabaseProfileByUserId(userId);
+    } catch (err) {
+      if (__DEV__) {
+        console.warn('[AuthContext] fetchProfileForUser error:', err);
+      }
+      return null;
+    }
+  }, []);
 
   /**
    * Convert Supabase user to AuthUser format
@@ -98,12 +123,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
           await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
           setUser(authUser);
+
+          // Fetch profile from Supabase so we know if onboarding is already complete
+          const fetchedProfile = await fetchProfileForUser(supabaseSession.user.id);
+          if (isMounted) {
+            setProfile(fetchedProfile ?? null);
+          }
           touchLastLoginAt().catch(() => {}); // Update last_login_at for Discover composite score
 
           if (__DEV__) {
-            console.log('[AuthContext] ✅ Restored Supabase session:', authUser.id);
+            console.log('[AuthContext] ✅ Restored Supabase session:', authUser.id, 'profile:', fetchedProfile ? 'loaded' : 'none');
           }
         } else {
+          // No Supabase session: profile is resolved (no row to show)
+          if (isMounted) setProfile(null);
+
           // Fallback to legacy secure storage if no Supabase session
           const sessionJson = await SecureStore.getItemAsync(AUTH_SESSION_KEY);
           const userJson = await SecureStore.getItemAsync(AUTH_USER_KEY);
@@ -173,38 +207,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
           await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
           setUser(authUser);
+
+          // Fetch profile so navigation can decide onboarding vs main app
+          const fetchedProfile = await fetchProfileForUser(session.user.id);
+          if (isMounted) {
+            setProfile(fetchedProfile ?? null);
+          }
           touchLastLoginAt().catch(() => {}); // Update last_login_at for Discover composite score
-          // CRITICAL: Set loading to false immediately so navigation can happen
           setLoading(false);
           if (__DEV__) {
-            console.log('[AuthContext] ✅ User signed in via Supabase:', authUser.id);
-            console.log('[AuthContext] ✅ Loading set to false, navigation should happen now');
+            console.log('[AuthContext] ✅ User signed in via Supabase:', authUser.id, 'profile:', fetchedProfile ? 'loaded' : 'none');
           }
 
-          // Create/update profile in Supabase database (non-blocking)
-          // This ensures profile exists in Supabase for RLS and future queries
-          upsertSupabaseProfile(authUser)
-            .then(() => {
-              if (__DEV__) {
-                console.log('[AuthContext] ✅ Profile created/updated in Supabase');
-              }
-            })
-            .catch((profileError) => {
-              // Log but don't fail auth - profile can be created later
-              if (__DEV__) {
-                console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
-              }
-            });
+          // Create/update profile in Supabase database if no row yet (non-blocking)
+          if (!fetchedProfile) {
+            upsertSupabaseProfile(authUser)
+              .then(() => {
+                if (__DEV__) {
+                  console.log('[AuthContext] ✅ Profile created/updated in Supabase');
+                }
+              })
+              .catch((profileError) => {
+                if (__DEV__) {
+                  console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
+                }
+              });
+          }
         } catch (error) {
           if (__DEV__) {
             console.error('[AuthContext] Error persisting Supabase session:', error);
           }
-          // Even on error, set loading to false so app doesn't hang
+          if (isMounted) setProfile(null);
           setLoading(false);
         }
       } else if (event === 'SIGNED_OUT') {
-        // Clear user and storage
         setUser(null);
+        setProfile(undefined);
         try {
           await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
           await SecureStore.deleteItemAsync(AUTH_USER_KEY);
@@ -218,7 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [convertSupabaseUserToAuthUser]);
+  }, [convertSupabaseUserToAuthUser, fetchProfileForUser]);
 
   /**
    * Persist auth session and user to secure storage
@@ -295,6 +333,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
       await SecureStore.deleteItemAsync(AUTH_USER_KEY);
       setUser(null);
+      setProfile(undefined);
       setPhoneAuthState(null);
       if (__DEV__) {
         console.log('[AuthContext] Cleared auth session');
@@ -305,6 +344,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
   }, []);
+
+  /**
+   * Refetch profile from Supabase (e.g. after onboarding completion).
+   * Call this after upserting profile with is_onboarding_complete: true.
+   */
+  const refreshProfile = useCallback(async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session ?? null;
+      if (!session?.user) {
+        setProfile(null);
+        return;
+      }
+      const fetched = await fetchProfileForUser(session.user.id);
+      setProfile(fetched ?? null);
+      if (__DEV__) {
+        console.log('[AuthContext] refreshProfile:', fetched ? 'loaded' : 'none');
+      }
+    } catch (err) {
+      if (__DEV__) {
+        console.warn('[AuthContext] refreshProfile error:', err);
+      }
+      setProfile(null);
+    }
+  }, [fetchProfileForUser]);
 
   /**
    * Sign in with Google
@@ -533,6 +597,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value: AuthContextType = {
     user,
+    profile,
     loading,
     phoneAuthState,
     signInWithGoogle,
@@ -543,6 +608,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signOut,
     clearPhoneAuthState,
     updateAuthUser,
+    refreshProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

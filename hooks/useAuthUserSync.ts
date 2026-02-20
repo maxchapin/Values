@@ -1,86 +1,79 @@
 /**
  * Auth User Sync Hook
- * Syncs AuthUser from AuthContext to UserStore when user signs in
- * Bridges the authentication layer with the user profile layer
- * 
- * Important: Only creates User in UserStore if one doesn't exist.
- * Preserves existing User data (profile/values) to avoid overwriting onboarding progress.
+ * Syncs AuthUser + Supabase profile from AuthContext to UserStore when user signs in
+ * or when profile is loaded/refreshed.
+ *
+ * - When profile is loaded from Supabase (profile row exists), we set User from profile
+ *   so isProfileComplete / isValuesComplete match the DB and navigation shows main app.
+ * - When profile is null (no row yet), we set a minimal User so onboarding is shown.
  */
 
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
-import { authUserToUser } from '../utils/authUserAdapter';
+import { supabaseProfileToUser } from '../services/supabaseProfile';
 import type { User } from '../types/user';
 
 /**
- * Syncs AuthUser to UserStore
- * When user signs in via AuthContext, creates/updates User in UserStore
- * 
- * Flow:
- * 1. User signs in → AuthUser created in AuthContext
- * 2. This hook detects new AuthUser
- * 3. If no User exists in UserStore → Create minimal User
- * 4. If User exists → Preserve existing data (don't overwrite)
+ * Syncs AuthContext (user + profile) to UserStore.
+ * Waits until profile is resolved (profile !== undefined) so we don't show onboarding
+ * for returning users before the profile fetch completes.
  */
 export function useAuthUserSync(): void {
-  const { user: authUser } = useAuth();
+  const { user: authUser, profile } = useAuth();
   const { currentUser, setCurrentUser, isHydrated } = useUserStore();
-  const syncedUserIdRef = useRef<string | null>(null);
+  const syncedKeyRef = useRef<string>('');
 
   useEffect(() => {
-    // Only sync if store is hydrated and we have an auth user
     if (!isHydrated || !authUser) {
-      syncedUserIdRef.current = null;
+      syncedKeyRef.current = '';
       return;
     }
 
-    // If we already synced this user, don't sync again
-    if (syncedUserIdRef.current === authUser.id) {
+    // Wait until profile has been fetched (undefined = still loading)
+    if (profile === undefined) {
       return;
     }
 
-    // If we already have a user with the same ID, preserve it
-    // (user might have completed profile/values onboarding)
-    if (currentUser?.id === authUser.id) {
-      syncedUserIdRef.current = authUser.id;
+    const key = `${authUser.id}:${profile ? 'profile' : 'minimal'}`;
+    if (syncedKeyRef.current === key) {
       return;
     }
 
-    // Convert AuthUser to User and set in store
-    // This creates a minimal User that will be completed during onboarding
-    const userData = authUserToUser(authUser);
-    
-    // Create minimal User object (required fields)
-    // Profile and values will be filled during onboarding
-    const user: User = {
-      id: authUser.id,
-      email: authUser.email || `user_${authUser.id}@temp.com`, // Temporary email if not provided
-      name: authUser.firstName || authUser.displayName || 'User',
-      age: 0, // Will be set during profile setup
-      gender: 'prefer-not-to-say', // Will be set during profile setup
-      bio: '', // Will be set during profile setup
-      photos: authUser.photoUrl ? [authUser.photoUrl] : [],
-      prompts: [], // Will be set during profile setup
-      selectedValues: [], // Will be set during values onboarding
-      locationCoordinates: null, // Will be set during profile setup
-      locationLabel: null,
-      createdAt: authUser.createdAt,
-      updatedAt: authUser.updatedAt,
-    };
+    let user: User;
 
-    // Set user in store (this will trigger onboarding flow if profile incomplete)
+    if (profile) {
+      user = supabaseProfileToUser(profile);
+    } else {
+      user = {
+        id: authUser.id,
+        email: authUser.email || `user_${authUser.id}@temp.com`,
+        name: authUser.firstName || authUser.displayName || 'User',
+        age: 0,
+        gender: 'prefer-not-to-say',
+        bio: '',
+        photos: authUser.photoUrl ? [authUser.photoUrl] : [],
+        prompts: [],
+        selectedValues: [],
+        locationCoordinates: null,
+        locationLabel: null,
+        createdAt: authUser.createdAt,
+        updatedAt: authUser.updatedAt,
+      };
+    }
+
+    syncedKeyRef.current = key;
     setCurrentUser(user, true)
       .then(() => {
-        syncedUserIdRef.current = authUser.id;
         if (__DEV__) {
-          console.log('[useAuthUserSync] Synced AuthUser to UserStore:', authUser.id);
+          console.log('[useAuthUserSync] Synced to UserStore:', profile ? 'from profile' : 'minimal', authUser.id);
         }
       })
       .catch((error) => {
         if (__DEV__) {
-          console.error('[useAuthUserSync] Error syncing auth user to store:', error);
+          console.error('[useAuthUserSync] Error syncing to store:', error);
         }
+        syncedKeyRef.current = '';
       });
-  }, [authUser, currentUser, isHydrated, setCurrentUser]);
+  }, [authUser, profile, isHydrated, setCurrentUser, currentUser?.id]);
 }

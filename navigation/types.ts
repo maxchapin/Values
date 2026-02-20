@@ -39,7 +39,7 @@ export type RootStackParamList = {
   ValuesNarrow20: undefined;
   ValuesNarrow10: undefined;
   ValuesFinal5: undefined;
-  ValuesOnboarding: { fromEditProfile?: boolean } | undefined;
+  ValuesOnboarding: { fromEditProfile?: boolean; fromProfileCard?: boolean } | undefined;
   // Main app (tabs)
   MainApp: undefined;
   // Profile editing

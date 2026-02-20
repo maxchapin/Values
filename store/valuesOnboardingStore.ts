@@ -434,47 +434,68 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
   },
 
   /**
-   * Proceed to next step with skip logic
-   * If initialCount <= 20, skip top20 step and go straight to top10
+   * Proceed to next step with smart routing from broad:
+   * - Exactly 5 → set as top5, go to summary (skip all ranking)
+   * - 6–10 → promote to top10, go to top5 (pick 5 from 6–10)
+   * - 11–20 → promote to top20, go to top10 → then top5
+   * - 21+ → go to top20 (pick 20) → top10 → top5
    */
   proceedToNextStep: (): void => {
     if (!get().canProceedToNextStep()) {
       return;
     }
 
-    const { currentStep } = get();
+    const { currentStep, values } = get();
     const initial = get().initialCount();
     let nextStep: ValuesOnboardingStep;
 
     switch (currentStep) {
-      case 'broad':
-        // If initialCount <= 20, skip top20 and go to top10
-        // Otherwise, go to top20
-        if (initial <= 20) {
-          // Skip top20: promote all initial values to top20 (maintains hierarchy)
-          // They'll all be available for top10 selection
-          const { values } = get();
-          const updatedValues = values.map((v) => {
-            if (v.tier === 'initial') {
-              return { ...v, tier: 'top20' as ValueTier };
-            }
-            return v;
-          });
-          set({ values: updatedValues, currentStep: 'top10' });
+      case 'broad': {
+        if (initial < 5) return;
+
+        if (initial === 5) {
+          // Perfect: set all 5 as top5 and go to summary
+          const updatedValues = values.map((v) =>
+            v.tier === 'initial' ? { ...v, tier: 'top5' as ValueTier } : v
+          );
+          set({ values: updatedValues, currentStep: 'summary' });
           if (__DEV__) {
-            console.log('[ValuesOnboardingStore] Skipped top20 step (initialCount <= 20), went straight to top10');
-          }
-          return;
-        } else {
-          // Transition to top20 step: keep all values at 'initial' tier
-          // User will explicitly promote values from initial to top20 by tapping
-          // Do NOT automatically promote - top20 should start empty (top20Count = 0)
-          set({ currentStep: 'top20' });
-          if (__DEV__) {
-            console.log('[ValuesOnboardingStore] Transitioned to top20 step - top20 starts empty, user will promote from initial');
+            console.log('[ValuesOnboardingStore] Exactly 5 selected → summary');
           }
           return;
         }
+
+        if (initial >= 6 && initial <= 10) {
+          // 6–10: promote all initial to top10, go to top5 (user picks 5 from these)
+          const updatedValues = values.map((v) =>
+            v.tier === 'initial' ? { ...v, tier: 'top10' as ValueTier } : v
+          );
+          set({ values: updatedValues, currentStep: 'top5' });
+          if (__DEV__) {
+            console.log('[ValuesOnboardingStore] 6–10 selected → top5');
+          }
+          return;
+        }
+
+        if (initial >= 11 && initial <= 20) {
+          // 11–20: promote all to top20, go to top10
+          const updatedValues = values.map((v) =>
+            v.tier === 'initial' ? { ...v, tier: 'top20' as ValueTier } : v
+          );
+          set({ values: updatedValues, currentStep: 'top10' });
+          if (__DEV__) {
+            console.log('[ValuesOnboardingStore] 11–20 selected → top10');
+          }
+          return;
+        }
+
+        // 21+: go to top20 step (user picks 20 from initial)
+        set({ currentStep: 'top20' });
+        if (__DEV__) {
+          console.log('[ValuesOnboardingStore] 21+ selected → top20');
+        }
+        return;
+      }
       case 'top20':
         nextStep = 'top10';
         break;
@@ -492,10 +513,12 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
   },
 
   /**
-   * Go back to previous step
+   * Go back to previous step (respects skipped steps)
    */
   goToPreviousStep: (): void => {
     const { currentStep } = get();
+    const top20 = get().top20Count();
+    const top10 = get().top10Count();
     let previousStep: ValuesOnboardingStep;
 
     switch (currentStep) {
@@ -503,13 +526,12 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
         previousStep = 'broad';
         break;
       case 'top10':
-        // If we skipped top20, go back to broad
-        // Otherwise go back to top20
-        const initial = get().initialCount();
-        previousStep = initial <= 20 ? 'broad' : 'top20';
+        // If we have < 20 in top20, we came from broad (11–20 path); back to broad
+        previousStep = top20 < 20 ? 'broad' : 'top20';
         break;
       case 'top5':
-        previousStep = 'top10';
+        // If we have < 10 in top10, we came from broad (6–10 path); back to broad
+        previousStep = top10 < 10 ? 'broad' : 'top10';
         break;
       case 'summary':
         previousStep = 'top5';
@@ -522,40 +544,84 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
   },
 
   /**
-   * Get step information (title, subtitle, step number)
+   * Get step information (title, subtitle, step number) – path-aware
+   * Paths: 5 only (2 steps), 6–10 (3), 11–20 (4), 21+ (5)
    */
   getStepInfo: () => {
     const { currentStep } = get();
     const initial = get().initialCount();
+    const top20 = get().top20Count();
+    const top10 = get().top10Count();
+
+    const getTotalSteps = (): number => {
+      if (currentStep === 'broad') {
+        if (initial <= 5) return 2;
+        if (initial <= 10) return 3;
+        if (initial <= 20) return 4;
+        return 5;
+      }
+      // After broad, infer path from counts
+      if (top20 < 20 && currentStep !== 'top20') {
+        if (top10 < 10) return 3; // 6–10 path
+        return 4; // 11–20 path
+      }
+      return 5; // 21+ path
+    };
+
+    const totalSteps = getTotalSteps();
+
+    const getStepNumber = (): number => {
+      switch (currentStep) {
+        case 'broad':
+          return 1;
+        case 'top20':
+          return 2;
+        case 'top10':
+          return top20 < 20 ? 2 : 3;
+        case 'top5':
+          if (top10 < 10) return 2;
+          if (top20 < 20) return 3;
+          return 4;
+        case 'summary':
+          return totalSteps;
+        default:
+          return 1;
+      }
+    };
+
+    const stepNumber = getStepNumber();
+    const poolTop20 = initial;
+    const poolTop10 = top20;
+    const poolTop5 = top10;
 
     const stepMap: Record<ValuesOnboardingStep, { stepNumber: number; totalSteps: number; title: string; subtitle: string }> = {
       broad: {
         stepNumber: 1,
-        totalSteps: initial <= 20 ? 3 : 4, // Adjust if top20 is skipped
+        totalSteps,
         title: 'Pick what matters to you.',
-        subtitle: "Tap every value you'd want in a relationship.",
+        subtitle: "Tap all values that matter to you (we'll rank later).",
       },
       top20: {
         stepNumber: 2,
-        totalSteps: 4,
-        title: 'Narrow to your top 20.',
-        subtitle: 'From the ones you chose, pick the 20 that matter most.',
+        totalSteps: 5,
+        title: 'Select your top 20.',
+        subtitle: `Select your TOP 20 from these ${poolTop20}.`,
       },
       top10: {
-        stepNumber: initial <= 20 ? 2 : 3,
-        totalSteps: initial <= 20 ? 3 : 4,
-        title: 'Now pick your top 10.',
-        subtitle: 'These are your very important values.',
+        stepNumber: stepNumber,
+        totalSteps,
+        title: 'Select your top 10.',
+        subtitle: `Select your TOP 10 from these ${poolTop10}.`,
       },
       top5: {
-        stepNumber: initial <= 20 ? 3 : 4,
-        totalSteps: initial <= 20 ? 3 : 4,
+        stepNumber: stepNumber,
+        totalSteps,
         title: 'Choose your core 5.',
-        subtitle: 'These are your non‑negotiables.',
+        subtitle: `Select your TOP 5 from these ${poolTop5}.`,
       },
       summary: {
-        stepNumber: initial <= 20 ? 4 : 5,
-        totalSteps: initial <= 20 ? 4 : 5,
+        stepNumber: totalSteps,
+        totalSteps,
         title: 'Your values fingerprint.',
         subtitle: 'Review your values. You can edit them anytime.',
       },

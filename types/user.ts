@@ -42,7 +42,10 @@ export interface User {
   id: string;
   email: string;
   name: string; // First name
+  /** Age in full years (computed from birthday when available). */
   age: number;
+  /** ISO date string (YYYY-MM-DD or full ISO); used to compute age. */
+  birthday?: string | null;
   gender: Gender;
   interestedIn?: InterestedIn; // "I am interested in"
   /** Map-picked coordinates; used for filters/matching. */
@@ -71,6 +74,7 @@ export interface User {
 export interface UserProfile {
   name: string;
   age: number;
+  birthday?: string | null;
   gender: Gender;
   interestedIn?: InterestedIn;
   locationCoordinates: LocationCoordinates | null;

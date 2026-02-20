@@ -11,7 +11,7 @@ import { useDebugAccess } from '../hooks/useDebugAccess';
 import { trackScreenView, trackMatchLiked, trackMatchPassed } from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { DiscoverActionBar } from '../components/DiscoverActionBar';
-import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
+import { ProfileCard } from '../components/ProfileCard';
 import { DiscoverSwipeCard } from '../components/DiscoverSwipeCard';
 import { FiltersSheet } from '../components/FiltersSheet';
 import { FeedbackModal } from '../components/FeedbackModal';
@@ -229,9 +229,9 @@ export const DiscoverScreen: React.FC = () => {
             disabled={!candidate}
             cardKey={candidate?.id}
           >
-            <DiscoverProfileCard
+            <ProfileCard
               ref={cardScrollRef}
-              candidate={candidate}
+              user={candidate}
               sharedValueIds={sharedValueIds}
               similarityScore={typeof currentMatch?.similarityScore === 'number' ? currentMatch.similarityScore : 0}
               sharedValuesCount={typeof currentMatch?.sharedValuesCount === 'number' ? currentMatch.sharedValuesCount : 0}

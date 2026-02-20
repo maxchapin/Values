@@ -10,7 +10,7 @@ import { ProfilePromptsEditor } from '../../components/ProfilePromptsEditor';
 import { LocationPicker } from '../../components/LocationPicker';
 import { BirthdayPicker } from '../../components/BirthdayPicker';
 import type { LocationCoordinates } from '../../types/user';
-import { calculateAge } from '../../utils/dateUtils';
+import { calculateAge, birthdayToISOString } from '../../utils/dateUtils';
 import { trackScreenView, trackProfileCompleted, setUserProperties } from '../../services/analytics';
 import { theme } from '../../theme';
 import { useUserStore } from '../../store/userStore';
@@ -164,7 +164,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       return;
     }
 
-    const birthdayISO = typeof birthday === 'string' ? birthday : new Date(birthday).toISOString();
+    const birthdayISO =
+      typeof birthday === 'string'
+        ? birthday
+        : birthdayToISOString(birthday instanceof Date ? birthday : new Date(birthday));
 
     const profileData = {
       email: currentUser?.email || '',

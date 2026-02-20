@@ -354,13 +354,23 @@ export const authService = {
       if (immediateSession && immediateSession.user) {
         console.log('[DEBUG] ✅ Found immediate session, resolving without waiting...');
         
-        // Convert Supabase user to AuthUser
+        // Convert Supabase user to AuthUser (first name only from full_name when given_name missing)
         const userMetadata = immediateSession.user.user_metadata || {};
+        const fullName = userMetadata.full_name || userMetadata.name || '';
+        const firstName =
+          userMetadata.given_name ||
+          userMetadata.first_name ||
+          (fullName ? fullName.trim().split(/\s+/)[0] : undefined) ||
+          immediateSession.user.email?.split('@')[0];
+        const lastName =
+          userMetadata.family_name ||
+          userMetadata.last_name ||
+          (fullName ? fullName.trim().split(/\s+/).slice(1).join(' ') : undefined);
         const authUser: AuthUser = {
           id: immediateSession.user.id,
-          displayName: userMetadata.full_name || userMetadata.name || immediateSession.user.email?.split('@')[0],
-          firstName: userMetadata.given_name || userMetadata.first_name,
-          lastName: userMetadata.family_name || userMetadata.last_name,
+          displayName: fullName || immediateSession.user.email?.split('@')[0],
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
           email: immediateSession.user.email || undefined,
           photoUrl: userMetadata.avatar_url || userMetadata.picture,
           authProvider: 'google',
@@ -426,15 +436,25 @@ export const authService = {
               authSubscription.unsubscribe();
             }
 
-            // Convert Supabase user to AuthUser format
+            // Convert Supabase user to AuthUser format (first name only from full_name when given_name missing)
             const supabaseUser = session.user;
             const userMetadata = supabaseUser.user_metadata || {};
+            const fullName = userMetadata.full_name || userMetadata.name || '';
+            const firstName =
+              userMetadata.given_name ||
+              userMetadata.first_name ||
+              (fullName ? fullName.trim().split(/\s+/)[0] : undefined) ||
+              supabaseUser.email?.split('@')[0];
+            const lastName =
+              userMetadata.family_name ||
+              userMetadata.last_name ||
+              (fullName ? fullName.trim().split(/\s+/).slice(1).join(' ') : undefined);
 
             const authUser: AuthUser = {
               id: supabaseUser.id,
-              displayName: userMetadata.full_name || userMetadata.name || supabaseUser.email?.split('@')[0],
-              firstName: userMetadata.given_name || userMetadata.first_name,
-              lastName: userMetadata.family_name || userMetadata.last_name,
+              displayName: fullName || supabaseUser.email?.split('@')[0],
+              firstName: firstName || undefined,
+              lastName: lastName || undefined,
               email: supabaseUser.email || undefined,
               photoUrl: userMetadata.avatar_url || userMetadata.picture,
               authProvider: 'google',

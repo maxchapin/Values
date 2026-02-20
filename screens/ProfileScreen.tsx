@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUserStore } from '../store/userStore';
@@ -13,7 +14,7 @@ import { theme } from '../theme';
 
 /**
  * Profile Screen - Same card design as Discover.
- * Renders ProfileCard for current user with Edit button; top bar for View + Settings.
+ * Top bar: Edit, Profile title, Settings. Card shows profile as in Discover (no in-card Edit).
  */
 export const ProfileScreen: React.FC = () => {
   const { currentUser } = useUserStore();
@@ -45,10 +46,6 @@ export const ProfileScreen: React.FC = () => {
     (navigation as any).navigate('EditProfile');
   };
 
-  const handleView = (): void => {
-    (navigation as any).navigate('ProfilePreview');
-  };
-
   const handleSettings = (): void => {
     (navigation as any).navigate('Settings');
   };
@@ -63,7 +60,7 @@ export const ProfileScreen: React.FC = () => {
   return (
     <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
       <View style={styles.container}>
-        {/* Top bar: Edit (card has its own Edit), View, Settings - same visual weight as Discover header */}
+        {/* Top bar: Edit, Profile title, Settings */}
         <View
           style={[
             styles.topBar,
@@ -74,13 +71,13 @@ export const ProfileScreen: React.FC = () => {
           ]}
         >
           <TouchableOpacity
-            onPress={handleView}
+            onPress={handleEdit}
             style={styles.topBarButton}
             activeOpacity={0.7}
-            accessibilityLabel="View as others see you"
+            accessibilityLabel="Edit profile"
             accessibilityRole="button"
           >
-            <Text style={styles.topBarButtonText}>View</Text>
+            <Text style={styles.topBarButtonText}>Edit</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -100,7 +97,7 @@ export const ProfileScreen: React.FC = () => {
             accessibilityLabel="Settings"
             accessibilityRole="button"
           >
-            <Text style={styles.topBarIcon}>⚙️</Text>
+            <Ionicons name="settings-outline" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -108,11 +105,13 @@ export const ProfileScreen: React.FC = () => {
         <View style={styles.cardArea}>
           <ProfileCard
             user={currentUser}
-            showEditButton
-            onEditPress={handleEdit}
+            showEditButton={false}
             onValuesPress={handleValuesPress}
             scrollViewProps={{
-              contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
+              contentContainerStyle: {
+                paddingTop: theme.spacing.md,
+                paddingBottom: theme.spacing['2xl'],
+              },
             }}
           />
         </View>
@@ -150,9 +149,6 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.primary,
   },
-  topBarIcon: {
-    fontSize: 20,
-  },
   headerTitle: {
     fontSize: theme.typography.fontSize.lg,
     fontWeight: theme.typography.fontWeight.bold,
@@ -161,7 +157,6 @@ const styles = StyleSheet.create({
   cardArea: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
     minHeight: 0,
     backgroundColor: theme.colors.background,
   },

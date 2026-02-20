@@ -156,12 +156,6 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
                 </Pressable>
               ) : null}
             </View>
-
-            {hometown ? (
-              <Text style={cardStyles.subRow} numberOfLines={1}>
-                Where they're from: {hometown}
-              </Text>
-            ) : null}
           </View>
 
           <View style={[cardStyles.section, cardStyles.sectionCard, cardStyles.detailsCard]}>
@@ -175,6 +169,14 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
                   <Text style={cardStyles.detailsSeparator}> · </Text>
                   <Text style={cardStyles.detailsInline} numberOfLines={1}>
                     {genderLabel}
+                  </Text>
+                </>
+              ) : null}
+              {hometown ? (
+                <>
+                  <Text style={cardStyles.detailsSeparator}> · </Text>
+                  <Text style={cardStyles.detailsInline} numberOfLines={1}>
+                    From {hometown}
                   </Text>
                 </>
               ) : null}

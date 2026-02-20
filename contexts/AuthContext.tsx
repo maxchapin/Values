@@ -80,11 +80,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const convertSupabaseUserToAuthUser = useCallback((supabaseUser: any): AuthUser => {
     const userMetadata = supabaseUser.user_metadata || {};
+    const fullName = userMetadata.full_name || userMetadata.name || '';
+    // Use given_name when available; otherwise extract first name only from full_name (avoid "John Doe" in First Name)
+    const firstName =
+      userMetadata.given_name ||
+      userMetadata.first_name ||
+      (fullName ? fullName.trim().split(/\s+/)[0] : undefined) ||
+      supabaseUser.email?.split('@')[0];
+    const lastName =
+      userMetadata.family_name ||
+      userMetadata.last_name ||
+      (fullName ? fullName.trim().split(/\s+/).slice(1).join(' ') : undefined);
     return {
       id: supabaseUser.id,
-      displayName: userMetadata.full_name || userMetadata.name || supabaseUser.email?.split('@')[0],
-      firstName: userMetadata.given_name || userMetadata.first_name,
-      lastName: userMetadata.family_name || userMetadata.last_name,
+      displayName: fullName || supabaseUser.email?.split('@')[0],
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
       email: supabaseUser.email || undefined,
       photoUrl: userMetadata.avatar_url || userMetadata.picture,
       authProvider: (userMetadata.provider || 'google') as AuthProviderType,

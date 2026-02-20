@@ -5,16 +5,18 @@
 
 /**
  * Calculate age in full years from birthday.
- * Uses calendar comparison: if this year's birthday hasn't occurred yet, age is one less.
- * Feb 29: treated as Feb 28 in non-leap years for "has birthday occurred" check.
+ * Uses UTC date parts so "Jan 23" is consistent in all timezones.
  */
 export function calculateAge(birthday: Date | string): number {
   const date = typeof birthday === 'string' ? new Date(birthday) : birthday;
   if (Number.isNaN(date.getTime())) return 0;
   const today = new Date();
-  let age = today.getFullYear() - date.getFullYear();
-  const monthDiff = today.getMonth() - date.getMonth();
-  const dayDiff = today.getDate() - date.getDate();
+  const birthY = date.getUTCFullYear();
+  const birthM = date.getUTCMonth();
+  const birthD = date.getUTCDate();
+  let age = today.getUTCFullYear() - birthY;
+  const monthDiff = today.getUTCMonth() - birthM;
+  const dayDiff = today.getUTCDate() - birthD;
   if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
     age--;
   }
@@ -23,12 +25,16 @@ export function calculateAge(birthday: Date | string): number {
 
 /**
  * Format birthday for display (e.g. "Jan 15, 1995" or "Select Birthday").
+ * Uses UTC date parts so stored "Jan 23" displays as Jan 23 in all timezones.
  */
 export function formatBirthdayDisplay(birthday: Date | string | null | undefined): string {
   if (birthday == null) return 'Select Birthday';
   const date = typeof birthday === 'string' ? new Date(birthday) : birthday;
   if (Number.isNaN(date.getTime())) return 'Select Birthday';
-  return date.toLocaleDateString(undefined, {
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const d = date.getUTCDate();
+  return new Date(y, m, d).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

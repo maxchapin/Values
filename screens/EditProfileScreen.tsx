@@ -24,7 +24,6 @@ import { HeaderBackButton } from '@react-navigation/elements';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SecondaryButton } from '../components/SecondaryButton';
 import { TextInputField } from '../components/TextInputField';
-import { TagPill } from '../components/TagPill';
 import { ProfilePhotosPicker } from '../components/ProfilePhotosPicker';
 import { ProfilePromptsEditor } from '../components/ProfilePromptsEditor';
 import { trackScreenView } from '../services/analytics';
@@ -39,7 +38,7 @@ import { upsertSupabaseProfile } from '../services/supabaseProfile';
 import { supabase } from '../lib/supabase';
 import { LocationPicker, type LocationCoordinates } from '../components/LocationPicker';
 import { BirthdayPicker } from '../components/BirthdayPicker';
-import { calculateAge } from '../utils/dateUtils';
+import { calculateAge, birthdayToISOString } from '../utils/dateUtils';
 
 type EditProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
@@ -112,7 +111,14 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
       hometown: [],
       job: [],
       education: [],
-      bio: [],
+      bio: [
+        (v: string) => {
+          const t = (v ?? '').trim();
+          if (t.length === 0) return undefined;
+          if (t.length < 10) return 'Bio must be 10+ characters';
+          return undefined;
+        },
+      ],
     }
   );
 
@@ -121,6 +127,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
   const [interestedInError, setInterestedInError] = useState<string | null>(null);
   const [promptsError, setPromptsError] = useState<string | null>(null);
   const [showGenderPicker, setShowGenderPicker] = useState(false);
+  const [showInterestedInPicker, setShowInterestedInPicker] = useState(false);
   const [birthday, setBirthday] = useState<Date | string | null>(() => currentUser?.birthday ?? null);
   const [birthdayError, setBirthdayError] = useState<string | null>(null);
   const [age, setAge] = useState<number>(() => {
@@ -274,7 +281,10 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
       setBirthdayError('You must be 18 or older');
       return;
     }
-    const birthdayISO = typeof birthday === 'string' ? birthday : new Date(birthday).toISOString();
+    const birthdayISO =
+      typeof birthday === 'string'
+        ? birthday
+        : birthdayToISOString(birthday instanceof Date ? birthday : new Date(birthday));
 
     const profileData = {
       name: formValues.name.trim(),
@@ -372,6 +382,25 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
             <View style={styles.form}>
           <ProfilePhotosPicker photos={photos} onChange={setPhotos} />
 
+          <View style={styles.valuesSection}>
+            <Text style={styles.sectionTitle}>Your Values</Text>
+            {top5Values.length > 0 ? (
+              <View style={styles.top5Container}>
+                <Text style={styles.top5Label}>Core 5 Values:</Text>
+                <View style={styles.top5Values}>
+                  {top5Values.map((label, index) => (
+                    <View key={index} style={styles.top5Value}>
+                      <Text style={styles.top5ValueText}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.noValuesText}>No values selected</Text>
+            )}
+            <PrimaryButton title="Edit Values" onPress={handleEditValues} style={styles.editValuesButton} />
+          </View>
+
           <TextInputField
             label="First Name *"
             placeholder="Enter your first name"
@@ -395,11 +424,6 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
             }}
             error={birthdayError ?? undefined}
           />
-          {birthday != null && (
-            <Text style={styles.ageText}>
-              You're {calculateAge(birthday)} years old
-            </Text>
-          )}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Gender *</Text>
@@ -433,11 +457,36 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>I am interested in *</Text>
-            <View style={styles.pillRow}>
-              <TagPill label="Men" selected={interestedIn === 'men'} onPress={() => { setInterestedIn('men'); setInterestedInError(null); }} />
-              <TagPill label="Women" selected={interestedIn === 'women'} onPress={() => { setInterestedIn('women'); setInterestedInError(null); }} style={{ marginLeft: theme.spacing.sm }} />
-              <TagPill label="Everyone" selected={interestedIn === 'everyone'} onPress={() => { setInterestedIn('everyone'); setInterestedInError(null); }} style={{ marginLeft: theme.spacing.sm }} />
-            </View>
+            <TouchableOpacity style={styles.input} onPress={() => setShowInterestedInPicker(true)}>
+              <Text style={styles.pickerText}>
+                {interestedIn === 'men' ? 'Men' : interestedIn === 'women' ? 'Women' : interestedIn === 'everyone' ? 'Everyone' : 'Select...'}
+              </Text>
+            </TouchableOpacity>
+            <Modal visible={showInterestedInPicker} transparent animationType="slide" onRequestClose={() => setShowInterestedInPicker(false)}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>I am interested in</Text>
+                  {(['men', 'women', 'everyone'] as InterestedIn[]).map((opt) => (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[styles.modalOption, interestedIn === opt && styles.modalOptionSelected]}
+                      onPress={() => {
+                        setInterestedIn(opt);
+                        setInterestedInError(null);
+                        setShowInterestedInPicker(false);
+                      }}
+                    >
+                      <Text style={[styles.modalOptionText, interestedIn === opt && styles.modalOptionTextSelected]}>
+                        {opt === 'men' ? 'Men' : opt === 'women' ? 'Women' : 'Everyone'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity style={styles.modalCancel} onPress={() => setShowInterestedInPicker(false)}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
             {interestedInError ? <Text style={styles.errorText}>{interestedInError}</Text> : null}
           </View>
 
@@ -509,7 +558,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
             <TextInput
               ref={bioRef}
               style={[styles.input, styles.textArea]}
-              placeholder="Tell us about yourself..."
+              placeholder="Tell us about yourself... (min 10 characters)"
               value={values.bio}
               onChangeText={(t) => setValue('bio', t, true)}
               onBlur={() => setFieldTouched('bio')}
@@ -519,28 +568,12 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
               placeholderTextColor={theme.colors.textTertiary}
               returnKeyType="done"
             />
+            {touched.bio && errors.bio ? (
+              <Text style={styles.errorText}>{errors.bio}</Text>
+            ) : null}
           </View>
 
           <ProfilePromptsEditor prompts={prompts} onChange={setPrompts} error={promptsError} />
-
-          <View style={styles.valuesSection}>
-            <Text style={styles.sectionTitle}>Your Values</Text>
-            {top5Values.length > 0 ? (
-              <View style={styles.top5Container}>
-                <Text style={styles.top5Label}>Core 5 Values:</Text>
-                <View style={styles.top5Values}>
-                  {top5Values.map((label, index) => (
-                    <View key={index} style={styles.top5Value}>
-                      <Text style={styles.top5ValueText}>{label}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              <Text style={styles.noValuesText}>No values selected</Text>
-            )}
-            <PrimaryButton title="Edit Values" onPress={handleEditValues} style={styles.editValuesButton} />
-          </View>
         </View>
         </View>
         </ScrollView>
@@ -554,8 +587,17 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
             <Text style={styles.cancelButtonFixedText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.saveButtonFixed, (!isDirty || isSaving) && styles.saveButtonDisabled]}
-            disabled={!isDirty || isSaving}
+            style={[
+              styles.saveButtonFixed,
+              (!isDirty || isSaving || !!errors.bio || (values.bio.trim().length > 0 && values.bio.trim().length < 10)) &&
+                styles.saveButtonDisabled,
+            ]}
+            disabled={
+              !isDirty ||
+              isSaving ||
+              !!errors.bio ||
+              (values.bio.trim().length > 0 && values.bio.trim().length < 10)
+            }
             onPress={onSavePress}
           >
             <Text style={styles.saveButtonFixedText}>
@@ -726,12 +768,6 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   editValuesButton: { marginTop: theme.spacing.sm },
-  ageText: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginTop: theme.spacing.xs,
-    marginBottom: theme.spacing.lg,
-  },
   fixedButtonBar: {
     position: 'absolute',
     bottom: 0,

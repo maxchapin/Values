@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Animated,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useValuesOnboardingStore } from '../../store/valuesOnboardingStore';
@@ -243,54 +244,57 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
   };
 
   const handleComplete = async (): Promise<void> => {
-    // Build values profile from store
-    const { values } = useValuesOnboardingStore.getState();
-    
-    const top5Ids = values.filter((v) => v.tier === 'top5').map((v) => v.id);
-    const top10Ids = values.filter((v) => v.tier === 'top10' || v.tier === 'top5').map((v) => v.id);
-    const top20Ids = values.filter((v) => v.tier === 'top20' || v.tier === 'top10' || v.tier === 'top5').map((v) => v.id);
-    const initialIds = values.filter((v) => v.tier !== 'none').map((v) => v.id);
-
-    const valuesProfile: UserValuesProfile = {
-      allValues: values,
-      top5Ids,
-      top10Ids,
-      top20Ids,
-      initialIds,
-    };
-
-    // Save to user store
-    const { updateValuesProfile } = useUserStore.getState();
-    await updateValuesProfile(valuesProfile);
-
-    // After values onboarding, sync tiered values into Supabase `profiles.selected_values`
-    // and update is_values_complete / is_onboarding_complete flags.
-    if (authUser) {
-      try {
-        const { currentUser } = useUserStore.getState();
-        if (currentUser) {
-          await upsertSupabaseProfile(authUser, currentUser);
-          // Refresh AuthContext profile so AppNavigator routes to main app
-          await refreshProfile();
-        }
-      } catch (error) {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.error('[ValuesOnboardingScreen] Failed to upsert Supabase profile with values:', error);
-        }
-      }
-    } else if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.warn('[ValuesOnboardingScreen] No AuthUser when attempting to upsert Supabase profile');
-    }
-
     const fromEditProfile = route.params?.fromEditProfile;
     const fromProfileCard = route.params?.fromProfileCard;
 
-    if (fromEditProfile || fromProfileCard) {
-      navigation.goBack();
+    try {
+      // Build values profile from store
+      const { values } = useValuesOnboardingStore.getState();
+
+      const top5Ids = values.filter((v) => v.tier === 'top5').map((v) => v.id);
+      const top10Ids = values.filter((v) => v.tier === 'top10' || v.tier === 'top5').map((v) => v.id);
+      const top20Ids = values.filter((v) => v.tier === 'top20' || v.tier === 'top10' || v.tier === 'top5').map((v) => v.id);
+      const initialIds = values.filter((v) => v.tier !== 'none').map((v) => v.id);
+
+      const valuesProfile: UserValuesProfile = {
+        allValues: values,
+        top5Ids,
+        top10Ids,
+        top20Ids,
+        initialIds,
+      };
+
+      // Save to user store
+      const { updateValuesProfile } = useUserStore.getState();
+      await updateValuesProfile(valuesProfile);
+
+      // After values onboarding, sync tiered values into Supabase `profiles.selected_values`
+      if (authUser) {
+        try {
+          const { currentUser } = useUserStore.getState();
+          if (currentUser) {
+            await upsertSupabaseProfile(authUser, currentUser);
+            await refreshProfile();
+          }
+        } catch (error) {
+          if (__DEV__) {
+            // eslint-disable-next-line no-console
+            console.error('[ValuesOnboardingScreen] Failed to upsert Supabase profile with values:', error);
+          }
+        }
+      } else if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[ValuesOnboardingScreen] No AuthUser when attempting to upsert Supabase profile');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save values';
+      Alert.alert('Error', message);
+    } finally {
+      if (fromEditProfile || fromProfileCard) {
+        navigation.goBack();
+      }
     }
-    // Else: AppNavigator will show main app once profile.is_onboarding_complete is true (from refreshProfile)
+    // When not in edit mode: AppNavigator shows main app once profile.is_onboarding_complete is true (from refreshProfile)
   };
 
   // Render summary step with legend

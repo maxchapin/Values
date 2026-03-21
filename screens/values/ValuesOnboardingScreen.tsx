@@ -4,7 +4,7 @@
  * Handles: broad → top20 → top10 → top5 → summary
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useValuesOnboardingStore } from '../../store/valuesOnboardingStore';
 import { useUserStore } from '../../store/userStore';
@@ -30,6 +32,7 @@ import { upsertSupabaseProfile } from '../../services/supabaseProfile';
 type ValuesOnboardingScreenProps = NativeStackScreenProps<RootStackParamList, 'ValuesOnboarding'>;
 
 export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const {
     values,
     currentStep,
@@ -54,6 +57,27 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
 
   const stepInfo = getStepInfo();
   const { user: authUser, refreshProfile } = useAuth();
+
+  /**
+   * Close without saving: never calls updateValuesProfile / Supabase.
+   * Edit entry (profile / Discover / Edit Profile): restore onboarding store from persisted userStore.
+   * First-time onboarding: clear draft back to default cloud + `broad` step.
+   */
+  const discardAndCloseWithoutSave = useCallback((): void => {
+    const fromEditProfile = route.params?.fromEditProfile;
+    const fromProfileCard = route.params?.fromProfileCard;
+    const isEditEntry = !!(fromEditProfile || fromProfileCard);
+    const savedUser = useUserStore.getState().currentUser;
+    const savedProfile = savedUser?.valuesProfile;
+
+    if (isEditEntry && savedProfile) {
+      useValuesOnboardingStore.getState().initializeFromProfile(savedProfile);
+    } else {
+      useValuesOnboardingStore.getState().resetValues();
+    }
+
+    navigation.goBack();
+  }, [navigation, route.params?.fromEditProfile, route.params?.fromProfileCard]);
 
   // Get current count based on step
   const getCurrentCount = (): number => {
@@ -184,7 +208,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
       if (currentStep !== 'broad') {
         goToPreviousStep();
       } else {
-        navigation.goBack();
+        discardAndCloseWithoutSave();
       }
     } else {
       goToPreviousStep();
@@ -246,6 +270,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
   const handleComplete = async (): Promise<void> => {
     const fromEditProfile = route.params?.fromEditProfile;
     const fromProfileCard = route.params?.fromProfileCard;
+    const returnAfterSave = !!(fromEditProfile || fromProfileCard);
 
     try {
       // Build values profile from store
@@ -264,35 +289,45 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
         initialIds,
       };
 
-      // Save to user store
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log('[ValuesOnboarding] Saving values to local store + Supabase...');
+      }
+
       const { updateValuesProfile } = useUserStore.getState();
       await updateValuesProfile(valuesProfile);
 
-      // After values onboarding, sync tiered values into Supabase `profiles.selected_values`
       if (authUser) {
-        try {
-          const { currentUser } = useUserStore.getState();
-          if (currentUser) {
-            await upsertSupabaseProfile(authUser, currentUser);
-            await refreshProfile();
-          }
-        } catch (error) {
+        const { currentUser } = useUserStore.getState();
+        if (currentUser) {
+          await upsertSupabaseProfile(authUser, currentUser);
+          await refreshProfile();
           if (__DEV__) {
             // eslint-disable-next-line no-console
-            console.error('[ValuesOnboardingScreen] Failed to upsert Supabase profile with values:', error);
+            console.log('[ValuesOnboarding] Supabase values sync OK');
           }
         }
-      } else if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.warn('[ValuesOnboardingScreen] No AuthUser when attempting to upsert Supabase profile');
+      } else {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn('[ValuesOnboarding] No AuthUser — skipped Supabase upsert');
+        }
+        Alert.alert(
+          'Not signed in',
+          'Values were saved on this device only. Sign in again to sync to your account.'
+        );
+      }
+
+      if (returnAfterSave) {
+        navigation.goBack();
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save values';
-      Alert.alert('Error', message);
-    } finally {
-      if (fromEditProfile || fromProfileCard) {
-        navigation.goBack();
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.error('[ValuesOnboarding] Save failed:', error);
       }
+      Alert.alert('Could not save', message);
     }
     // When not in edit mode: AppNavigator shows main app once profile.is_onboarding_complete is true (from refreshProfile)
   };
@@ -305,7 +340,18 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
     
     return (
       <ScreenContainer contentPadding={false}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + theme.spacing.sm }]}>
+          <View style={styles.headerTopRow}>
+            <TouchableOpacity
+              onPress={discardAndCloseWithoutSave}
+              style={styles.headerCloseButton}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Close without saving"
+              accessibilityRole="button"
+            >
+              <Ionicons name="close" size={28} color={theme.colors.text} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.title}>{stepInfo.title}</Text>
           <Text style={styles.subtitle}>{stepInfo.subtitle}</Text>
         </View>
@@ -373,7 +419,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
           {(route.params?.fromEditProfile || route.params?.fromProfileCard) && (
             <SecondaryButton
               title="Back"
-              onPress={() => navigation.goBack()}
+              onPress={discardAndCloseWithoutSave}
               style={styles.editButton}
             />
           )}
@@ -385,7 +431,18 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
   // Render regular steps
   return (
     <ScreenContainer contentPadding={false}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + theme.spacing.sm }]}>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity
+            onPress={discardAndCloseWithoutSave}
+            style={styles.headerCloseButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Close without saving"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={28} color={theme.colors.text} />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.title}>{stepInfo.title}</Text>
         <Text style={styles.subtitle}>{stepInfo.subtitle}</Text>
       </View>
@@ -430,7 +487,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
             <View style={styles.backButton}>
               <SecondaryButton
                 title="Back"
-                onPress={() => navigation.goBack()}
+                onPress={discardAndCloseWithoutSave}
               />
             </View>
           )}
@@ -463,11 +520,21 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
 
 const styles = StyleSheet.create({
   header: {
-    padding: theme.spacing.lg,
-    paddingTop: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.lg,
     backgroundColor: theme.colors.backgroundSecondary,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+    minHeight: 44,
+  },
+  headerCloseButton: {
+    paddingVertical: theme.spacing.xs,
+    paddingRight: theme.spacing.sm,
   },
   title: {
     fontSize: theme.typography.fontSize['3xl'],

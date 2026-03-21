@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { ScreenContainer } from '../../components/ScreenContainer';
@@ -32,7 +32,7 @@ interface ProfileFormData {
 
 export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation }) => {
   const { currentUser, createOrUpdateUser, isLoading } = useUserStore();
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshProfile } = useAuth();
   const hometownRef = useRef<TextInput>(null);
   const jobRef = useRef<TextInput>(null);
   const educationRef = useRef<TextInput>(null);
@@ -192,9 +192,13 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
     // so that auth.users(id) → profiles(id) stays in sync after onboarding.
     if (authUser) {
       try {
-        // Get the freshest user from the store after createOrUpdateUser runs.
         const { currentUser: updatedUser } = useUserStore.getState();
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log('[ProfileSetupScreen] Upserting profile to Supabase...');
+        }
         await upsertSupabaseProfile(authUser, updatedUser ?? {
+          name: formValues.name.trim(),
           age: ageNum,
           birthday: birthdayISO,
           gender,
@@ -208,17 +212,33 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
           photos,
           prompts: validPrompts,
         });
-      } catch (error) {
+        await refreshProfile();
         if (__DEV__) {
-          // Log but don't block onboarding – user can still proceed.
-          // This ensures we notice Supabase profile sync issues in dev.
+          // eslint-disable-next-line no-console
+          console.log('[ProfileSetupScreen] Supabase profile OK + refreshProfile');
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Could not save your profile to the cloud.';
+        if (__DEV__) {
           // eslint-disable-next-line no-console
           console.error('[ProfileSetupScreen] Failed to upsert Supabase profile:', error);
         }
+        Alert.alert(
+          'Could not sync profile',
+          `${msg}\n\nCheck your connection and try again. Your answers are saved on this device.`
+        );
+        return;
       }
-    } else if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.warn('[ProfileSetupScreen] No AuthUser when attempting to upsert Supabase profile');
+    } else {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[ProfileSetupScreen] No AuthUser when attempting to upsert Supabase profile');
+      }
+      Alert.alert(
+        'Not signed in',
+        'Your profile was saved on this device only. Sign in and complete setup again to sync.'
+      );
+      return;
     }
 
     // Track profile completion

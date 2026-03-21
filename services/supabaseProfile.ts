@@ -10,6 +10,7 @@ import { calculateAge } from '../utils/dateUtils';
 import type { AuthUser } from '../types/auth';
 import type { User } from '../types/user';
 import type { ProfileGender, InterestedIn } from '../types/user';
+import { resolveProfilePhotoUrlsForSupabase } from './supabaseProfilePhotos';
 
 /** Gender values stored in Supabase `profiles.gender` (matches Profile type). */
 export type { ProfileGender } from '../types/user';
@@ -44,6 +45,8 @@ export interface SupabaseProfile {
   updated_at: string;
   /** Last app open / sign-in; used for Discover composite score (similarity + recency). */
   last_login_at: string | null;
+  /** Notification toggles, visibility, dating preference (interested_in). */
+  preferences: SupabasePreferences | null;
 }
 
 /** Lean discovery select: only columns needed for cards + match scoring. Avoid select('*') for memory. */
@@ -98,6 +101,16 @@ export function supabaseProfileToUser(profile: SupabaseProfile): User {
     createdAt: profile.created_at,
     updatedAt: profile.updated_at,
     lastLoginAt: profile.last_login_at ?? undefined,
+    interestedIn: (profile.preferences?.interested_in as InterestedIn | undefined) ?? undefined,
+    settings: profile.preferences
+      ? {
+          isProfileVisible: profile.preferences.is_profile_visible !== false,
+          notifications: {
+            newMatch: profile.preferences.push_new_match !== false,
+            newMessage: profile.preferences.push_new_message !== false,
+          },
+        }
+      : undefined,
     valuesProfile: {
       allValues: [],
       top5Ids: selectedValues.slice(0, 5),
@@ -160,6 +173,39 @@ export async function upsertSupabaseProfile(
     throw new Error('User ID mismatch - cannot create profile for different user');
   }
 
+  let photosForRow: string[] | null | undefined =
+    userData?.photos && userData.photos.length > 0 ? [...userData.photos] : undefined;
+
+  if (photosForRow && photosForRow.length > 0) {
+    try {
+      if (__DEV__) {
+        console.log('[supabaseProfile] Resolving profile photos (upload locals if needed)...', {
+          count: photosForRow.length,
+        });
+      }
+      photosForRow = await resolveProfilePhotoUrlsForSupabase(photosForRow, authUser.id);
+    } catch (uploadErr) {
+      const msg = uploadErr instanceof Error ? uploadErr.message : 'Photo upload failed';
+      if (__DEV__) {
+        console.error('[supabaseProfile] Photo upload error:', uploadErr);
+      }
+      throw new Error(msg);
+    }
+  }
+
+  let mergedPreferences: SupabasePreferences | undefined;
+  if (userData && userData.interestedIn != null) {
+    const existing = await getSupabaseProfileByUserId(authUser.id);
+    const prev =
+      existing?.preferences && typeof existing.preferences === 'object'
+        ? { ...(existing.preferences as SupabasePreferences) }
+        : {};
+    mergedPreferences = { ...prev, interested_in: userData.interestedIn };
+    if (__DEV__) {
+      console.log('[supabaseProfile] Merged preferences.interested_in for upsert');
+    }
+  }
+
   // Prepare profile data
   const profileData: Partial<SupabaseProfile> = {
     id: authUser.id,
@@ -171,6 +217,9 @@ export async function upsertSupabaseProfile(
     auth_provider: authUser.authProvider,
     // Merge with existing user data if provided
     ...(userData && {
+      ...(userData.name != null && String(userData.name).trim() !== ''
+        ? { first_name: String(userData.name).trim() }
+        : {}),
       age: userData.age ?? null,
       birthday: userData.birthday ?? null,
       gender: userData.gender ? userGenderToProfileGender(userData.gender) : null,
@@ -182,22 +231,34 @@ export async function upsertSupabaseProfile(
       hometown: userData.hometown || null,
       job: userData.job || null,
       education: userData.education || null,
-      photos: userData.photos && userData.photos.length > 0 ? userData.photos : null,
+      photos: photosForRow && photosForRow.length > 0 ? photosForRow : null,
       prompts: userData.prompts && userData.prompts.length > 0 ? userData.prompts : null,
       selected_values: userData.selectedValues && userData.selectedValues.length > 0 ? userData.selectedValues : null,
-      is_profile_complete: (!!userData.birthday || !!userData.age) && !!userData.gender && !!userData.bio && (userData.photos?.length || 0) > 0,
+      is_profile_complete:
+        (!!userData.birthday || !!userData.age) &&
+        !!userData.gender &&
+        !!userData.bio &&
+        ((photosForRow?.length ?? userData.photos?.length) || 0) > 0,
       is_values_complete: (userData.selectedValues?.length || 0) >= 5,
       is_onboarding_complete: false, // Will be computed
     }),
+    ...(mergedPreferences !== undefined ? { preferences: mergedPreferences as SupabaseProfile['preferences'] } : {}),
     updated_at: new Date().toISOString(),
     last_login_at: new Date().toISOString(), // So this user appears recently active in others' Discover
   };
 
   // Compute onboarding completion
   if (userData) {
-    profileData.is_onboarding_complete = 
-      !!profileData.is_profile_complete && 
-      !!profileData.is_values_complete;
+    profileData.is_onboarding_complete =
+      !!profileData.is_profile_complete && !!profileData.is_values_complete;
+  }
+
+  if (__DEV__) {
+    console.log('[supabaseProfile] Upserting profiles row', {
+      userId: authUser.id,
+      hasUserPayload: !!userData,
+      photoCount: Array.isArray(profileData.photos) ? profileData.photos.length : 0,
+    });
   }
 
   // Upsert profile (insert or update). Explicit select to avoid select('*') and keep payload lean.
@@ -219,6 +280,10 @@ export async function upsertSupabaseProfile(
     throw new Error('Profile upsert returned no data');
   }
 
+  if (__DEV__) {
+    console.log('[supabaseProfile] Upsert OK', { userId: authUser.id });
+  }
+
   return data as SupabaseProfile;
 }
 
@@ -238,13 +303,17 @@ export async function touchLastLoginAt(): Promise<void> {
     })
     .eq('id', user.id);
 
-  if (error && __DEV__) {
-    console.warn('[supabaseProfile] touchLastLoginAt failed:', error.message);
+  if (error) {
+    if (__DEV__) {
+      console.warn('[supabaseProfile] touchLastLoginAt failed:', error.message);
+    }
+  } else if (__DEV__) {
+    console.log('[supabaseProfile] touchLastLoginAt OK', user.id);
   }
 }
 
 const PROFILE_SELECT =
-  'id, email, display_name, first_name, last_name, photo_url, auth_provider, age, birthday, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at';
+  'id, email, display_name, first_name, last_name, photo_url, auth_provider, age, birthday, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at, preferences';
 
 /**
  * Get current user's profile from Supabase
@@ -311,6 +380,42 @@ export interface DiscoveryProfileRow {
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
+}
+
+/** Map a discovery query row to app `User` (email not selected — use empty string). */
+export function discoveryProfileRowToUser(row: DiscoveryProfileRow): User {
+  const selectedValues = row.selected_values ?? [];
+  const age = row.age ?? 0;
+  return {
+    id: row.id,
+    email: '',
+    name: row.first_name ?? 'User',
+    age,
+    gender: profileGenderToUserGender(row.gender),
+    bio: row.bio ?? '',
+    photos: Array.isArray(row.photos) ? row.photos : [],
+    prompts: Array.isArray(row.prompts) ? row.prompts : [],
+    selectedValues,
+    locationCoordinates:
+      row.location_latitude != null && row.location_longitude != null
+        ? { latitude: row.location_latitude, longitude: row.location_longitude }
+        : null,
+    locationLabel: row.location_label ?? null,
+    neighborhood: row.neighborhood ?? undefined,
+    hometown: row.hometown ?? undefined,
+    job: row.job ?? undefined,
+    education: row.education ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastLoginAt: row.last_login_at ?? undefined,
+    valuesProfile: {
+      allValues: [],
+      top5Ids: selectedValues.slice(0, 5),
+      top10Ids: selectedValues.slice(0, 10),
+      top20Ids: selectedValues.slice(0, 20),
+      initialIds: selectedValues,
+    },
+  };
 }
 
 /**
@@ -381,6 +486,8 @@ export interface SupabasePreferences {
   is_profile_visible?: boolean;
   push_new_match?: boolean;
   push_new_message?: boolean;
+  /** Mirrors app `User.interestedIn` — stored in JSONB (no dedicated column). */
+  interested_in?: InterestedIn;
 }
 
 /**
@@ -393,10 +500,21 @@ export async function updateSupabasePreferences(preferences: SupabasePreferences
     throw new Error('Authentication required');
   }
 
+  const existing = await getSupabaseProfileByUserId(user.id);
+  const prev =
+    existing?.preferences && typeof existing.preferences === 'object'
+      ? { ...(existing.preferences as SupabasePreferences) }
+      : {};
+  const merged: SupabasePreferences = { ...prev, ...preferences };
+
+  if (__DEV__) {
+    console.log('[supabaseProfile] updateSupabasePreferences (merged patch)');
+  }
+
   const { error } = await supabase
     .from('profiles')
     .update({
-      preferences,
+      preferences: merged,
       updated_at: new Date().toISOString(),
     })
     .eq('id', user.id);

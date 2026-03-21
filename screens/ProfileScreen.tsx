@@ -4,7 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUserStore } from '../store/userStore';
-import { useValuesOnboardingStore } from '../store/valuesOnboardingStore';
+import {
+  navigateToValuesEditorFromProfile,
+  type NavigateToValuesEditorNav,
+} from '../navigation/navigateToValuesEditor';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { EmptyState } from '../components/EmptyState';
 import { ProfileCard } from '../components/ProfileCard';
@@ -51,10 +54,7 @@ export const ProfileScreen: React.FC = () => {
   };
 
   const handleValuesPress = (): void => {
-    if (currentUser?.valuesProfile) {
-      useValuesOnboardingStore.getState().initializeFromProfile(currentUser.valuesProfile);
-    }
-    (navigation as any).navigate('ValuesOnboarding', { fromProfileCard: true });
+    navigateToValuesEditorFromProfile(navigation as NavigateToValuesEditorNav, currentUser);
   };
 
   return (

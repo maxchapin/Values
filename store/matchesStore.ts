@@ -77,29 +77,78 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
     }
     set({ isLoading: true, error: null });
     try {
-      const { findMatches } = await import('../services/mockBackend');
       const currentUser = getCurrentUser();
+      if (!currentUser || currentUser.id !== userId) {
+        set({
+          isLoading: false,
+          error: 'Could not load your profile. Try signing in again.',
+          availableMatches: [],
+          currentMatchIndex: 0,
+        });
+        return;
+      }
+
       const mergedFilters: MatchFilters = {
         ...(filters ?? get().filters ?? {}),
         centerCoordinates: (filters ?? get().filters)?.centerCoordinates ?? currentUser?.locationCoordinates ?? undefined,
         interestedIn: (filters ?? get().filters)?.interestedIn ?? currentUser?.interestedIn ?? undefined,
       };
-      const matches = await findMatches(userId, mergedFilters);
-      
-      // Ensure matches is always an array (defensive check)
+
+      const { getDiscoveryProfiles, discoveryProfileRowToUser } = await import('../services/supabaseProfile');
+      const { buildMatchListForDiscover } = await import('../services/mockBackend');
+
+      const rows = await getDiscoveryProfiles(userId, {
+        interestedIn: mergedFilters.interestedIn,
+      });
+      const candidates = rows.map(discoveryProfileRowToUser);
+
+      let matches = buildMatchListForDiscover(currentUser, candidates, mergedFilters, {
+        applyRelaxedFallback: __DEV__,
+      });
+
+      if (matches.length === 0 && __DEV__) {
+        const { findMatches } = await import('../services/mockBackend');
+        matches = await findMatches(userId, mergedFilters);
+      }
+
       const safeMatches = Array.isArray(matches) ? matches : [];
-      
+
       set({
         availableMatches: safeMatches,
-        currentMatchIndex: 0, // Always reset to beginning when loading new matches
+        currentMatchIndex: 0,
         filters: filters ?? get().filters ?? {},
         isLoading: false,
         error: null,
       });
     } catch (error) {
+      if (__DEV__) {
+        try {
+          const { findMatches } = await import('../services/mockBackend');
+          const currentUser = getCurrentUser();
+          if (currentUser && currentUser.id === userId) {
+            const mergedFilters: MatchFilters = {
+              ...(filters ?? get().filters ?? {}),
+              centerCoordinates: (filters ?? get().filters)?.centerCoordinates ?? currentUser?.locationCoordinates ?? undefined,
+              interestedIn: (filters ?? get().filters)?.interestedIn ?? currentUser?.interestedIn ?? undefined,
+            };
+            const fallback = await findMatches(userId, mergedFilters);
+            const safeMatches = Array.isArray(fallback) ? fallback : [];
+            set({
+              availableMatches: safeMatches,
+              currentMatchIndex: 0,
+              filters: filters ?? get().filters ?? {},
+              isLoading: false,
+              error: null,
+            });
+            return;
+          }
+        } catch {
+          // fall through to error state
+        }
+      }
       set({
         error: error instanceof Error ? error.message : 'Failed to load matches',
-        availableMatches: [], // Clear matches on error
+        availableMatches: [],
         currentMatchIndex: 0,
         isLoading: false,
       });

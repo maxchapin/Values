@@ -642,20 +642,63 @@ function buildMatchesForUser(
     .map(({ match }) => match);
 }
 
+export interface DiscoverMatchFilters {
+  ageRange?: [number, number];
+  centerCoordinates?: LocationCoordinates;
+  radiusMiles?: number;
+  /** Viewer's "interested in" preference; used to filter candidates by gender. Falls back to currentUser.interestedIn if not provided. */
+  interestedIn?: InterestedIn;
+}
+
 /**
- * Find matches for a user.
+ * Build ordered Discover matches from a pool of candidate users (e.g. Supabase rows or mock users).
+ * When `applyRelaxedFallback` is true (development), widens age/radius if strict filters yield no one — still only real candidates from `pool`.
+ */
+export function buildMatchListForDiscover(
+  currentUser: User,
+  pool: User[],
+  filters?: DiscoverMatchFilters,
+  options?: { applyRelaxedFallback?: boolean }
+): Match[] {
+  const center = filters?.centerCoordinates ?? currentUser.locationCoordinates ?? null;
+  const radiusMiles =
+    typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : DEFAULT_RADIUS_MILES;
+  const ageRange = filters?.ageRange;
+  const interestedIn = filters?.interestedIn ?? currentUser.interestedIn;
+  const applyRelaxedFallback = options?.applyRelaxedFallback === true;
+
+  const allCandidates = pool.filter((u) => u.id !== currentUser.id);
+  const candidates = interestedIn
+    ? allCandidates.filter((u) => matchesInterestedIn(interestedIn, u.gender))
+    : allCandidates;
+
+  let matches = buildMatchesForUser(currentUser, candidates, {
+    ageRange,
+    center,
+    radiusMiles,
+  });
+
+  if (applyRelaxedFallback && matches.length === 0 && candidates.length > 0) {
+    const relaxedAge: [number, number] = [18, 99];
+    const relaxedRadius = Math.max(radiusMiles, RELAXED_RADIUS_MILES);
+    matches = buildMatchesForUser(currentUser, candidates, {
+      ageRange: relaxedAge,
+      center,
+      radiusMiles: relaxedRadius,
+    });
+  }
+
+  return matches;
+}
+
+/**
+ * Find matches for a user (in-memory mock users only).
  * All distances in miles. Respects viewer's interestedIn (men/women/everyone).
- * In mock mode: if strict filters yield 0 candidates, retries with relaxed radius so Discover is never empty for testing.
+ * Development: if strict filters yield 0 candidates, retries with relaxed radius so Discover is never empty when using mock data.
  */
 export function findMatches(
   userId: string,
-  filters?: {
-    ageRange?: [number, number];
-    centerCoordinates?: LocationCoordinates;
-    radiusMiles?: number;
-    /** Viewer's "interested in" preference; used to filter candidates by gender. Falls back to currentUser.interestedIn if not provided. */
-    interestedIn?: InterestedIn;
-  }
+  filters?: DiscoverMatchFilters
 ): Promise<Match[]> {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -665,34 +708,9 @@ export function findMatches(
         return;
       }
 
-      const center =
-        filters?.centerCoordinates ?? currentUser.locationCoordinates ?? null;
-      const radiusMiles =
-        typeof filters?.radiusMiles === 'number' ? filters.radiusMiles : DEFAULT_RADIUS_MILES;
-      const ageRange = filters?.ageRange;
-      const interestedIn = filters?.interestedIn ?? currentUser.interestedIn;
-
-      const allCandidates = MOCK_USERS.filter((u) => u.id !== userId);
-      const candidates = interestedIn
-        ? allCandidates.filter((u) => matchesInterestedIn(interestedIn, u.gender))
-        : allCandidates;
-
-      let matches = buildMatchesForUser(currentUser, candidates, {
-        ageRange,
-        center,
-        radiusMiles,
+      const matches = buildMatchListForDiscover(currentUser, MOCK_USERS, filters, {
+        applyRelaxedFallback: true,
       });
-
-      // Mock-only: if no candidates, relax radius and retry
-      if (matches.length === 0 && candidates.length > 0) {
-        const relaxedAge: [number, number] = [18, 99];
-        const relaxedRadius = Math.max(radiusMiles, RELAXED_RADIUS_MILES);
-        matches = buildMatchesForUser(currentUser, candidates, {
-          ageRange: relaxedAge,
-          center,
-          radiusMiles: relaxedRadius,
-        });
-      }
 
       resolve(matches);
     }, 500);

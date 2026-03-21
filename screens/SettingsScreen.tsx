@@ -50,10 +50,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     push_new_message: boolean;
   }): Promise<void> => {
     if (!authUser) return;
-    try {
-      await updateSupabasePreferences(prefs);
-    } catch (err) {
-      if (__DEV__) console.warn('[Settings] Supabase preferences sync failed:', err);
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[Settings] updateSupabasePreferences...');
+    }
+    await updateSupabasePreferences(prefs);
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[Settings] updateSupabasePreferences OK');
     }
   };
 
@@ -62,14 +66,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     setIsSaving(true);
     try {
       await updateSettings({ isProfileVisible: value });
+    } catch (error) {
+      setIsProfileVisible(!value);
+      Alert.alert('Error', 'Failed to update profile visibility');
+      setIsSaving(false);
+      return;
+    }
+    try {
       await syncPreferencesToSupabase({
         is_profile_visible: value,
         push_new_match: notifications.newMatch,
         push_new_message: notifications.newMessage,
       });
-    } catch (error) {
-      setIsProfileVisible(!value);
-      Alert.alert('Error', 'Failed to update profile visibility');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[Settings] Supabase preferences sync failed:', err);
+      }
+      Alert.alert('Saved on device', `Could not sync settings to the cloud: ${msg}`);
     } finally {
       setIsSaving(false);
     }
@@ -84,14 +99,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     setIsSaving(true);
     try {
       await updateSettings({ notifications: updated });
+    } catch (error) {
+      setNotifications({ ...notifications, [key]: !value });
+      Alert.alert('Error', `Failed to update ${key === 'newMatch' ? 'New Match' : 'New Message'} notification`);
+      setIsSaving(false);
+      return;
+    }
+    try {
       await syncPreferencesToSupabase({
         is_profile_visible: isProfileVisible,
         push_new_match: updated.newMatch,
         push_new_message: updated.newMessage,
       });
-    } catch (error) {
-      setNotifications({ ...notifications, [key]: !value });
-      Alert.alert('Error', `Failed to update ${key === 'newMatch' ? 'New Match' : 'New Message'} notification`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[Settings] Supabase preferences sync failed:', err);
+      }
+      Alert.alert('Saved on device', `Could not sync notification preference: ${msg}`);
     } finally {
       setIsSaving(false);
     }

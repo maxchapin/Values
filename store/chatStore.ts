@@ -122,6 +122,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   seedMockMessages: (matchId: string, currentUserId: string, otherUserId: string) => {
+    if (!__DEV__) return;
     const state = get();
     const existing = (state._messagesByMatch ?? {})[matchId] ?? [];
     if (existing.length > 0) return;

@@ -145,17 +145,13 @@ export default function App() {
             // Explicitly mark hydrated so the gate never waits on rehydrate() implementation (same as other branches).
             useUserStore.setState({ isHydrated: true });
 
-            // Ensure mock backend recognizes this persisted user on cold start.
-            // Without this, `findMatches(user.id)` can return [] forever because the userId
-            // doesn't exist in the in-memory MOCK_USERS array after reload.
-            try {
-              const { upsertMockUser } = await import('./services/mockBackend');
-              upsertMockUser(user);
-              if (__DEV__) {
+            // Dev-only: keep in-memory mock Discover pool in sync after cold start (mock fallback path).
+            if (__DEV__) {
+              try {
+                const { upsertMockUser } = await import('./services/mockBackend');
+                upsertMockUser(user);
                 console.log('[App] ✅ Upserted persisted user into mock backend:', user.id);
-              }
-            } catch (error) {
-              if (__DEV__) {
+              } catch (error) {
                 console.warn('[App] Could not upsert user into mock backend:', error);
               }
             }

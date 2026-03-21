@@ -238,7 +238,11 @@ export const AppNavigator: React.FC = () => {
         <Stack.Screen
           name={ROUTES.EDIT_PROFILE}
           component={EditProfileScreen}
-          options={{ title: 'Edit Profile', headerBackTitle: 'Profile' }}
+          options={{
+            title: 'Edit Profile',
+            headerBackTitle: 'Profile',
+            headerBackButtonMenuEnabled: false,
+          }}
         />
         <Stack.Screen
           name={ROUTES.PROFILE_PREVIEW}

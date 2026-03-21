@@ -1,7 +1,7 @@
 /**
  * EditProfileScreen
  * Edit profile with generous spacing, optional location (neighborhood), optional hometown/bio.
- * Unsaved-changes guard with Discard changes? [Save] [Exit].
+ * Unsaved changes: `usePreventRemove` (native-stack–safe) intercepts exit and shows one alert.
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
@@ -18,11 +18,9 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, usePreventRemove, type NavigationAction } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { HeaderBackButton } from '@react-navigation/elements';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { SecondaryButton } from '../components/SecondaryButton';
 import { TextInputField } from '../components/TextInputField';
 import { ProfilePhotosPicker } from '../components/ProfilePhotosPicker';
 import { ProfilePromptsEditor } from '../components/ProfilePromptsEditor';
@@ -35,7 +33,6 @@ import { useForm, validators } from '../hooks/useForm';
 import { RootStackParamList } from '../navigation/types';
 import { Gender, InterestedIn, Prompt } from '../types/user';
 import { upsertSupabaseProfile } from '../services/supabaseProfile';
-import { supabase } from '../lib/supabase';
 import { LocationPicker, type LocationCoordinates } from '../components/LocationPicker';
 import { BirthdayPicker } from '../components/BirthdayPicker';
 import { calculateAge, birthdayToISOString } from '../utils/dateUtils';
@@ -66,15 +63,22 @@ function getFormSnapshot(
 export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { currentUser, updateProfile } = useUserStore();
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshProfile } = useAuth();
   const neighborhoodRef = useRef<TextInput>(null);
   const hometownRef = useRef<TextInput>(null);
   const jobRef = useRef<TextInput>(null);
   const educationRef = useRef<TextInput>(null);
   const bioRef = useRef<TextInput>(null);
   const originalSnapshotRef = useRef<string>('');
-  const isDirtyRef = useRef(false);
-  const allowBackRef = useRef(false);
+  /** Navigation action from the blocked removal; replayed after discard or successful save. */
+  const pendingExitActionRef = useRef<NavigationAction | null>(null);
+  /** False until `useFocusEffect` has synced baseline from `currentUser` (avoids false dirty on first paint). */
+  const [hasBaseline, setHasBaseline] = useState(false);
+  /**
+   * When true, `usePreventRemove` is off so the next `dispatch` / `goBack` succeeds.
+   * State (not ref) so native-stack receives an updated `preventRemove` flag before we replay the action.
+   */
+  const [exitWithoutGuard, setExitWithoutGuard] = useState(false);
   const [locationCoordinates, setLocationCoordinates] = useState<LocationCoordinates | null>(
     currentUser?.locationCoordinates ?? null
   );
@@ -98,8 +102,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
     touched,
     setValue,
     setFieldTouched,
-    handleSubmit,
-    reset: resetForm,
+    validateAll,
   } = useForm<ProfileFormData>(
     initialFormValues,
     {
@@ -150,6 +153,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
 
   useFocusEffect(
     useCallback(() => {
+      setExitWithoutGuard(false);
       const user = useUserStore.getState().currentUser;
       if (!user) return;
       setValue('name', user.name ?? '', false);
@@ -191,59 +195,12 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
           age: user.birthday ? calculateAge(user.birthday) : (user.age ?? 0),
         }
       );
+      setHasBaseline(true);
     }, [setValue])
   );
 
   const currentSnapshot = getFormSnapshot(values, { gender, interestedIn, photos, prompts, locationCoordinates, birthday, age });
-  const isDirty = originalSnapshotRef.current !== currentSnapshot;
-  isDirtyRef.current = isDirty;
-
-  /** Ref so popup Save always calls the current save handler */
-  const saveTriggerRef = useRef<() => void>(() => {});
-  saveTriggerRef.current = () => handleSubmit(handleSave)();
-
-  const showDiscardAlert = useCallback(() => {
-    Alert.alert(
-      'Save changes?',
-      'You have unsaved changes. Save before leaving?',
-      [
-        { text: 'Exit', style: 'destructive', onPress: () => { allowBackRef.current = true; navigation.goBack(); } },
-        { text: 'Save', onPress: () => saveTriggerRef.current() },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  }, [navigation]);
-
-  const handleBackPress = useCallback(() => {
-    if (allowBackRef.current) {
-      navigation.goBack();
-      return;
-    }
-    if (isDirtyRef.current) {
-      showDiscardAlert();
-    } else {
-      navigation.goBack();
-    }
-  }, [navigation, showDiscardAlert]);
-
-  useEffect(() => {
-    navigation.setOptions({
-      headerBackTitle: 'Profile',
-      headerLeft: (props) => (
-        <HeaderBackButton {...props} onPress={handleBackPress} />
-      ),
-    });
-  }, [navigation, handleBackPress]);
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-      if (allowBackRef.current) return;
-      if (!isDirtyRef.current) return;
-      e.preventDefault();
-      showDiscardAlert();
-    });
-    return unsubscribe;
-  }, [navigation, showDiscardAlert]);
+  const isDirty = hasBaseline && originalSnapshotRef.current !== currentSnapshot;
 
   const getValidPrompts = (): Prompt[] => {
     const safe = Array.isArray(prompts) ? prompts : [];
@@ -258,90 +215,184 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
     return cleaned.slice(0, 3);
   };
 
-  const handleSave = async (formValues: ProfileFormData): Promise<void> => {
-    if (!currentUser) return;
-    if (!interestedIn) {
-      setInterestedInError('Please select who you are interested in');
-      return;
-    }
-    setInterestedInError(null);
-    const validPrompts = getValidPrompts();
-    if (validPrompts.length < 1) {
-      setPromptsError('Please add at least one prompt and answer');
-      return;
-    }
-    setPromptsError(null);
-
-    if (birthday == null) {
-      setBirthdayError('Please select your birthday');
-      return;
-    }
-    setBirthdayError(null);
-    if (age < 18 || age > 100) {
-      setBirthdayError('You must be 18 or older');
-      return;
-    }
-    const birthdayISO =
-      typeof birthday === 'string'
-        ? birthday
-        : birthdayToISOString(birthday instanceof Date ? birthday : new Date(birthday));
-
-    const profileData = {
-      name: formValues.name.trim(),
-      age,
-      birthday: birthdayISO,
-      gender,
-      interestedIn,
-      locationCoordinates: locationCoordinates ?? undefined,
-      locationLabel: formValues.neighborhood.trim() || null,
-      neighborhood: formValues.neighborhood.trim() || null,
-      hometown: formValues.hometown.trim() || undefined,
-      job: formValues.job.trim() || undefined,
-      education: formValues.education.trim() || undefined,
-      bio: formValues.bio.trim() || '',
-      photos,
-      prompts: validPrompts,
-    };
-
-    setIsSaving(true);
-    try {
-      await updateProfile(profileData);
-      const updatedUser = useUserStore.getState().currentUser;
-      if (authUser && updatedUser) {
-        if (__DEV__) {
-          const { data: { session } } = await supabase.auth.getSession();
-          console.log('[EditProfile] Before upsert – session:', !!session, 'userId:', session?.user?.id, 'authUser.id:', authUser.id);
-        }
-        try {
-          await upsertSupabaseProfile(authUser, updatedUser);
-        } catch (supabaseErr) {
-          if (__DEV__) console.warn('[EditProfile] Supabase upsert failed:', supabaseErr);
-          Alert.alert('Saved locally', 'Profile saved. Sync to cloud may have failed.');
-        }
+  /** Complete a blocked exit: lift native guard, then replay the pending action (or `goBack`). */
+  const completePendingExit = useCallback(() => {
+    setExitWithoutGuard(true);
+    const action = pendingExitActionRef.current;
+    pendingExitActionRef.current = null;
+    // Defer past React commit + native-stack updating `preventNativeDismiss`
+    setTimeout(() => {
+      if (action) {
+        navigation.dispatch(action);
+      } else {
+        navigation.goBack();
       }
-      allowBackRef.current = true;
-      navigation.goBack();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save profile';
-      Alert.alert('Error', message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+    }, 0);
+  }, [navigation]);
 
-  /** Single save trigger used by both main Save button and "Save changes?" popup */
+  const handleSave = useCallback(
+    async (formValues: ProfileFormData): Promise<boolean> => {
+      if (!currentUser) return false;
+      if (!interestedIn) {
+        setInterestedInError('Please select who you are interested in');
+        return false;
+      }
+      setInterestedInError(null);
+      const validPrompts = getValidPrompts();
+      if (validPrompts.length < 1) {
+        setPromptsError('Please add at least one prompt and answer');
+        return false;
+      }
+      setPromptsError(null);
+
+      if (birthday == null) {
+        setBirthdayError('Please select your birthday');
+        return false;
+      }
+      setBirthdayError(null);
+      if (age < 18 || age > 100) {
+        setBirthdayError('You must be 18 or older');
+        return false;
+      }
+      const birthdayISO =
+        typeof birthday === 'string'
+          ? birthday
+          : birthdayToISOString(birthday instanceof Date ? birthday : new Date(birthday));
+
+      const profileData = {
+        name: formValues.name.trim(),
+        age,
+        birthday: birthdayISO,
+        gender,
+        interestedIn,
+        locationCoordinates: locationCoordinates ?? undefined,
+        locationLabel: formValues.neighborhood.trim() || null,
+        neighborhood: formValues.neighborhood.trim() || null,
+        hometown: formValues.hometown.trim() || undefined,
+        job: formValues.job.trim() || undefined,
+        education: formValues.education.trim() || undefined,
+        bio: formValues.bio.trim() || '',
+        photos,
+        prompts: validPrompts,
+      };
+
+      setIsSaving(true);
+      try {
+        await updateProfile(profileData);
+        const updatedUser = useUserStore.getState().currentUser;
+        if (authUser && updatedUser) {
+          try {
+            if (__DEV__) {
+              // eslint-disable-next-line no-console
+              console.log('[EditProfileScreen] Upserting profile to Supabase...');
+            }
+            await upsertSupabaseProfile(authUser, updatedUser);
+            await refreshProfile();
+            if (__DEV__) {
+              // eslint-disable-next-line no-console
+              console.log('[EditProfileScreen] Profile synced + refreshProfile OK');
+            }
+          } catch (supabaseErr) {
+            const msg = supabaseErr instanceof Error ? supabaseErr.message : 'Unknown error';
+            if (__DEV__) {
+              // eslint-disable-next-line no-console
+              console.error('[EditProfileScreen] Supabase upsert failed:', supabaseErr);
+            }
+            Alert.alert(
+              'Saved locally',
+              `Your changes are on this device, but sync failed: ${msg}`
+            );
+          }
+        }
+        completePendingExit();
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to save profile';
+        Alert.alert('Error', message);
+        return false;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [
+      currentUser,
+      interestedIn,
+      birthday,
+      age,
+      gender,
+      locationCoordinates,
+      photos,
+      prompts,
+      authUser,
+      updateProfile,
+      completePendingExit,
+      refreshProfile,
+    ]
+  );
+
+  /**
+   * Single save entry used by the Save button and "Save and exit" in the unsaved-changes dialog.
+   * Runs the same validation as the form submit path, then `handleSave`.
+   */
+  const submitProfile = useCallback(async (): Promise<boolean> => {
+    if (!validateAll()) {
+      Alert.alert('Cannot save', 'Please fix the errors in the form.');
+      return false;
+    }
+    return handleSave(values);
+  }, [validateAll, values, handleSave]);
+
+  const showUnsavedChangesAlert = useCallback(() => {
+    Alert.alert('Unsaved changes', 'You have unsaved changes. What would you like to do?', [
+      {
+        text: 'Continue without saving',
+        style: 'destructive',
+        onPress: () => {
+          completePendingExit();
+        },
+      },
+      {
+        text: 'Save and exit',
+        onPress: () => {
+          void submitProfile();
+        },
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+        onPress: () => {
+          pendingExitActionRef.current = null;
+        },
+      },
+    ]);
+  }, [completePendingExit, submitProfile]);
+
+  usePreventRemove(
+    hasBaseline && isDirty && !exitWithoutGuard,
+    useCallback(
+      ({ data }) => {
+        pendingExitActionRef.current = data.action;
+        showUnsavedChangesAlert();
+      },
+      [showUnsavedChangesAlert]
+    )
+  );
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerBackTitle: 'Profile',
+      headerBackButtonMenuEnabled: false,
+    });
+  }, [navigation]);
+
   const onSavePress = useCallback(() => {
-    saveTriggerRef.current();
-  }, []);
+    void submitProfile();
+  }, [submitProfile]);
 
-  const handleCancel = (): void => {
-    if (isDirty) {
-      showDiscardAlert();
-    } else {
-      allowBackRef.current = true;
-      navigation.goBack();
-    }
-  };
+  /** Same exit path as the header back: `goBack` → `usePreventRemove` when dirty. */
+  const handleCancel = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
 
   const handleEditValues = (): void => {
     if (currentUser?.valuesProfile) {

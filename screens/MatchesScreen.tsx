@@ -99,7 +99,7 @@ export const MatchRow: React.FC<MatchRowProps> = ({
               </Text>
             ) : (
               <Text style={styles.messagePreview} numberOfLines={1}>
-                {user.locationLabel ?? 'No messages yet'}
+                No messages yet — say hi
               </Text>
             )}
             {relativeTime ? (
@@ -168,8 +168,9 @@ export const MatchesScreen: React.FC = () => {
   // Safe list for effects and render (never undefined)
   const safeLikedMatches = likedMatches ?? [];
 
-  // Seed mock conversation previews for first 2 matches (demo)
+  // Dev-only: fake last-message previews so the list looks populated without real chat backend
   useEffect(() => {
+    if (!__DEV__) return;
     if (safeLikedMatches.length === 0) return;
     const [first, second] = safeLikedMatches;
     const oneHourAgo = Date.now() - 3600000;
@@ -180,7 +181,7 @@ export const MatchesScreen: React.FC = () => {
     if (second?.user?.id) {
       setConversationPreview(second.user.id, "Your Privacy value resonates", 0, yesterday);
     }
-  }, [safeLikedMatches.length]);
+  }, [safeLikedMatches.length, setConversationPreview]);
 
   useEffect(() => {
     trackScreenView('Matches');

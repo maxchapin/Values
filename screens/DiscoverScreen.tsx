@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,10 @@ import { FiltersSheet } from '../components/FiltersSheet';
 import { FeedbackModal } from '../components/FeedbackModal';
 import { formatExplanationLines } from '../services/matchingModel';
 import { theme } from '../theme';
+import {
+  navigateToValuesEditorFromProfile,
+  type NavigateToValuesEditorNav,
+} from '../navigation/navigateToValuesEditor';
 
 export const DiscoverScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -110,6 +114,10 @@ export const DiscoverScreen: React.FC = () => {
     });
   };
 
+  const handleValuesHeaderPress = useCallback((): void => {
+    navigateToValuesEditorFromProfile(navigation as NavigateToValuesEditorNav, currentUser ?? null);
+  }, [navigation, currentUser]);
+
   const currentMatch = getCurrentMatch();
   const candidate = currentMatch?.user ?? null;
 
@@ -141,14 +149,14 @@ export const DiscoverScreen: React.FC = () => {
     );
   }
 
-  // No matches initially (empty list from backend)
+  // No profiles / candidates (real Supabase pool empty, or filters exclude everyone)
   if (matches.length === 0) {
     return (
       <>
         <EmptyState
           icon="🔍"
-          title="No Matches Found"
-          message="There are currently no more matches available. Try adjusting your filters, or send us feedback so we can improve."
+          title="No profiles yet"
+          message="There's nobody new to show right now. Check back soon—or widen your filters and try again."
           actionLabel="Adjust Filters"
           onAction={() => setShowFilters(true)}
           secondaryActionLabel="Feedback"
@@ -202,9 +210,17 @@ export const DiscoverScreen: React.FC = () => {
           >
             <Text style={styles.filterButtonText}>Filters</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            Values
-          </Text>
+          <TouchableOpacity
+            style={styles.headerTitleButton}
+            onPress={handleValuesHeaderPress}
+            activeOpacity={0.7}
+            accessibilityLabel="Edit your values"
+            accessibilityRole="button"
+          >
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              Values
+            </Text>
+          </TouchableOpacity>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -302,13 +318,18 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
   },
-  headerTitle: {
+  headerTitleButton: {
     flex: 1,
+    marginHorizontal: theme.spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  headerTitle: {
     fontSize: theme.typography.fontSize.lg,
     fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.headerTint,
     textAlign: 'center',
-    marginHorizontal: theme.spacing.sm,
   },
   headerSpacer: {
     width: 72,

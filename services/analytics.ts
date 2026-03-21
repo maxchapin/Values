@@ -25,6 +25,7 @@ export type ScreenName =
   | 'Profile'
   | 'ProfilePreview'
   | 'EditProfile'
+  | 'Settings'
   | 'Home'
   | 'Details';
 

@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import type { TextStyle } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import {
+  createNativeStackNavigator,
+  type NativeStackNavigationOptions,
+} from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList, MainTabParamList, ROUTES } from './types';
@@ -38,6 +42,25 @@ import { DebugScreen } from '../screens/DebugScreen';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+/** Matches native-stack `headerTitleStyle` (Pick of TextStyle — not full `TextStyle`). */
+type NativeStackHeaderTitleStyle = Pick<TextStyle, 'fontFamily' | 'fontSize' | 'fontWeight'> & {
+  color?: string;
+};
+
+const STACK_HEADER_TITLE_STYLE: NativeStackHeaderTitleStyle = {
+  fontWeight: theme.typography.fontWeight.semibold,
+  fontSize: theme.typography.fontSize.lg,
+};
+
+/**
+ * Native-stack types only list `fontFamily` | `fontSize` for `headerBackTitleStyle`, but iOS still
+ * respects `fontWeight` at runtime — keep it and satisfy the prop with a typed assertion.
+ */
+const SETTINGS_HEADER_BACK_TITLE_STYLE = {
+  fontSize: theme.typography.fontSize.base,
+  fontWeight: theme.typography.fontWeight.semibold,
+} satisfies NativeStackHeaderTitleStyle;
 
 /**
  * Main Tab Navigator
@@ -168,10 +191,7 @@ export const AppNavigator: React.FC = () => {
             backgroundColor: theme.colors.headerBackground,
           },
           headerTintColor: theme.colors.headerTint,
-          headerTitleStyle: {
-            fontWeight: theme.typography.fontWeight.semibold,
-            fontSize: theme.typography.fontSize.lg,
-          },
+          headerTitleStyle: STACK_HEADER_TITLE_STYLE,
         }}
       >
         {/* Auth Flow Stack */}
@@ -255,10 +275,7 @@ export const AppNavigator: React.FC = () => {
           options={{
             title: 'Settings & Help',
             headerBackTitle: 'Profile',
-            headerBackTitleStyle: {
-              fontSize: theme.typography.fontSize.base,
-              fontWeight: theme.typography.fontWeight.semibold,
-            },
+            headerBackTitleStyle: SETTINGS_HEADER_BACK_TITLE_STYLE as NativeStackNavigationOptions['headerBackTitleStyle'],
             headerTintColor: theme.colors.primary,
           }}
         />

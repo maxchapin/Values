@@ -39,7 +39,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     navigation.navigate('Details', { itemId });
   };
 
-  const renderItem = ({ item }: { item: ExampleItem }): JSX.Element => {
+  const renderItem = ({ item }: { item: ExampleItem }): React.ReactElement => {
     return (
       <TouchableOpacity
         style={styles.itemContainer}

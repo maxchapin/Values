@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: theme.typography.fontSize['2xl'],
     color: theme.colors.textSecondary,
-    fontWeight: theme.typography.fontWeight.light,
+    fontWeight: theme.typography.fontWeight.normal,
   },
   footer: {
     marginTop: theme.spacing.xl,

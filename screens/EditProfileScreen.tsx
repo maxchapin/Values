@@ -199,7 +199,22 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
     }, [setValue])
   );
 
-  const currentSnapshot = getFormSnapshot(values, { gender, interestedIn, photos, prompts, locationCoordinates, birthday, age });
+  const normalizedBirthday: string | null =
+    birthday == null
+      ? null
+      : typeof birthday === 'string'
+        ? birthday
+        : birthdayToISOString(birthday);
+
+  const currentSnapshot = getFormSnapshot(values, {
+    gender,
+    interestedIn,
+    photos,
+    prompts,
+    locationCoordinates,
+    birthday: normalizedBirthday,
+    age,
+  });
   const isDirty = hasBaseline && originalSnapshotRef.current !== currentSnapshot;
 
   const getValidPrompts = (): Prompt[] => {

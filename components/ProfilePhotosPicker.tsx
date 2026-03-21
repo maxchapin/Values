@@ -28,18 +28,28 @@ export const ProfilePhotosPicker: React.FC<ProfilePhotosPickerProps> = ({
       try {
         const result = await pickImageFromLibrary();
 
-        if (result.picked && result.uri) {
+        // `PickImageResult` is a discriminated union on `picked`. Branch on `picked` first so
+        // `canceled` / `error` are only read on the `{ picked: false }` variants (see
+        // `services/imagePicker.ts`, which maps expo `ImagePickerResult` into this shape).
+        if (result.picked) {
+          const uri = result.uri;
+          if (!uri) return;
+
           if (replaceIndex !== null) {
             const next = [...safePhotos];
-            next[replaceIndex] = result.uri;
+            next[replaceIndex] = uri;
             onChange(next.slice(0, maxPhotos));
           } else {
-            onChange([...safePhotos, result.uri].slice(0, maxPhotos));
+            onChange([...safePhotos, uri].slice(0, maxPhotos));
           }
-        } else if (!result.canceled && result.error) {
-          Alert.alert('Photo', result.error);
+          return;
         }
-        // canceled: no-op
+
+        if (result.canceled) {
+          return;
+        }
+
+        Alert.alert('Photo', result.error);
       } finally {
         setIsPicking(false);
       }

@@ -51,7 +51,10 @@ export const authService = {
       if (__DEV__) {
         console.log('[DEBUG] ===== Google Sign-In Debug Start =====');
         console.log('[DEBUG] Supabase client exists:', !!supabase);
-        console.log('[DEBUG] Supabase client URL:', supabase ? (supabase as { supabaseUrl?: string }).supabaseUrl : 'N/A');
+        console.log(
+          '[DEBUG] Supabase client URL:',
+          supabase ? (supabase as unknown as { supabaseUrl?: string }).supabaseUrl : 'N/A'
+        );
         const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
         const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
         console.log('[DEBUG] Environment config:', {
@@ -63,13 +66,14 @@ export const authService = {
 
       // Generate redirect URI using expo-auth-session (recommended for Expo)
       const scheme = Constants.expoConfig?.scheme ?? 'values';
+      const normalizedScheme = Array.isArray(scheme) ? scheme[0] : scheme;
       const redirectUri = AuthSession.makeRedirectUri({
-        scheme,
+        scheme: normalizedScheme,
         path: 'auth/callback',
       });
 
       if (__DEV__) {
-        console.log('[DEBUG] App redirect configuration:', { scheme, redirectUri });
+        console.log('[DEBUG] App redirect configuration:', { scheme: normalizedScheme, redirectUri });
         try {
           const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
           console.log('[DEBUG] Supabase getSession test:', {
@@ -193,8 +197,11 @@ export const authService = {
       // Remove the deep link listener
       linkingSubscription.remove();
 
-      // Handle browser cancellation
-      if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
+      // Handle browser cancellation (expo-web-browser uses string enum values)
+      if (
+        browserResult.type === WebBrowser.WebBrowserResultType.CANCEL ||
+        browserResult.type === WebBrowser.WebBrowserResultType.DISMISS
+      ) {
         throw new AuthError('Sign in cancelled by user', 'USER_CANCELLED', 'google');
       }
 
@@ -222,7 +229,7 @@ export const authService = {
         // OR in query params: ?access_token=...&refresh_token=...
         // OR with an authorization code: ?code=... (which we'll exchange for tokens)
         try {
-          const urlString = redirectUrl;
+          const urlString: string = String(redirectUrl);
           let accessToken: string | null = null;
           let refreshToken: string | null = null;
           
@@ -304,44 +311,37 @@ export const authService = {
         }
         console.log('[DEBUG] ========================================');
       } else {
-        console.log('[DEBUG] ⚠️ Browser result type:', browserResult.type);
-        if (browserResult.type === 'cancel') {
-          console.log('[DEBUG] User cancelled the OAuth flow');
-        } else if (browserResult.type === 'dismiss') {
-          console.log('[DEBUG] OAuth flow was dismissed');
-        } else {
-          console.log('[DEBUG] ⚠️ Browser result type is not success, but checking for deep link...');
-          // Even if browser result isn't success, check if we got a deep link
-          if (deepLinkUrl) {
-            console.log('[DEBUG] Found deep link URL despite browser result failure, attempting token extraction...');
-            // Try to extract tokens from deep link
-            try {
-              const urlString = deepLinkUrl;
-              const hashIndex = urlString.indexOf('#');
-              let accessToken: string | null = null;
-              let refreshToken: string | null = null;
-              
-              if (hashIndex !== -1) {
-                const hash = urlString.substring(hashIndex + 1);
-                const params = new URLSearchParams(hash);
-                accessToken = params.get('access_token');
-                refreshToken = params.get('refresh_token');
-              }
-              
-              if (accessToken) {
-                console.log('[DEBUG] Found tokens in deep link, setting session...');
-                const { data: { session }, error: sessionError } = await supabase.auth.setSession({
-                  access_token: accessToken,
-                  refresh_token: refreshToken || '',
-                });
-                
-                if (!sessionError && session) {
-                  console.log('[DEBUG] ✅ Session set from deep link');
-                }
-              }
-            } catch (deepLinkError) {
-              console.error('[DEBUG] Error processing deep link:', deepLinkError);
+        // cancel/dismiss already throw above; here we only log non-success without a redirect URL
+        console.log('[DEBUG] ⚠️ No redirect URL for token extraction. Browser result type:', browserResult.type);
+        console.log('[DEBUG] ⚠️ Checking deep link fallback...');
+        if (deepLinkUrl) {
+          console.log('[DEBUG] Found deep link URL despite missing browser redirect URL, attempting token extraction...');
+          try {
+            const urlString: string = String(deepLinkUrl);
+            const hashIndex = urlString.indexOf('#');
+            let accessToken: string | null = null;
+            let refreshToken: string | null = null;
+
+            if (hashIndex !== -1) {
+              const hash = urlString.substring(hashIndex + 1);
+              const params = new URLSearchParams(hash);
+              accessToken = params.get('access_token');
+              refreshToken = params.get('refresh_token');
             }
+
+            if (accessToken) {
+              console.log('[DEBUG] Found tokens in deep link, setting session...');
+              const { data: { session }, error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken || '',
+              });
+
+              if (!sessionError && session) {
+                console.log('[DEBUG] ✅ Session set from deep link');
+              }
+            }
+          } catch (deepLinkError) {
+            console.error('[DEBUG] Error processing deep link:', deepLinkError);
           }
         }
       }
@@ -609,27 +609,24 @@ export const authService = {
       }
 
       return { user, session };
-    } catch (error) {
-      // Handle Apple Authentication errors
-      if (error instanceof AppleAuthentication.AppleAuthenticationError) {
-        // User cancelled
-        if (error.code === AppleAuthentication.AppleAuthenticationError.CANCELED) {
-          throw new AuthError('Sign in cancelled by user', 'USER_CANCELLED', 'apple');
-        }
-        // Other Apple errors
-        throw new AuthError(
-          `Apple Sign In failed: ${error.message}`,
-          'APPLE_SIGN_IN_ERROR',
-          'apple'
-        );
-      }
-
-      // Handle our custom AuthError
+    } catch (error: unknown) {
       if (error instanceof AuthError) {
         throw error;
       }
 
-      // Handle other errors
+      // expo-apple-authentication rejects with code ERR_REQUEST_CANCELED on user cancel (no AppleAuthenticationError in module types).
+      if (error && typeof error === 'object' && 'code' in error) {
+        const code = (error as { code?: string }).code;
+        if (code === 'ERR_REQUEST_CANCELED') {
+          throw new AuthError('Sign in cancelled by user', 'USER_CANCELLED', 'apple');
+        }
+        const message =
+          'message' in error && typeof (error as { message?: unknown }).message === 'string'
+            ? (error as { message: string }).message
+            : 'Failed to sign in with Apple';
+        throw new AuthError(`Apple Sign In failed: ${message}`, 'APPLE_SIGN_IN_ERROR', 'apple');
+      }
+
       if (error instanceof Error) {
         throw new AuthError(
           error.message || 'Failed to sign in with Apple',

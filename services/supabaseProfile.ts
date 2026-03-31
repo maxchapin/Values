@@ -10,7 +10,7 @@ import { calculateAge } from '../utils/dateUtils';
 import type { AuthUser } from '../types/auth';
 import type { User } from '../types/user';
 import type { ProfileGender, InterestedIn } from '../types/user';
-import { resolveProfilePhotoUrlsForSupabase } from './supabaseProfilePhotos';
+import { normalizeProfilePhotoUri, resolveProfilePhotoUrlsForSupabase } from './supabaseProfilePhotos';
 
 /** Gender values stored in Supabase `profiles.gender` (matches Profile type). */
 export type { ProfileGender } from '../types/user';
@@ -62,6 +62,18 @@ function userGenderToProfileGender(g: User['gender']): ProfileGender {
   return null; // 'prefer-not-to-say' -> null in DB
 }
 
+/** Coerce JSONB `photos` to displayable URIs (https public URLs or local schemes). */
+function normalizeProfilePhotosFromRow(photos: string[] | null | undefined): string[] {
+  if (!Array.isArray(photos)) return [];
+  const out: string[] = [];
+  for (const p of photos) {
+    if (typeof p !== 'string') continue;
+    const n = normalizeProfilePhotoUri(p);
+    if (n) out.push(n);
+  }
+  return out;
+}
+
 /** Map Supabase profiles.gender to app User.gender (for building User from discovery rows). */
 export function profileGenderToUserGender(g: ProfileGender | null | undefined): User['gender'] {
   if (!g) return 'prefer-not-to-say';
@@ -86,7 +98,7 @@ export function supabaseProfileToUser(profile: SupabaseProfile): User {
     birthday: profile.birthday ?? undefined,
     gender: profileGenderToUserGender(profile.gender),
     bio: profile.bio ?? '',
-    photos: Array.isArray(profile.photos) ? profile.photos : [],
+    photos: normalizeProfilePhotosFromRow(profile.photos),
     prompts: Array.isArray(profile.prompts) ? profile.prompts : [],
     selectedValues,
     locationCoordinates:
@@ -393,7 +405,7 @@ export function discoveryProfileRowToUser(row: DiscoveryProfileRow): User {
     age,
     gender: profileGenderToUserGender(row.gender),
     bio: row.bio ?? '',
-    photos: Array.isArray(row.photos) ? row.photos : [],
+    photos: normalizeProfilePhotosFromRow(row.photos),
     prompts: Array.isArray(row.prompts) ? row.prompts : [],
     selectedValues,
     locationCoordinates:

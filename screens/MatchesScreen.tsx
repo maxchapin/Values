@@ -269,7 +269,7 @@ export const MatchesScreen: React.FC = () => {
 
   if (error) {
     return (
-      <ScreenContainer headerBackgroundColor={theme.colors.headerBackground}>
+      <ScreenContainer headerBackgroundColor={theme.colors.headerBackground} safeAreaEdges={[]}>
         <View style={[styles.header, { paddingTop: insets.top + theme.spacing.xl, backgroundColor: theme.colors.headerBackground }]}>
           <Text style={styles.headerTitle}>Matches</Text>
           <Text style={styles.headerSubtitle}>Error</Text>
@@ -287,7 +287,11 @@ export const MatchesScreen: React.FC = () => {
 
   if (safeLikedMatches.length === 0) {
     return (
-      <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
+      <ScreenContainer
+        contentPadding={false}
+        headerBackgroundColor={theme.colors.headerBackground}
+        safeAreaEdges={[]}
+      >
         <>
           <ListHeader />
           <View style={styles.emptyStateWrap}>
@@ -305,7 +309,11 @@ export const MatchesScreen: React.FC = () => {
   }
 
   return (
-    <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
+    <ScreenContainer
+      contentPadding={false}
+      headerBackgroundColor={theme.colors.headerBackground}
+      safeAreaEdges={[]}
+    >
       <FlatList
         data={safeLikedMatches}
         renderItem={renderMatchCard}

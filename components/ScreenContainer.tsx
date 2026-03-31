@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, ScrollView, ScrollViewProps, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../theme';
 
 interface ScreenContainerProps {
@@ -48,7 +48,6 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
   contentPadding = true,
   topPadding = theme.spacing.lg,
 }) => {
-  const insets = useSafeAreaInsets();
   const containerStyle = [
     styles.container,
     { backgroundColor: headerBackgroundColor ?? backgroundColor },
@@ -82,10 +81,11 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
   );
 
   if (headerBackgroundColor) {
-    // Status bar + header row use same color; SafeAreaView is transparent so screen's header shows through
+    // Status bar + header row use same color; SafeAreaView is transparent so screen's header shows through.
+    // Bottom (and sides) follow `safeAreaEdges` with top stripped — e.g. tab screens can pass [] to avoid a gap above the tab bar.
     return (
       <View style={[styles.container, { backgroundColor: headerBackgroundColor }]}>
-        <SafeAreaView style={styles.container} edges={['bottom']}>
+        <SafeAreaView style={styles.container} edges={effectiveEdges}>
           {keyboardAvoiding ? (
             <KeyboardAvoidingView
               style={styles.keyboardAvoiding}

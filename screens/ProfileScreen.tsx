@@ -58,7 +58,11 @@ export const ProfileScreen: React.FC = () => {
   };
 
   return (
-    <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
+    <ScreenContainer
+      contentPadding={false}
+      headerBackgroundColor={theme.colors.headerBackground}
+      safeAreaEdges={[]}
+    >
       <View style={styles.container}>
         {/* Top bar: Edit, Profile title, Settings */}
         <View

@@ -199,7 +199,11 @@ export const DiscoverScreen: React.FC = () => {
   }
 
   return (
-    <ScreenContainer contentPadding={false} headerBackgroundColor={theme.colors.headerBackground}>
+    <ScreenContainer
+      contentPadding={false}
+      headerBackgroundColor={theme.colors.headerBackground}
+      safeAreaEdges={[]}
+    >
       <View style={styles.container}>
         {/* Header: Filters (left) + Values (centered) */}
         <View style={[styles.headerBar, { paddingTop: insets.top + theme.spacing.sm, backgroundColor: theme.colors.headerBackground }]}>

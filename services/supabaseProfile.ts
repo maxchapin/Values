@@ -8,8 +8,10 @@
 import { supabase } from './supabase';
 import { calculateAge } from '../utils/dateUtils';
 import type { AuthUser } from '../types/auth';
-import type { User } from '../types/user';
+import type { User, UserValuesProfile } from '../types/user';
 import type { ProfileGender, InterestedIn } from '../types/user';
+import type { ValueTier } from '../types/value';
+import { INITIAL_VALUES } from '../data/valuesConstants';
 import {
   normalizeProfilePhotoUri,
   resolveProfilePhotoUrlsForSupabase,
@@ -42,6 +44,8 @@ export interface SupabaseProfile {
   photos: string[] | null; // Array of photo URLs
   prompts: Array<{ id: string; question: string; answer: string; isCustom: boolean }> | null;
   selected_values: string[] | null;
+  /** Full values cloud JSON (`UserValuesProfile`); see migration 009. */
+  values_profile: unknown | null;
   is_profile_complete: boolean;
   is_values_complete: boolean;
   is_onboarding_complete: boolean;
@@ -55,7 +59,7 @@ export interface SupabaseProfile {
 
 /** Lean discovery select: only columns needed for cards + match scoring. Avoid select('*') for memory. */
 const DISCOVERY_SELECT =
-  'id, first_name, age, gender, photos, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, prompts, selected_values, is_profile_complete, is_values_complete, created_at, updated_at, last_login_at';
+  'id, first_name, age, gender, photos, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, prompts, selected_values, values_profile, is_profile_complete, is_values_complete, created_at, updated_at, last_login_at';
 
 /** Map app User.gender to Supabase profiles.gender. */
 function userGenderToProfileGender(g: User['gender']): ProfileGender {
@@ -78,6 +82,179 @@ function normalizeProfilePhotosFromRow(photos: string[] | null | undefined): str
   return out;
 }
 
+/**
+ * Rebuild `UserValuesProfile` from Supabase `selected_values` only (no `values_profile`).
+ * Used as fallback when `values_profile` is missing or invalid. Tiers beyond top 5 are not recoverable.
+ */
+export function buildValuesProfileFromSelectedValues(
+  selected_values: string[] | null | undefined
+): UserValuesProfile {
+  const ids = Array.isArray(selected_values)
+    ? selected_values.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+  const top5Ids = ids.slice(0, 5);
+  const top5Set = new Set(top5Ids);
+
+  const allValues = INITIAL_VALUES.map((v) => ({
+    ...v,
+    tier: (top5Set.has(v.id) ? 'top5' : 'none') as ValueTier,
+  }));
+
+  return {
+    allValues,
+    top5Ids,
+    top10Ids: top5Ids,
+    top20Ids: top5Ids,
+    initialIds: top5Ids,
+  };
+}
+
+const VALID_VALUE_TIERS = new Set<ValueTier>(['none', 'initial', 'top20', 'top10', 'top5']);
+
+function parseStoredIdList(val: unknown): string[] {
+  if (!Array.isArray(val)) return [];
+  return val.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+}
+
+function coerceValueTier(raw: unknown): ValueTier | null {
+  if (typeof raw !== 'string') return null;
+  const t = raw as ValueTier;
+  return VALID_VALUE_TIERS.has(t) ? t : null;
+}
+
+/** Same ordering rules as `ValuesOnboardingScreen` when building id lists from tiered values. */
+function deriveIdListsFromAllValues(
+  allValues: Array<{ id: string; tier: ValueTier }>
+): Pick<UserValuesProfile, 'top5Ids' | 'top10Ids' | 'top20Ids' | 'initialIds'> {
+  const top5Ids = allValues.filter((v) => v.tier === 'top5').map((v) => v.id);
+  const top10Ids = allValues
+    .filter((v) => v.tier === 'top10' || v.tier === 'top5')
+    .map((v) => v.id);
+  const top20Ids = allValues
+    .filter((v) => v.tier === 'top20' || v.tier === 'top10' || v.tier === 'top5')
+    .map((v) => v.id);
+  const initialIds = allValues.filter((v) => v.tier !== 'none').map((v) => v.id);
+  return { top5Ids, top10Ids, top20Ids, initialIds };
+}
+
+function buildValuesProfileFromIdLists(
+  top5Ids: string[],
+  top10Ids: string[],
+  top20Ids: string[],
+  initialIds: string[]
+): UserValuesProfile {
+  const top5 = new Set(top5Ids);
+  const top10 = new Set(top10Ids);
+  const top20 = new Set(top20Ids);
+  const initial = new Set(initialIds);
+
+  const tierForId = (id: string): ValueTier => {
+    if (top5.has(id)) return 'top5';
+    if (top10.has(id)) return 'top10';
+    if (top20.has(id)) return 'top20';
+    if (initial.has(id)) return 'initial';
+    return 'none';
+  };
+
+  const allValues = INITIAL_VALUES.map((v) => ({
+    ...v,
+    tier: tierForId(v.id),
+  }));
+
+  return {
+    allValues,
+    top5Ids,
+    top10Ids,
+    top20Ids,
+    initialIds,
+  };
+}
+
+/**
+ * Parse `profiles.values_profile` JSONB into `UserValuesProfile`.
+ * Handles full documents, partial backfill (id lists only), and invalid data (returns null).
+ */
+export function userValuesProfileFromRow(
+  values_profile: unknown,
+  selected_values: string[] | null | undefined
+): UserValuesProfile | null {
+  if (values_profile == null) return null;
+  if (typeof values_profile !== 'object' || Array.isArray(values_profile)) return null;
+
+  const raw = values_profile as Record<string, unknown>;
+  let top5Ids = parseStoredIdList(raw.top5Ids);
+  let top10Ids = parseStoredIdList(raw.top10Ids);
+  let top20Ids = parseStoredIdList(raw.top20Ids);
+  let initialIds = parseStoredIdList(raw.initialIds);
+
+  const sel = Array.isArray(selected_values)
+    ? selected_values.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+  if (top5Ids.length === 0 && sel.length > 0) {
+    top5Ids = sel.slice(0, 5);
+  }
+
+  const avRaw = raw.allValues;
+  if (Array.isArray(avRaw) && avRaw.length > 0) {
+    const tierById = new Map<string, ValueTier>();
+    for (const item of avRaw) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const o = item as Record<string, unknown>;
+      const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : null;
+      if (!id) continue;
+      const tier = coerceValueTier(o.tier) ?? 'none';
+      tierById.set(id, tier);
+    }
+    if (tierById.size === 0) {
+      if (top5Ids.length === 0 && top10Ids.length === 0 && top20Ids.length === 0 && initialIds.length === 0) {
+        return null;
+      }
+      return buildValuesProfileFromIdLists(top5Ids, top10Ids, top20Ids, initialIds);
+    }
+
+    const allValues = INITIAL_VALUES.map((v) => ({
+      id: v.id,
+      label: v.label,
+      tier: tierById.get(v.id) ?? ('none' as ValueTier),
+    }));
+
+    const derived = deriveIdListsFromAllValues(allValues);
+    const lists =
+      top5Ids.length > 0 || top10Ids.length > 0 || top20Ids.length > 0 || initialIds.length > 0
+        ? { top5Ids, top10Ids, top20Ids, initialIds }
+        : derived;
+
+    return {
+      allValues,
+      top5Ids: lists.top5Ids,
+      top10Ids: lists.top10Ids,
+      top20Ids: lists.top20Ids,
+      initialIds: lists.initialIds,
+    };
+  }
+
+  if (top5Ids.length === 0 && top10Ids.length === 0 && top20Ids.length === 0 && initialIds.length === 0) {
+    return null;
+  }
+
+  return buildValuesProfileFromIdLists(top5Ids, top10Ids, top20Ids, initialIds);
+}
+
+/** Serialize `UserValuesProfile` for JSONB `values_profile` (plain JSON only). */
+export function userValuesProfileToJson(profile: UserValuesProfile): Record<string, unknown> {
+  return {
+    allValues: profile.allValues.map((v) => ({
+      id: v.id,
+      label: v.label,
+      tier: v.tier,
+    })),
+    top5Ids: [...profile.top5Ids],
+    top10Ids: [...profile.top10Ids],
+    top20Ids: [...profile.top20Ids],
+    initialIds: [...profile.initialIds],
+  };
+}
+
 /** Map Supabase profiles.gender to app User.gender (for building User from discovery rows). */
 export function profileGenderToUserGender(g: ProfileGender | null | undefined): User['gender'] {
   if (!g) return 'prefer-not-to-say';
@@ -89,7 +266,11 @@ export function profileGenderToUserGender(g: ProfileGender | null | undefined): 
 
 /** Build app User from Supabase profile row (e.g. for AuthContext → UserStore sync after login). */
 export function supabaseProfileToUser(profile: SupabaseProfile): User {
-  const selectedValues = profile.selected_values ?? [];
+  const parsedValues = userValuesProfileFromRow(profile.values_profile, profile.selected_values);
+  const selectedValues =
+    parsedValues && parsedValues.top5Ids.length > 0
+      ? parsedValues.top5Ids
+      : (profile.selected_values ?? []);
   const age =
     profile.birthday != null
       ? calculateAge(profile.birthday)
@@ -127,13 +308,8 @@ export function supabaseProfileToUser(profile: SupabaseProfile): User {
           },
         }
       : undefined,
-    valuesProfile: {
-      allValues: [],
-      top5Ids: selectedValues.slice(0, 5),
-      top10Ids: selectedValues.slice(0, 10),
-      top20Ids: selectedValues.slice(0, 20),
-      initialIds: selectedValues,
-    },
+    valuesProfile:
+      parsedValues ?? buildValuesProfileFromSelectedValues(profile.selected_values),
   };
 }
 
@@ -267,13 +443,27 @@ export async function upsertSupabaseProfile(
       education: userData.education || null,
       photos: photosForRow && photosForRow.length > 0 ? photosForRow : null,
       prompts: userData.prompts && userData.prompts.length > 0 ? userData.prompts : null,
-      selected_values: userData.selectedValues && userData.selectedValues.length > 0 ? userData.selectedValues : null,
+      ...(userData.valuesProfile
+        ? {
+            values_profile: userValuesProfileToJson(userData.valuesProfile),
+            selected_values:
+              userData.valuesProfile.top5Ids.length > 0
+                ? userData.valuesProfile.top5Ids
+                : null,
+          }
+        : {
+            selected_values:
+              userData.selectedValues && userData.selectedValues.length > 0
+                ? userData.selectedValues
+                : null,
+          }),
       is_profile_complete:
         (!!userData.birthday || !!userData.age) &&
         !!userData.gender &&
         !!userData.bio &&
         ((photosForRow?.length ?? userData.photos?.length) || 0) > 0,
-      is_values_complete: (userData.selectedValues?.length || 0) >= 5,
+      is_values_complete:
+        (userData.valuesProfile?.top5Ids?.length ?? userData.selectedValues?.length ?? 0) >= 5,
       is_onboarding_complete: false, // Will be computed
     }),
     ...(mergedPreferences !== undefined ? { preferences: mergedPreferences as SupabaseProfile['preferences'] } : {}),
@@ -351,7 +541,7 @@ export async function touchLastLoginAt(): Promise<void> {
 }
 
 const PROFILE_SELECT =
-  'id, email, display_name, first_name, last_name, photo_url, auth_provider, age, birthday, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at, preferences';
+  'id, email, display_name, first_name, last_name, photo_url, auth_provider, age, birthday, gender, bio, location_label, location_latitude, location_longitude, neighborhood, hometown, job, education, photos, prompts, selected_values, values_profile, is_profile_complete, is_values_complete, is_onboarding_complete, created_at, updated_at, last_login_at, preferences';
 
 /**
  * Get current user's profile from Supabase
@@ -413,6 +603,7 @@ export interface DiscoveryProfileRow {
   education: string | null;
   prompts: Array<{ id: string; question: string; answer: string; isCustom: boolean }> | null;
   selected_values: string[] | null;
+  values_profile: unknown | null;
   is_profile_complete: boolean;
   is_values_complete: boolean;
   created_at: string;
@@ -422,7 +613,11 @@ export interface DiscoveryProfileRow {
 
 /** Map a discovery query row to app `User` (email not selected — use empty string). */
 export function discoveryProfileRowToUser(row: DiscoveryProfileRow): User {
-  const selectedValues = row.selected_values ?? [];
+  const parsedValues = userValuesProfileFromRow(row.values_profile, row.selected_values);
+  const selectedValues =
+    parsedValues && parsedValues.top5Ids.length > 0
+      ? parsedValues.top5Ids
+      : (row.selected_values ?? []);
   const age = row.age ?? 0;
   return {
     id: row.id,
@@ -446,13 +641,8 @@ export function discoveryProfileRowToUser(row: DiscoveryProfileRow): User {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastLoginAt: row.last_login_at ?? undefined,
-    valuesProfile: {
-      allValues: [],
-      top5Ids: selectedValues.slice(0, 5),
-      top10Ids: selectedValues.slice(0, 10),
-      top20Ids: selectedValues.slice(0, 20),
-      initialIds: selectedValues,
-    },
+    valuesProfile:
+      parsedValues ?? buildValuesProfileFromSelectedValues(row.selected_values),
   };
 }
 

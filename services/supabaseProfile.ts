@@ -10,7 +10,11 @@ import { calculateAge } from '../utils/dateUtils';
 import type { AuthUser } from '../types/auth';
 import type { User } from '../types/user';
 import type { ProfileGender, InterestedIn } from '../types/user';
-import { normalizeProfilePhotoUri, resolveProfilePhotoUrlsForSupabase } from './supabaseProfilePhotos';
+import {
+  normalizeProfilePhotoUri,
+  resolveProfilePhotoUrlsForSupabase,
+  removeOrphanProfileAvatarObjects,
+} from './supabaseProfilePhotos';
 
 /** Gender values stored in Supabase `profiles.gender` (matches Profile type). */
 export type { ProfileGender } from '../types/user';
@@ -185,17 +189,36 @@ export async function upsertSupabaseProfile(
     throw new Error('User ID mismatch - cannot create profile for different user');
   }
 
+  let existingProfile: SupabaseProfile | null = null;
+  if (
+    userData &&
+    ((userData.photos && userData.photos.length > 0) || userData.interestedIn != null)
+  ) {
+    existingProfile = await getSupabaseProfileByUserId(authUser.id);
+  }
+
   let photosForRow: string[] | null | undefined =
     userData?.photos && userData.photos.length > 0 ? [...userData.photos] : undefined;
+  let orphanStoragePaths: string[] = [];
 
   if (photosForRow && photosForRow.length > 0) {
     try {
       if (__DEV__) {
-        console.log('[supabaseProfile] Resolving profile photos (upload locals if needed)...', {
-          count: photosForRow.length,
+        console.log('[supabaseProfile] Resolving profile photos (diff vs server; upload new locals only)...', {
+          desiredCount: photosForRow.length,
+          previousCount: existingProfile?.photos?.length ?? 0,
         });
       }
-      photosForRow = await resolveProfilePhotoUrlsForSupabase(photosForRow, authUser.id);
+      const resolved = await resolveProfilePhotoUrlsForSupabase(
+        photosForRow,
+        authUser.id,
+        existingProfile?.photos ?? []
+      );
+      orphanStoragePaths = resolved.orphanStoragePaths;
+      photosForRow = resolved.urls.filter((u) => typeof u === 'string' && u.trim().length > 0);
+      if (photosForRow.length === 0) {
+        photosForRow = undefined;
+      }
     } catch (uploadErr) {
       const msg = uploadErr instanceof Error ? uploadErr.message : 'Photo upload failed';
       if (__DEV__) {
@@ -207,10 +230,9 @@ export async function upsertSupabaseProfile(
 
   let mergedPreferences: SupabasePreferences | undefined;
   if (userData && userData.interestedIn != null) {
-    const existing = await getSupabaseProfileByUserId(authUser.id);
     const prev =
-      existing?.preferences && typeof existing.preferences === 'object'
-        ? { ...(existing.preferences as SupabasePreferences) }
+      existingProfile?.preferences && typeof existingProfile.preferences === 'object'
+        ? { ...(existingProfile.preferences as SupabasePreferences) }
         : {};
     mergedPreferences = { ...prev, interested_in: userData.interestedIn };
     if (__DEV__) {
@@ -294,6 +316,10 @@ export async function upsertSupabaseProfile(
 
   if (__DEV__) {
     console.log('[supabaseProfile] Upsert OK', { userId: authUser.id });
+  }
+
+  if (orphanStoragePaths.length > 0) {
+    await removeOrphanProfileAvatarObjects(orphanStoragePaths);
   }
 
   return data as SupabaseProfile;

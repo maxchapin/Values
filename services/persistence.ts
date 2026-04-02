@@ -8,6 +8,7 @@ import {
   AuthState,
   PersistedUserData,
   PersistedMatchesState,
+  PersistedPassedSwipe,
   saveToStorage,
   loadFromStorage,
   removeFromStorage,
@@ -93,10 +94,15 @@ export async function loadUserData(): Promise<PersistedUserData | null> {
 /**
  * Save matches state to storage
  */
-export async function saveMatchesState(likedUserIds: string[], filters: PersistedMatchesState['filters']): Promise<void> {
+export async function saveMatchesState(
+  likedUserIds: string[],
+  filters: PersistedMatchesState['filters'],
+  passedSwipes: PersistedPassedSwipe[] = []
+): Promise<void> {
   const matchesState: PersistedMatchesState = {
     likedUserIds,
     filters,
+    passedSwipes,
   };
   await saveToStorage<PersistedMatchesState>(STORAGE_KEYS.MATCHES_STATE, matchesState);
 }

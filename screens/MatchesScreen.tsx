@@ -141,6 +141,9 @@ export const MatchesScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const currentUserId = useUserStore((s) => s.currentUser?.id ?? null);
   const availableMatches = useMatchesStore((s) => s.availableMatches);
+  const discoverSwipeMode = useMatchesStore((s) => s.discoverSwipeMode);
+  const mutualMatches = useMatchesStore((s) => s.mutualMatches);
+  const rankedDiscoverPool = useMatchesStore((s) => s.rankedDiscoverPool);
   const likedUserIds = useMatchesStore((s) => s.likedUserIds);
   const isLoading = useMatchesStore((s) => s.isLoading);
   const error = useMatchesStore((s) => s.error);
@@ -223,7 +226,16 @@ export const MatchesScreen: React.FC = () => {
       `Remove ${userName} from your matches?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Unmatch', style: 'destructive', onPress: () => unmatchUser(userId) },
+        {
+          text: 'Unmatch',
+          style: 'destructive',
+          onPress: () => {
+            void unmatchUser(userId).catch((e) => {
+              const msg = e instanceof Error ? e.message : 'Unmatch failed';
+              Alert.alert('Error', msg);
+            });
+          },
+        },
       ]
     );
   };

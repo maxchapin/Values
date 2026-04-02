@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMatchesStore } from '../store/matchesStore';
@@ -27,7 +27,7 @@ export const DiscoverScreen: React.FC = () => {
   const { currentUser } = useUserStore();
   const {
     availableMatches,
-    currentMatchIndex,
+    rankedDiscoverPoolLength,
     isLoading,
     error,
     filters,
@@ -36,7 +36,6 @@ export const DiscoverScreen: React.FC = () => {
     likeUser,
     passUser,
     setFilters,
-    reset,
   } = useMatchesStore();
 
   // Guard: store may not have availableMatches on first paint when switching tabs
@@ -88,7 +87,10 @@ export const DiscoverScreen: React.FC = () => {
         similarityScore,
         sharedValuesCount,
       });
-      likeUser(user.id);
+      void likeUser(user.id).catch((e) => {
+        const msg = e instanceof Error ? e.message : 'Could not save like';
+        Alert.alert('Something went wrong', msg);
+      });
     }
   };
 
@@ -99,7 +101,10 @@ export const DiscoverScreen: React.FC = () => {
       trackMatchPassed(user.id, {
         similarityScore,
       });
-      passUser(user.id);
+      void passUser(user.id).catch((e) => {
+        const msg = e instanceof Error ? e.message : 'Could not save pass';
+        Alert.alert('Something went wrong', msg);
+      });
     }
   };
 
@@ -126,12 +131,12 @@ export const DiscoverScreen: React.FC = () => {
     return new Set(currentMatch?.sharedValues ?? []);
   }, [currentMatch?.sharedValues]);
 
-  // Scroll reset after Like/Pass: advance to next candidate and show profile from top (photo carousel)
+  // Scroll reset after Like/Pass: next candidate and show profile from top (photo carousel)
   useEffect(() => {
     requestAnimationFrame(() => {
       cardScrollRef.current?.scrollTo({ y: 0, animated: false });
     });
-  }, [currentMatchIndex]);
+  }, [candidate?.id]);
 
   // Loading state
   if (isLoading) {
@@ -149,8 +154,8 @@ export const DiscoverScreen: React.FC = () => {
     );
   }
 
-  // No profiles / candidates (real Supabase pool empty, or filters exclude everyone)
-  if (matches.length === 0) {
+  // No profiles in the ranked pool (Supabase/mock pool empty, or filters exclude everyone)
+  if (matches.length === 0 && rankedDiscoverPoolLength === 0) {
     return (
       <>
         <EmptyState
@@ -182,7 +187,6 @@ export const DiscoverScreen: React.FC = () => {
           actionLabel="Refresh Matches"
           onAction={() => {
             if (currentUser) {
-              reset();
               loadMatches(currentUser.id, filters);
             }
           }}

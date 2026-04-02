@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, Alert, ScrollView, Linking } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as MailComposer from 'expo-mail-composer';
+import Constants from 'expo-constants';
 import { useUserStore } from '../store/userStore';
 import { useAuth } from '../contexts/AuthContext';
 import { ScreenContainer } from '../components/ScreenContainer';
@@ -15,6 +16,25 @@ type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'
 
 /** Support email – replace with your real address later */
 const SUPPORT_EMAIL = 'support@example.com';
+
+function legalUrl(key: 'privacyPolicyUrl' | 'termsOfServiceUrl'): string | undefined {
+  const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
+  const v = extra?.[key];
+  return typeof v === 'string' && v.startsWith('http') ? v : undefined;
+}
+
+const openLegalUrl = async (url: string, label: string): Promise<void> => {
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) {
+      Alert.alert('Unable to open', `Cannot open ${label} link.`);
+      return;
+    }
+    await Linking.openURL(url);
+  } catch {
+    Alert.alert('Error', `Could not open ${label}.`);
+  }
+};
 
 /**
  * Settings Screen
@@ -310,6 +330,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         </View>
       </View>
 
+      {/* Legal */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Legal</Text>
+        <Text style={styles.sectionHint}>Values is for adults 18+. Replace URLs in app.json with your live policies.</Text>
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={() => {
+            const url = legalUrl('privacyPolicyUrl');
+            if (url) void openLegalUrl(url, 'Privacy Policy');
+            else Alert.alert('Privacy Policy', 'Set extra.privacyPolicyUrl in app.json to your published policy.');
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.settingContent}>
+            <Text style={styles.settingLabel}>Privacy Policy</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={() => {
+            const url = legalUrl('termsOfServiceUrl');
+            if (url) void openLegalUrl(url, 'Terms of Service');
+            else Alert.alert('Terms of Service', 'Set extra.termsOfServiceUrl in app.json to your published terms.');
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.settingContent}>
+            <Text style={styles.settingLabel}>Terms of Service</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Help & Support – mail composer */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Help & Support</Text>
@@ -411,6 +465,11 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xl,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  sectionHint: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textTertiary,
+    marginBottom: theme.spacing.sm,
   },
   footerText: {
     fontSize: theme.typography.fontSize.xs,

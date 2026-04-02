@@ -508,7 +508,7 @@ const FIXED_VALUES = INITIAL_VALUES.map((v) => ({ id: v.id, label: v.label }));
  * Model 3: Mutual Importance Emphasis.
  * Returns match percentage (0–100), shared value IDs, and explanation buckets for UI.
  */
-function computeMatch(
+export function computeMatch(
   currentUser: User,
   otherUser: User
 ): {
@@ -638,7 +638,16 @@ function buildMatchesForUser(
       };
       return { match, compositeScore };
     })
-    .sort((a, b) => b.compositeScore - a.compositeScore)
+    .sort((a, b) => {
+      const c = b.compositeScore - a.compositeScore;
+      if (c !== 0) return c;
+      const da = a.match.distanceMiles;
+      const db = b.match.distanceMiles;
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da - db;
+    })
     .map(({ match }) => match);
 }
 

@@ -14,7 +14,7 @@ function getMatchesStore() {
 }
 
 interface ChatStore {
-  // key: matchId (other user id)
+  /** Key: other participant's user id (same key as Matches list / previews). */
   _messagesByMatch: Record<string, Message[]>;
   _typingByMatch: Record<string, boolean>;
 
@@ -22,6 +22,10 @@ interface ChatStore {
   /** Text only. No image/photo/media. */
   sendMessage: (matchId: string, currentUserId: string, text: string) => Message;
   removeMessage: (matchId: string, messageId: string) => void;
+  /** Replace thread messages (e.g. Supabase initial load). */
+  setMessagesForMatch: (partnerUserId: string, messages: Message[]) => void;
+  upsertMessage: (partnerUserId: string, message: Message) => void;
+  replaceMessageId: (partnerUserId: string, oldId: string, newId: string, patch?: Partial<Message>) => void;
   setTyping: (matchId: string, isTyping: boolean) => void;
   isTyping: (matchId: string) => boolean;
   markMatchMessagesRead: (matchId: string, readerUserId: string) => void;
@@ -44,6 +48,18 @@ function lastMessagePreviewAndTime(messages: Message[], currentUserId: string): 
 
 function countUnreadForUser(messages: Message[], otherUserId: string): number {
   return messages.filter((m) => m.senderId === otherUserId && !m.isRead).length;
+}
+
+function sortByTimestamp(a: Message, b: Message): number {
+  const ta = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp as number).getTime();
+  const tb = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp as number).getTime();
+  return ta - tb;
+}
+
+function syncPreviewForPartner(partnerUserId: string, list: Message[]): void {
+  const { preview, lastMessageAt } = lastMessagePreviewAndTime(list, '');
+  const unread = countUnreadForUser(list, partnerUserId);
+  getMatchesStore().setConversationPreview(partnerUserId, preview, unread, lastMessageAt);
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -92,10 +108,61 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const byMatch = state._messagesByMatch ?? {};
       const list = (byMatch[matchId] ?? []).filter((m) => m.id !== messageId);
       const next = { ...byMatch, [matchId]: list };
-      const { preview, lastMessageAt } = lastMessagePreviewAndTime(list, '');
-      const unread = countUnreadForUser(list, matchId);
-      getMatchesStore().setConversationPreview(matchId, preview, unread, lastMessageAt);
+      syncPreviewForPartner(matchId, list);
       return { _messagesByMatch: next };
+    });
+  },
+
+  setMessagesForMatch: (partnerUserId: string, messages: Message[]): void => {
+    const sorted = [...messages].sort(sortByTimestamp);
+    set((state) => {
+      const byMatch = { ...(state._messagesByMatch ?? {}), [partnerUserId]: sorted };
+      syncPreviewForPartner(partnerUserId, sorted);
+      return { _messagesByMatch: byMatch };
+    });
+  },
+
+  upsertMessage: (partnerUserId: string, message: Message): void => {
+    set((state) => {
+      const list = [...(state._messagesByMatch[partnerUserId] ?? [])];
+      const idx = list.findIndex((m) => m.id === message.id);
+      const normalized: Message = {
+        ...message,
+        timestamp:
+          message.timestamp instanceof Date
+            ? message.timestamp
+            : new Date(message.timestamp as number),
+      };
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...normalized };
+      } else {
+        list.push(normalized);
+      }
+      list.sort(sortByTimestamp);
+      syncPreviewForPartner(partnerUserId, list);
+      return { _messagesByMatch: { ...(state._messagesByMatch ?? {}), [partnerUserId]: list } };
+    });
+  },
+
+  replaceMessageId: (partnerUserId: string, oldId: string, newId: string, patch?: Partial<Message>): void => {
+    set((state) => {
+      const list = [...(state._messagesByMatch[partnerUserId] ?? [])];
+      const idx = list.findIndex((m) => m.id === oldId);
+      if (idx < 0) return state;
+      const prev = list[idx];
+      const nextMsg: Message = {
+        ...prev,
+        ...patch,
+        id: newId,
+      };
+      list[idx] = nextMsg;
+      const byId = new Map<string, Message>();
+      for (const m of list) {
+        if (!byId.has(m.id)) byId.set(m.id, m);
+      }
+      const deduped = Array.from(byId.values()).sort(sortByTimestamp);
+      syncPreviewForPartner(partnerUserId, deduped);
+      return { _messagesByMatch: { ...(state._messagesByMatch ?? {}), [partnerUserId]: deduped } };
     });
   },
 

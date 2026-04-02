@@ -101,7 +101,14 @@ export const DebugScreen: React.FC = () => {
           style: 'destructive',
           onPress: () => {
             useMatchesStore.setState({
+              discoverSwipeMode: 'supabase',
+              rankedDiscoverPool: [],
+              rankedDiscoverPoolLength: 0,
               availableMatches: [],
+              passedSwipes: [],
+              swipedTargetIds: [],
+              mutualMatches: [],
+              matchIdByPartnerUserId: {},
               currentMatchIndex: 0,
             });
             Alert.alert('Success', 'Matches cleared. Discover screen will show empty state.');

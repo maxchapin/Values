@@ -3,7 +3,7 @@
  * [Chat] [Profile] segmented control; Chat = real-time messages, Profile = Discovery-style read-only card.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { ProfileCard } from '../components/ProfileCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { EmptyState } from '../components/EmptyState';
 import * as chatService from '../services/chatService';
+import { fetchMatchThreadIdForPair } from '../services/supabaseMatching';
 import { formatExplanationLines } from '../services/matchingModel';
 import type { RootStackParamList } from '../navigation/types';
 import type { Match } from '../types/match';
@@ -40,18 +41,25 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
 
   const currentUser = useUserStore((s) => s.currentUser);
   const currentUserId = currentUser?.id ?? '';
-  const availableMatches = useMatchesStore((s) => s.availableMatches);
+  const discoverSwipeMode = useMatchesStore((s) => s.discoverSwipeMode);
+  const mutualMatches = useMatchesStore((s) => s.mutualMatches);
+  const rankedDiscoverPool = useMatchesStore((s) => s.rankedDiscoverPool);
   const likedUserIds = useMatchesStore((s) => s.likedUserIds);
+  const matchIdByPartnerUserId = useMatchesStore((s) => s.matchIdByPartnerUserId);
   const seedMockMessages = useChatStore((s) => s.seedMockMessages);
+  const [resolvedThreadId, setResolvedThreadId] = useState<string | null>(null);
 
   const likedMatches = useMemo(() => {
-    if (!Array.isArray(availableMatches) || !Array.isArray(likedUserIds)) return [];
-    if (availableMatches.length === 0 || likedUserIds.length === 0) return [];
-    return availableMatches.filter((match) => {
+    if (discoverSwipeMode === 'supabase') {
+      return Array.isArray(mutualMatches) ? mutualMatches : [];
+    }
+    if (!Array.isArray(rankedDiscoverPool) || !Array.isArray(likedUserIds)) return [];
+    if (rankedDiscoverPool.length === 0 || likedUserIds.length === 0) return [];
+    return rankedDiscoverPool.filter((match) => {
       if (!match?.user?.id) return false;
       return likedUserIds.includes(match.user.id);
     });
-  }, [availableMatches, likedUserIds]);
+  }, [discoverSwipeMode, mutualMatches, rankedDiscoverPool, likedUserIds]);
 
   const match = useMemo<Match | undefined>(
     () => likedMatches.find((m) => m.user.id === matchUserId),
@@ -61,15 +69,53 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
   const otherUserId = otherUser?.id ?? matchUserId ?? '';
   const otherName = otherUser?.name ?? 'Match';
 
+  const threadMatchUuid =
+    discoverSwipeMode === 'supabase'
+      ? (matchIdByPartnerUserId[matchUserId] ?? resolvedThreadId ?? undefined)
+      : undefined;
+
+  useEffect(() => {
+    if (discoverSwipeMode !== 'supabase' || !matchUserId || !currentUserId) {
+      setResolvedThreadId(null);
+      return;
+    }
+    const fromStore = matchIdByPartnerUserId[matchUserId];
+    if (fromStore) {
+      setResolvedThreadId(fromStore);
+      return;
+    }
+    let cancelled = false;
+    void fetchMatchThreadIdForPair(currentUserId, matchUserId).then((id) => {
+      if (!cancelled && id) setResolvedThreadId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [discoverSwipeMode, matchUserId, currentUserId, matchIdByPartnerUserId]);
+
   useFocusEffect(
     useCallback(() => {
       if (!matchUserId || !currentUserId) return;
-      const msgs = useChatStore.getState().getMessagesForMatch(matchUserId);
-      if (msgs.length === 0) {
-        seedMockMessages(matchUserId, currentUserId, otherUserId);
+      if (discoverSwipeMode === 'mock' && __DEV__) {
+        const msgs = useChatStore.getState().getMessagesForMatch(matchUserId);
+        if (msgs.length === 0) {
+          seedMockMessages(matchUserId, currentUserId, otherUserId);
+        }
       }
-      chatService.markMatchRead(matchUserId, currentUserId);
-    }, [matchUserId, currentUserId, otherUserId, seedMockMessages])
+      const tid =
+        discoverSwipeMode === 'supabase'
+          ? (matchIdByPartnerUserId[matchUserId] ?? resolvedThreadId ?? undefined)
+          : undefined;
+      chatService.markMatchRead(matchUserId, currentUserId, { threadMatchUuid: tid });
+    }, [
+      matchUserId,
+      currentUserId,
+      otherUserId,
+      discoverSwipeMode,
+      seedMockMessages,
+      matchIdByPartnerUserId,
+      resolvedThreadId,
+    ])
   );
 
   // Missing route param
@@ -150,7 +196,11 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
       {tab === 0 ? (
         /* TAB 1: Chat – current implementation, ~80% height feel via flex */
         <View style={styles.chatContainer}>
-          <MatchChatScreen matchId={matchUserId} currentUserId={currentUserId} />
+          <MatchChatScreen
+            matchId={matchUserId}
+            currentUserId={currentUserId}
+            threadMatchUuid={threadMatchUuid}
+          />
         </View>
       ) : (
         /* TAB 2: Profile – full-height Discovery card (read-only) + fixed Continue Chat button */

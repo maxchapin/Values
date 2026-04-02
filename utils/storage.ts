@@ -76,6 +76,12 @@ export interface PersistedUserData {
 /**
  * Persisted matches state
  */
+/** Persisted pass swipes for Discover (see services/discoverFeedPolicy.ts). */
+export interface PersistedPassedSwipe {
+  userId: string;
+  passedAt: string;
+}
+
 export interface PersistedMatchesState {
   likedUserIds: string[];
   filters: {
@@ -85,6 +91,8 @@ export interface PersistedMatchesState {
     radiusMiles?: number;
     radiusKm?: number; // legacy, ignored if radiusMiles present
   };
+  /** Profiles passed in Discover; hidden until cooldown expires. */
+  passedSwipes?: PersistedPassedSwipe[];
 }
 
 /**

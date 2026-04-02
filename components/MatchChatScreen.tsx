@@ -128,10 +128,15 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe }) => {
 // MatchChatScreen (text-only; no attachment button, no image modal)
 // -----------------------------------------------------------------------------
 
-/** Use chatService: pass matchId + currentUserId. Real-time updates and optimistic send. */
+/**
+ * Use chatService: pass `matchId` (partner user id) + `currentUserId`.
+ * With `threadMatchUuid` (`public.matches.id`), messages persist on Supabase + Realtime.
+ */
 export interface MatchChatScreenServiceProps {
+  /** Other participant's user id (conversation key in local store / Matches list). */
   matchId: string;
   currentUserId: string;
+  threadMatchUuid?: string;
   /** Optional: simulate send failure for testing (e.g. __DEV__). */
   simulateSendFailure?: boolean;
 }
@@ -157,6 +162,7 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
 
   const isService = isServiceProps(props);
   const matchId = isService ? props.matchId : undefined;
+  const threadMatchUuid = isService ? props.threadMatchUuid : undefined;
 
   const [serviceMatchChat, setServiceMatchChat] = useState<MatchChat | null>(
     isService && matchId ? chatService.toMatchChat(chatService.getMatchChat(matchId)) : null
@@ -171,11 +177,15 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
 
   useEffect(() => {
     if (!isService || !matchId) return;
-    const unsub = chatService.subscribeToMatchChat(matchId, (update) => {
-      setServiceMatchChat(chatService.toMatchChat(update));
-    });
+    const unsub = chatService.subscribeToMatchChat(
+      matchId,
+      (update) => {
+        setServiceMatchChat(chatService.toMatchChat(update));
+      },
+      threadMatchUuid ? { threadMatchUuid } : undefined
+    );
     return unsub;
-  }, [isService, matchId]);
+  }, [isService, matchId, threadMatchUuid]);
 
   // Scroll to bottom on initial mount and when messages change
   useEffect(() => {
@@ -194,8 +204,12 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
     if (!text) return;
 
     if (isService && matchId) {
+      const sendOpts = {
+        ...(threadMatchUuid ? { threadMatchUuid } : {}),
+        ...('simulateSendFailure' in props ? { simulateFailure: props.simulateSendFailure } : {}),
+      };
       chatService
-        .sendMessage(matchId, currentUserId, { text }, { simulateFailure: props.simulateSendFailure })
+        .sendMessage(matchId, currentUserId, { text }, sendOpts)
         .then(() => setInputText(''))
         .catch(() => {
           // Optimistic message was rolled back by service; UI already updated via subscription
@@ -205,7 +219,7 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
 
     (props as MatchChatScreenControlledProps).onSendMessage(text);
     setInputText('');
-  }, [inputText, isService, matchId, currentUserId, props]);
+  }, [inputText, isService, matchId, currentUserId, props, threadMatchUuid]);
 
   const renderItem: ListRenderItem<ListItem> = useCallback(
     ({ item }) => {

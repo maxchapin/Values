@@ -679,6 +679,23 @@ export async function getDiscoveryProfiles(
   return (data ?? []) as DiscoveryProfileRow[];
 }
 
+/** Fetch discovery-shaped profile rows by id (e.g. mutual match partners). */
+export async function getDiscoveryProfileRowsByIds(userIds: string[]): Promise<DiscoveryProfileRow[]> {
+  const ids = [...new Set(userIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  if (ids.length === 0) return [];
+
+  const { data, error } = await supabase.from('profiles').select(DISCOVERY_SELECT).in('id', ids);
+
+  if (error) {
+    if (__DEV__) {
+      console.error('[supabaseProfile] Error fetching profiles by ids:', error);
+    }
+    return [];
+  }
+
+  return (data ?? []) as DiscoveryProfileRow[];
+}
+
 /**
  * Update profile completion flags
  * Called when user completes profile setup or values onboarding
@@ -761,6 +778,23 @@ export async function deleteSupabaseProfile(): Promise<void> {
   const { user, error: authError } = await ensureSession();
   if (authError || !user) {
     throw new Error('Authentication required');
+  }
+
+  const uid = user.id;
+  // Matches first (chat_messages FK CASCADE). Then swipes. Then profile row.
+  const { error: delMatchErr } = await supabase
+    .from('matches')
+    .delete()
+    .or(`user_a.eq.${uid},user_b.eq.${uid}`);
+  if (delMatchErr && __DEV__) {
+    console.warn('[supabaseProfile] delete matches:', delMatchErr.message);
+  }
+  const { error: delSwipeErr } = await supabase
+    .from('profile_swipes')
+    .delete()
+    .or(`viewer_id.eq.${uid},target_id.eq.${uid}`);
+  if (delSwipeErr && __DEV__) {
+    console.warn('[supabaseProfile] delete swipes:', delSwipeErr.message);
   }
 
   const { error } = await supabase.from('profiles').delete().eq('id', user.id);

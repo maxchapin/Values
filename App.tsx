@@ -12,6 +12,7 @@ import { loadAllAppState, validateUserData, validateAuthState } from './services
 import type { PersistedUserData } from './utils/storage';
 import { theme } from './theme';
 import { User } from './types/user';
+import { initProductionTelemetry } from './services/telemetry';
 
 
 /**
@@ -36,6 +37,10 @@ const LoadingScreen: React.FC = () => (
  * handles session restoration independently.
  */
 export default function App() {
+  useEffect(() => {
+    initProductionTelemetry();
+  }, []);
+
   const [isRehydrating, setIsRehydrating] = useState<boolean>(true);
   const [rehydrationStatus, setRehydrationStatus] = useState<string>('Initializing...');
   const [rehydrationResult, setRehydrationResult] = useState<{
@@ -158,7 +163,7 @@ export default function App() {
             
             // Rehydrate matches store if data exists (normalize legacy radiusKm → radiusMiles)
             if (persistedState.matchesState) {
-              const { likedUserIds, filters } = persistedState.matchesState;
+              const { likedUserIds, filters, passedSwipes } = persistedState.matchesState;
               const normalizedFilters = { ...filters };
               if (typeof normalizedFilters.radiusMiles !== 'number' && typeof (normalizedFilters as { radiusKm?: number }).radiusKm === 'number') {
                 normalizedFilters.radiusMiles = Math.round((normalizedFilters as { radiusKm: number }).radiusKm / 1.609);
@@ -166,7 +171,7 @@ export default function App() {
               if (typeof normalizedFilters.radiusMiles !== 'number') {
                 normalizedFilters.radiusMiles = 50;
               }
-              rehydrateMatches(likedUserIds, normalizedFilters);
+              rehydrateMatches(likedUserIds, normalizedFilters, Array.isArray(passedSwipes) ? passedSwipes : []);
             }
             
             if (__DEV__) {

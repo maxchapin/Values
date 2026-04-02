@@ -1,21 +1,25 @@
 /**
  * Matches Store
- * Manages available matches, likes, and matching logic
+ * Discover: ranked pool from Supabase (or mock in __DEV__); queue excludes swiped targets.
+ * Production swipes + mutual matches: Supabase (see supabaseMatching.ts). Mock deck uses local likes/passes.
  */
 
 import { create } from 'zustand';
 import { Match } from '../types/match';
 import { saveMatchesState } from '../services/persistence';
+import {
+  buildDiscoverQueueFromPool,
+  buildDiscoverQueueExcludingTargets,
+  pruneExpiredPassSwipes,
+  type PassedSwipeRecord,
+} from '../services/discoverFeedPolicy';
 
 import type { LocationCoordinates, InterestedIn } from '../types/user';
 
 export interface MatchFilters {
-  ageRange?: [number, number]; // [minAge, maxAge]
-  /** Center for distance filter; from current user's locationCoordinates. */
+  ageRange?: [number, number];
   centerCoordinates?: LocationCoordinates;
-  /** Radius in miles (imperial). */
   radiusMiles?: number;
-  /** Viewer's "interested in" preference; filters Discover candidates by gender. */
   interestedIn?: InterestedIn;
 }
 
@@ -25,43 +29,126 @@ export interface ConversationPreviewData {
   lastMessageAt?: number;
 }
 
+export type { PassedSwipeRecord };
+
+export type DiscoverSwipeMode = 'supabase' | 'mock';
+
 interface MatchesStore {
-  // State
+  discoverSwipeMode: DiscoverSwipeMode;
+  rankedDiscoverPool: Match[];
+  rankedDiscoverPoolLength: number;
   availableMatches: Match[];
-  likedUserIds: string[]; // Array of user IDs the current user has liked
+  /** Mock: one-way likes. Supabase: mutual partner ids (synced with server). */
+  likedUserIds: string[];
+  passedSwipes: PassedSwipeRecord[];
+  /** Supabase: targets already swiped (like or pass). */
+  swipedTargetIds: string[];
+  mutualMatches: Match[];
+  matchIdByPartnerUserId: Record<string, string>;
   filters: MatchFilters;
   currentMatchIndex: number;
   isLoading: boolean;
   error: string | null;
-  isHydrated: boolean; // Track if store has been hydrated from storage
-  /** Keyed by match userId; used so UI re-renders when previews change. */
+  isHydrated: boolean;
   _conversationPreviews: Record<string, ConversationPreviewData>;
 
-  // Actions
   loadMatches: (userId: string, filters?: MatchFilters) => Promise<void>;
   setFilters: (filters: MatchFilters) => Promise<void>;
   likeUser: (userId: string) => Promise<void>;
-  passUser: (userId: string) => void;
+  passUser: (userId: string) => Promise<void>;
   getCurrentMatch: () => Match | null;
   getLikedMatches: () => Match[];
-  unmatchUser: (userId: string) => void;
+  /** Matches tab list: mutuals in Supabase mode; mocked one-way likes in mock mode. */
+  getMatchesForTab: () => Match[];
+  unmatchUser: (userId: string) => Promise<void>;
   getConversationPreview: (userId: string) => { lastMessage: string; unreadCount: number; lastMessageAt?: number };
   setConversationPreview: (userId: string, lastMessage: string, unreadCount?: number, lastMessageAt?: number) => void;
   markConversationRead: (userId: string) => void;
   reset: () => void;
-  rehydrate: (likedUserIds: string[], filters: MatchFilters) => void;
+  rehydrate: (likedUserIds: string[], filters: MatchFilters, passedSwipes?: PassedSwipeRecord[]) => void;
 }
 
-// Helper to get current user (avoid circular dependency)
 function getCurrentUser() {
   const { useUserStore } = require('./userStore');
   return useUserStore.getState().currentUser;
 }
 
+async function applySupabaseDiscoverState(
+  set: (partial: Partial<MatchesStore>) => void,
+  get: () => MatchesStore,
+  rankedPool: Match[],
+  filtersUpdate: MatchFilters | undefined,
+  userId: string,
+  currentUser: import('../types/user').User
+): Promise<void> {
+  const {
+    fetchSwipedTargetIds,
+    buildMutualMatchesForViewer,
+  } = await import('../services/supabaseMatching');
+  const swipedIds = await fetchSwipedTargetIds(userId);
+  const { matches: mutualMatches, matchIdByPartnerUserId } = await buildMutualMatchesForViewer(
+    userId,
+    currentUser
+  );
+  const likedIds = mutualMatches.map((m) => m.user.id);
+  const queue = buildDiscoverQueueExcludingTargets(rankedPool, new Set(swipedIds));
+  set({
+    discoverSwipeMode: 'supabase',
+    rankedDiscoverPool: rankedPool,
+    rankedDiscoverPoolLength: rankedPool.length,
+    availableMatches: queue,
+    swipedTargetIds: swipedIds,
+    mutualMatches,
+    matchIdByPartnerUserId,
+    likedUserIds: likedIds,
+    passedSwipes: [],
+    currentMatchIndex: 0,
+    filters: filtersUpdate !== undefined ? filtersUpdate : get().filters,
+    isLoading: false,
+    error: null,
+  });
+  try {
+    await saveMatchesState(likedIds, get().filters, []);
+  } catch (e) {
+    if (__DEV__) console.error('[MatchesStore] persist after supabase load:', e);
+  }
+}
+
+function applyMockDiscoverState(
+  set: (partial: Partial<MatchesStore>) => void,
+  get: () => MatchesStore,
+  rankedPool: Match[],
+  filtersUpdate: MatchFilters | undefined
+): void {
+  const { likedUserIds, passedSwipes } = get();
+  const pruned = pruneExpiredPassSwipes(passedSwipes);
+  const queue = buildDiscoverQueueFromPool(rankedPool, likedUserIds, pruned);
+  set({
+    discoverSwipeMode: 'mock',
+    rankedDiscoverPool: rankedPool,
+    rankedDiscoverPoolLength: rankedPool.length,
+    availableMatches: queue,
+    passedSwipes: pruned,
+    swipedTargetIds: [],
+    mutualMatches: [],
+    matchIdByPartnerUserId: {},
+    currentMatchIndex: 0,
+    filters: filtersUpdate !== undefined ? filtersUpdate : get().filters,
+    isLoading: false,
+    error: null,
+  });
+}
+
 export const useMatchesStore = create<MatchesStore>((set, get) => ({
-  // Initial state
+  discoverSwipeMode: 'supabase',
+  rankedDiscoverPool: [],
+  rankedDiscoverPoolLength: 0,
   availableMatches: [],
   likedUserIds: [],
+  passedSwipes: [],
+  swipedTargetIds: [],
+  mutualMatches: [],
+  matchIdByPartnerUserId: {},
   filters: {},
   currentMatchIndex: 0,
   isLoading: false,
@@ -69,10 +156,16 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
   isHydrated: false,
   _conversationPreviews: {},
 
-  // Load matches for a user. Passes centerCoordinates from current user when not in filters.
   loadMatches: async (userId: string, filters?: MatchFilters): Promise<void> => {
     if (!userId || typeof userId !== 'string') {
-      set({ isLoading: false, error: 'Missing user id', availableMatches: [], currentMatchIndex: 0 });
+      set({
+        isLoading: false,
+        error: 'Missing user id',
+        rankedDiscoverPool: [],
+        rankedDiscoverPoolLength: 0,
+        availableMatches: [],
+        currentMatchIndex: 0,
+      });
       return;
     }
     set({ isLoading: true, error: null });
@@ -82,6 +175,8 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
         set({
           isLoading: false,
           error: 'Could not load your profile. Try signing in again.',
+          rankedDiscoverPool: [],
+          rankedDiscoverPoolLength: 0,
           availableMatches: [],
           currentMatchIndex: 0,
         });
@@ -106,20 +201,21 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
         applyRelaxedFallback: __DEV__,
       });
 
+      let usedMockFallback = false;
       if (matches.length === 0 && __DEV__) {
         const { findMatches } = await import('../services/mockBackend');
         matches = await findMatches(userId, mergedFilters);
+        usedMockFallback = true;
       }
 
       const safeMatches = Array.isArray(matches) ? matches : [];
+      const filtersToStore = filters ?? get().filters ?? {};
 
-      set({
-        availableMatches: safeMatches,
-        currentMatchIndex: 0,
-        filters: filters ?? get().filters ?? {},
-        isLoading: false,
-        error: null,
-      });
+      if (usedMockFallback) {
+        applyMockDiscoverState(set, get, safeMatches, filtersToStore);
+      } else {
+        await applySupabaseDiscoverState(set, get, safeMatches, filtersToStore, userId, currentUser);
+      }
     } catch (error) {
       if (__DEV__) {
         try {
@@ -133,21 +229,17 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
             };
             const fallback = await findMatches(userId, mergedFilters);
             const safeMatches = Array.isArray(fallback) ? fallback : [];
-            set({
-              availableMatches: safeMatches,
-              currentMatchIndex: 0,
-              filters: filters ?? get().filters ?? {},
-              isLoading: false,
-              error: null,
-            });
+            applyMockDiscoverState(set, get, safeMatches, filters ?? get().filters ?? {});
             return;
           }
         } catch {
-          // fall through to error state
+          // fall through
         }
       }
       set({
         error: error instanceof Error ? error.message : 'Failed to load matches',
+        rankedDiscoverPool: [],
+        rankedDiscoverPoolLength: 0,
         availableMatches: [],
         currentMatchIndex: 0,
         isLoading: false,
@@ -155,74 +247,108 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
     }
   },
 
-  // Set filters and reload matches
   setFilters: async (filters: MatchFilters): Promise<void> => {
-    const { loadMatches, likedUserIds } = get();
+    const { loadMatches } = get();
     const currentUser = getCurrentUser();
     if (currentUser) {
-      // Reset index before loading with new filters
       set({ filters, currentMatchIndex: 0 });
       await loadMatches(currentUser.id, filters);
-      
-      // Persist matches state with updated filters
       try {
-        await saveMatchesState(likedUserIds, filters);
+        const st = get();
+        await saveMatchesState(st.likedUserIds, st.filters, st.discoverSwipeMode === 'mock' ? st.passedSwipes : []);
       } catch (error) {
-        if (__DEV__) {
-          console.error('[MatchesStore] Error persisting matches state:', error);
-        }
+        if (__DEV__) console.error('[MatchesStore] Error persisting matches state:', error);
       }
     }
   },
 
-  // Like a user
   likeUser: async (userId: string): Promise<void> => {
-    const { likedUserIds, availableMatches, currentMatchIndex, filters } = get();
-    
-    // Defensive check: ensure we have matches
-    if (availableMatches.length === 0) {
-      return;
-    }
+    const state = get();
+    if (state.rankedDiscoverPool.length === 0 && state.availableMatches.length === 0) return;
 
-    // Add to liked list if not already there
-    if (!likedUserIds.includes(userId)) {
-      const newLikedUserIds = [...likedUserIds, userId];
-      set({ likedUserIds: newLikedUserIds });
-      
-      // Persist matches state
+    if (state.discoverSwipeMode === 'mock') {
+      const newLikedUserIds = state.likedUserIds.includes(userId)
+        ? state.likedUserIds
+        : [...state.likedUserIds, userId];
+      const pruned = pruneExpiredPassSwipes(state.passedSwipes);
+      const queue = buildDiscoverQueueFromPool(state.rankedDiscoverPool, newLikedUserIds, pruned);
+      set({
+        likedUserIds: newLikedUserIds,
+        passedSwipes: pruned,
+        availableMatches: queue,
+        currentMatchIndex: 0,
+      });
       try {
-        await saveMatchesState(newLikedUserIds, filters);
+        await saveMatchesState(newLikedUserIds, state.filters, pruned);
       } catch (error) {
-        if (__DEV__) {
-          console.error('[MatchesStore] Error persisting matches state:', error);
-        }
+        if (__DEV__) console.error('[MatchesStore] persist like (mock):', error);
       }
-    }
-
-    // Move to next match, ensuring index stays within bounds
-    const nextIndex = Math.min(currentMatchIndex + 1, availableMatches.length);
-    set({ currentMatchIndex: nextIndex });
-  },
-
-  // Pass on a user
-  passUser: (userId: string): void => {
-    const { availableMatches, currentMatchIndex } = get();
-    
-    // Defensive check: ensure we have matches
-    if (availableMatches.length === 0) {
       return;
     }
 
-    // Move to next match, ensuring index stays within bounds
-    const nextIndex = Math.min(currentMatchIndex + 1, availableMatches.length);
-    set({ currentMatchIndex: nextIndex });
+    const currentUser = getCurrentUser();
+    if (!currentUser) return;
+
+    try {
+      const { recordProfileSwipe } = await import('../services/supabaseMatching');
+      await recordProfileSwipe(currentUser.id, userId, 'like');
+      await applySupabaseDiscoverState(
+        set,
+        get,
+        state.rankedDiscoverPool,
+        state.filters,
+        currentUser.id,
+        currentUser
+      );
+    } catch (e) {
+      if (__DEV__) console.error('[MatchesStore] likeUser supabase:', e);
+      throw e;
+    }
   },
 
-  // Get current match with defensive checks
+  passUser: async (userId: string): Promise<void> => {
+    const state = get();
+    if (state.availableMatches.length === 0 && state.rankedDiscoverPool.length === 0) return;
+
+    if (state.discoverSwipeMode === 'mock') {
+      const nextPasses = pruneExpiredPassSwipes([
+        ...state.passedSwipes,
+        { userId, passedAt: new Date().toISOString() },
+      ]);
+      const queue = buildDiscoverQueueFromPool(state.rankedDiscoverPool, state.likedUserIds, nextPasses);
+      set({
+        passedSwipes: nextPasses,
+        availableMatches: queue,
+        currentMatchIndex: 0,
+      });
+      saveMatchesState(state.likedUserIds, state.filters, nextPasses).catch((err) => {
+        if (__DEV__) console.error('[MatchesStore] persist pass (mock):', err);
+      });
+      return;
+    }
+
+    const currentUser = getCurrentUser();
+    if (!currentUser) return;
+
+    try {
+      const { recordProfileSwipe } = await import('../services/supabaseMatching');
+      await recordProfileSwipe(currentUser.id, userId, 'pass');
+      await applySupabaseDiscoverState(
+        set,
+        get,
+        state.rankedDiscoverPool,
+        state.filters,
+        currentUser.id,
+        currentUser
+      );
+    } catch (e) {
+      if (__DEV__) console.error('[MatchesStore] passUser supabase:', e);
+      throw e;
+    }
+  },
+
   getCurrentMatch: (): Match | null => {
     const { availableMatches, currentMatchIndex } = get();
-    
-    // Defensive checks: ensure index is valid and match exists
     if (
       availableMatches.length === 0 ||
       currentMatchIndex < 0 ||
@@ -230,65 +356,96 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
     ) {
       return null;
     }
-
-    const match = availableMatches[currentMatchIndex];
-    return match || null;
+    return availableMatches[currentMatchIndex] || null;
   },
 
-  // Get matches for users that were liked
-  getLikedMatches: (): Match[] => {
-    const { availableMatches, likedUserIds } = get();
-    
-    // Defensive check: ensure we have matches
-    if (availableMatches.length === 0 || likedUserIds.length === 0) {
-      return [];
+  getLikedMatches: (): Match[] => get().getMatchesForTab(),
+
+  getMatchesForTab: (): Match[] => {
+    const s = get();
+    if (s.discoverSwipeMode === 'supabase') {
+      return s.mutualMatches;
+    }
+    if (s.likedUserIds.length === 0) return [];
+    return s.rankedDiscoverPool.filter(
+      (m) => m?.user?.id && s.likedUserIds.includes(m.user.id)
+    );
+  },
+
+  unmatchUser: async (userId: string): Promise<void> => {
+    const state = get();
+    if (state.discoverSwipeMode === 'supabase') {
+      const matchId = state.matchIdByPartnerUserId[userId];
+      if (!matchId) return;
+      try {
+        const { deleteMutualMatchById } = await import('../services/supabaseMatching');
+        await deleteMutualMatchById(matchId);
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+          await applySupabaseDiscoverState(
+            set,
+            get,
+            state.rankedDiscoverPool,
+            state.filters,
+            currentUser.id,
+            currentUser
+          );
+        }
+      } catch (e) {
+        if (__DEV__) console.error('[MatchesStore] unmatch:', e);
+        throw e;
+      }
+      return;
     }
 
-    return availableMatches.filter((match) => {
-      // Defensive check: ensure match and user exist
-      if (!match || !match.user || !match.user.id) {
-        return false;
-      }
-      return likedUserIds.includes(match.user.id);
+    if (!state.likedUserIds.includes(userId)) return;
+    const newLikedUserIds = state.likedUserIds.filter((id) => id !== userId);
+    const pruned = pruneExpiredPassSwipes(state.passedSwipes);
+    const queue = buildDiscoverQueueFromPool(state.rankedDiscoverPool, newLikedUserIds, pruned);
+    set({
+      likedUserIds: newLikedUserIds,
+      passedSwipes: pruned,
+      availableMatches: queue,
+      currentMatchIndex: 0,
+    });
+    saveMatchesState(newLikedUserIds, state.filters, pruned).catch((err) => {
+      if (__DEV__) console.error('[MatchesStore] unmatch persist:', err);
     });
   },
 
-  // Unmatch: remove user from liked list
-  unmatchUser: (userId: string): void => {
-    const { likedUserIds, filters } = get();
-    if (!likedUserIds.includes(userId)) return;
-    const newLikedUserIds = likedUserIds.filter((id) => id !== userId);
-    set({ likedUserIds: newLikedUserIds });
-    saveMatchesState(newLikedUserIds, filters).catch((err) => {
-      if (__DEV__) console.error('[MatchesStore] Error persisting after unmatch:', err);
-    });
-  },
-
-  // In-memory conversation preview (mock; keyed by match userId)
   getConversationPreview: (userId: string): ConversationPreviewData => {
-    const state = get();
-    const previews = state._conversationPreviews ?? {};
+    const st = get();
+    const previews = st._conversationPreviews ?? {};
     return previews[userId] ?? { lastMessage: '', unreadCount: 0 };
   },
   setConversationPreview: (userId: string, lastMessage: string, unreadCount = 0, lastMessageAt?: number): void => {
-    const state = get();
-    const previews = { ...(state._conversationPreviews ?? {}), [userId]: { lastMessage, unreadCount, lastMessageAt } };
+    const st = get();
+    const previews = {
+      ...(st._conversationPreviews ?? {}),
+      [userId]: { lastMessage, unreadCount, lastMessageAt },
+    };
     set({ _conversationPreviews: previews });
   },
   markConversationRead: (userId: string): void => {
-    const state = get();
-    const previews = state._conversationPreviews ?? {};
+    const st = get();
+    const previews = st._conversationPreviews ?? {};
     const p = previews[userId];
     if (p) {
       set({ _conversationPreviews: { ...previews, [userId]: { ...p, unreadCount: 0 } } });
     }
   },
 
-  // Reset store
   reset: (): void => {
     set({
+      discoverSwipeMode: 'supabase',
+      rankedDiscoverPool: [],
+      rankedDiscoverPoolLength: 0,
       availableMatches: [],
       likedUserIds: [],
+      passedSwipes: [],
+      swipedTargetIds: [],
+      mutualMatches: [],
+      matchIdByPartnerUserId: {},
       currentMatchIndex: 0,
       filters: {},
       error: null,
@@ -297,11 +454,12 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
     });
   },
 
-  // Rehydrate store from persisted data
-  rehydrate: (likedUserIds: string[], filters: MatchFilters): void => {
+  rehydrate: (likedUserIds: string[], filters: MatchFilters, passedSwipes: PassedSwipeRecord[] = []): void => {
+    const pruned = pruneExpiredPassSwipes(passedSwipes);
     set({
       likedUserIds,
       filters,
+      passedSwipes: pruned,
       isHydrated: true,
       isLoading: false,
       error: null,

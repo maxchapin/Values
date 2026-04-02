@@ -10,12 +10,19 @@ import { trackScreenView } from '../services/analytics';
 import { theme } from '../theme';
 import { RootStackParamList } from '../navigation/types';
 import { UserSettings } from '../types/user';
-import { updateSupabasePreferences, deleteSupabaseProfile } from '../services/supabaseProfile';
+import {
+  updateSupabasePreferences,
+  deleteSupabaseProfile,
+  deleteAuthUserViaEdge,
+} from '../services/supabaseProfile';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
-/** Support email – replace with your real address later */
-const SUPPORT_EMAIL = 'support@example.com';
+function supportEmailFromConfig(): string {
+  const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
+  const v = extra?.supportEmail;
+  return typeof v === 'string' && v.includes('@') ? v : 'support@example.com';
+}
 
 function legalUrl(key: 'privacyPolicyUrl' | 'termsOfServiceUrl'): string | undefined {
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
@@ -148,18 +155,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   };
 
   const handleHelp = async (): Promise<void> => {
+    const supportAddr = supportEmailFromConfig();
     const canCompose = await MailComposer.isAvailableAsync();
     if (canCompose) {
       await MailComposer.composeAsync({
-        recipients: [SUPPORT_EMAIL],
+        recipients: [supportAddr],
         subject: 'Values App – Help & Support',
         body: 'Please describe your question or issue:\n\n',
       });
     } else {
       Alert.alert(
         'Help & Support',
-        `Email us at ${SUPPORT_EMAIL} for help and support.`,
-        [{ text: 'OK' }, { text: 'Open Mail', onPress: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}`) }]
+        `Email us at ${supportAddr} for help and support.`,
+        [{ text: 'OK' }, { text: 'Open Mail', onPress: () => Linking.openURL(`mailto:${supportAddr}`) }]
       );
     }
   };
@@ -208,6 +216,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
                       await deleteSupabaseProfile();
                     } catch (err) {
                       if (__DEV__) console.warn('[Settings] Supabase profile delete failed:', err);
+                    }
+                    try {
+                      await deleteAuthUserViaEdge();
+                    } catch (err) {
+                      if (__DEV__) console.warn('[Settings] Auth user delete (edge) failed:', err);
                     }
                     try {
                       await signOut();
@@ -333,7 +346,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
       {/* Legal */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Legal</Text>
-        <Text style={styles.sectionHint}>Values is for adults 18+. Replace URLs in app.json with your live policies.</Text>
+        <Text style={styles.sectionHint}>
+          Values is for adults 18+. Set live policy URLs via EXPO_PUBLIC_PRIVACY_POLICY_URL and EXPO_PUBLIC_TERMS_OF_SERVICE_URL
+          (EAS secrets) or app.json extras.
+        </Text>
         <TouchableOpacity
           style={styles.settingRow}
           onPress={() => {

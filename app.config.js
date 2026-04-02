@@ -9,6 +9,13 @@ module.exports = {
     ...appJson.expo,
     extra: {
       ...appJson.expo.extra,
+      policyVersion: process.env.EXPO_PUBLIC_POLICY_VERSION ?? appJson.expo.extra?.policyVersion ?? '1',
+      privacyPolicyUrl:
+        process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL ?? appJson.expo.extra?.privacyPolicyUrl ?? '',
+      termsOfServiceUrl:
+        process.env.EXPO_PUBLIC_TERMS_OF_SERVICE_URL ?? appJson.expo.extra?.termsOfServiceUrl ?? '',
+      deleteAccountEdgeUrl: process.env.EXPO_PUBLIC_DELETE_ACCOUNT_EDGE_URL ?? '',
+      supportEmail: process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? 'support@example.com',
       // Resolve at build time (EAS injects EXPO_PUBLIC_* from secrets)
       supabaseRedirectTo:
         process.env.EXPO_PUBLIC_SUPABASE_URL != null

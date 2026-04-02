@@ -60,6 +60,7 @@
     },
     "extra": {
       "googleClientId": "",
+      "policyVersion": "1",
       "privacyPolicyUrl": "https://example.com/privacy",
       "termsOfServiceUrl": "https://example.com/terms",
       "supabaseRedirectTo": "${EXPO_PUBLIC_SUPABASE_URL}/auth/v1/callback",

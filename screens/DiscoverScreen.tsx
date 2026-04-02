@@ -8,13 +8,21 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { useDebugAccess } from '../hooks/useDebugAccess';
-import { trackScreenView, trackMatchLiked, trackMatchPassed } from '../services/analytics';
+import {
+  trackScreenView,
+  trackMatchLiked,
+  trackMatchPassed,
+  trackUserBlocked,
+  trackUserReported,
+} from '../services/analytics';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { DiscoverActionBar } from '../components/DiscoverActionBar';
 import { ProfileCard } from '../components/ProfileCard';
 import { DiscoverSwipeCard } from '../components/DiscoverSwipeCard';
 import { FiltersSheet } from '../components/FiltersSheet';
 import { FeedbackModal } from '../components/FeedbackModal';
+import { ReportUserModal } from '../components/ReportUserModal';
+import { insertUserBlock, insertUserReport, type ReportReason } from '../services/supabaseSafety';
 import { formatExplanationLines } from '../services/matchingModel';
 import { theme } from '../theme';
 import {
@@ -36,6 +44,7 @@ export const DiscoverScreen: React.FC = () => {
     likeUser,
     passUser,
     setFilters,
+    discoverSwipeMode,
   } = useMatchesStore();
 
   // Guard: store may not have availableMatches on first paint when switching tabs
@@ -43,6 +52,7 @@ export const DiscoverScreen: React.FC = () => {
 
   const [showFilters, setShowFilters] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [reportVisible, setReportVisible] = useState(false);
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const didInitialLoadRef = useRef(false);
   const cardScrollRef = useRef<ScrollView>(null);
@@ -125,6 +135,59 @@ export const DiscoverScreen: React.FC = () => {
 
   const currentMatch = getCurrentMatch();
   const candidate = currentMatch?.user ?? null;
+
+  const runDiscoverBlock = useCallback(async () => {
+    const uid = currentUser?.id;
+    const targetId = candidate?.id;
+    if (!uid || !targetId) return;
+    try {
+      await insertUserBlock(uid, targetId);
+      trackUserBlocked(targetId, { source: 'discover' });
+      await loadMatches(uid, filters);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not block user';
+      Alert.alert('Block failed', msg);
+    }
+  }, [currentUser?.id, candidate?.id, loadMatches, filters]);
+
+  const openDiscoverSafetyMenu = useCallback(() => {
+    if (!candidate?.id || !currentUser?.id) return;
+    Alert.alert('Safety', undefined, [
+      { text: 'Report', onPress: () => setReportVisible(true) },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            'Block this person?',
+            'You won’t see them in Discover or Matches.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Block', style: 'destructive', onPress: () => void runDiscoverBlock() },
+            ]
+          );
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [candidate?.id, currentUser?.id, runDiscoverBlock]);
+
+  const handleDiscoverReportSubmit = useCallback(
+    async (reason: ReportReason, details: string) => {
+      const uid = currentUser?.id;
+      const targetId = candidate?.id;
+      if (!uid || !targetId) return;
+      await insertUserReport({
+        reporterId: uid,
+        reportedUserId: targetId,
+        reason,
+        details,
+        matchId: null,
+      });
+      trackUserReported(targetId, { reason, source: 'discover' });
+    },
+    [currentUser?.id, candidate?.id]
+  );
 
   // Shared values from match (backend uses tiered top5/top10/top20/initial)
   const sharedValueIds = useMemo<Set<string>>(() => {
@@ -229,7 +292,18 @@ export const DiscoverScreen: React.FC = () => {
               Values
             </Text>
           </TouchableOpacity>
-          <View style={styles.headerSpacer} />
+          {discoverSwipeMode === 'supabase' ? (
+            <TouchableOpacity
+              style={styles.headerSafety}
+              onPress={openDiscoverSafetyMenu}
+              accessibilityLabel="Safety and report"
+              accessibilityRole="button"
+            >
+              <Text style={styles.headerSafetyText}>Safety</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
         </View>
 
         {/*{__DEV__ && (
@@ -290,6 +364,12 @@ export const DiscoverScreen: React.FC = () => {
         onApply={handleApplyFilters}
         onReset={handleResetFilters}
       />
+      <ReportUserModal
+        visible={reportVisible}
+        onClose={() => setReportVisible(false)}
+        onSubmit={handleDiscoverReportSubmit}
+        reportedDisplayName={candidate?.name}
+      />
     </ScreenContainer>
   );
 };
@@ -341,6 +421,17 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 72,
+  },
+  headerSafety: {
+    minWidth: 72,
+    alignItems: 'flex-end',
+    paddingVertical: theme.spacing.sm,
+    paddingLeft: theme.spacing.sm,
+  },
+  headerSafetyText: {
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.primary,
   },
   cardArea: {
     flex: 1,

@@ -310,6 +310,34 @@ export async function removeOrphanProfileAvatarObjects(paths: string[]): Promise
   }
 }
 
+/** All objects under `{userId}/` in the avatars bucket (account deletion). Best-effort; logs warnings. */
+export async function removeAllAvatarObjectsForUser(userId: string): Promise<void> {
+  const prefix = (userId ?? '').trim().replace(/^\/+|\/+$/g, '');
+  if (!prefix) return;
+
+  const paths: string[] = [];
+  const limit = 100;
+  let offset = 0;
+  for (;;) {
+    const { data: batch, error } = await supabase.storage.from(BUCKET).list(prefix, { limit, offset });
+    if (error) {
+      if (__DEV__) console.warn('[supabaseProfilePhotos] list for account delete:', error.message);
+      return;
+    }
+    const files = batch ?? [];
+    if (files.length === 0) break;
+    for (const f of files) {
+      if (f?.name) paths.push(`${prefix}/${f.name}`);
+    }
+    offset += files.length;
+    if (files.length < limit) break;
+  }
+
+  if (paths.length > 0) {
+    await removeOrphanProfileAvatarObjects(paths);
+  }
+}
+
 /**
  * Upload a single local image; return public HTTPS URL for remote paths or storage object paths.
  * Prefer `resolveProfilePhotoUrlsForSupabase` for profile saves to avoid duplicate uploads.

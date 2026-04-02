@@ -196,6 +196,23 @@ export function trackMatchPassed(
   });
 }
 
+export function trackUserReported(
+  reportedUserId: string,
+  properties?: BaseEventProperties
+): void {
+  analyticsProvider.trackEvent('user_reported', {
+    reportedUserId,
+    ...properties,
+  });
+}
+
+export function trackUserBlocked(blockedUserId: string, properties?: BaseEventProperties): void {
+  analyticsProvider.trackEvent('user_blocked', {
+    blockedUserId,
+    ...properties,
+  });
+}
+
 /**
  * Track when a user signs up
  * 

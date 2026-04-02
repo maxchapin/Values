@@ -657,10 +657,17 @@ export async function getDiscoveryProfiles(
   viewerId: string,
   options?: { interestedIn?: InterestedIn }
 ): Promise<DiscoveryProfileRow[]> {
+  const { fetchBlockedUserIdsForViewer } = await import('./supabaseSafety');
+  const blockedIds = await fetchBlockedUserIdsForViewer(viewerId);
+
   let query = supabase
     .from('profiles')
     .select(DISCOVERY_SELECT)
     .neq('id', viewerId);
+
+  if (blockedIds.length > 0) {
+    query = query.not('id', 'in', `(${blockedIds.join(',')})`);
+  }
 
   if (options?.interestedIn === 'men') {
     query = query.eq('gender', 'man');
@@ -781,6 +788,9 @@ export async function deleteSupabaseProfile(): Promise<void> {
   }
 
   const uid = user.id;
+  const { removeAllAvatarObjectsForUser } = await import('./supabaseProfilePhotos');
+  await removeAllAvatarObjectsForUser(uid);
+
   // Matches first (chat_messages FK CASCADE). Then swipes. Then profile row.
   const { error: delMatchErr } = await supabase
     .from('matches')
@@ -802,5 +812,33 @@ export async function deleteSupabaseProfile(): Promise<void> {
   if (error) {
     console.error('[supabaseProfile] Error deleting profile:', error);
     throw new Error(`Failed to delete profile: ${error.message}`);
+  }
+}
+
+/**
+ * After DB rows are removed, optionally delete the Auth user via Edge Function (service role).
+ * Set `extra.deleteAccountEdgeUrl` (e.g. EXPO_PUBLIC_DELETE_ACCOUNT_EDGE_URL) to the deployed function URL.
+ */
+export async function deleteAuthUserViaEdge(): Promise<void> {
+  const Constants = await import('expo-constants');
+  const extra = Constants.default.expoConfig?.extra as Record<string, unknown> | undefined;
+  const url = extra?.deleteAccountEdgeUrl;
+  if (typeof url !== 'string' || !url.startsWith('http')) return;
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) return;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to delete login account');
   }
 }

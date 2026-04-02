@@ -1,10 +1,13 @@
 /**
  * Matches Store
- * Discover: ranked pool from Supabase (or mock in __DEV__); queue excludes swiped targets.
- * Production swipes + mutual matches: Supabase (see supabaseMatching.ts). Mock deck uses local likes/passes.
+ * Discover: ranked pool from Supabase (or mock in dev when allowed); queue excludes swiped targets.
+ * Set EXPO_PUBLIC_ALLOW_MOCK_DISCOVER=false to forbid mock fallback even in __DEV__.
  */
 
 import { create } from 'zustand';
+
+const mockDiscoverAllowed =
+  __DEV__ && process.env.EXPO_PUBLIC_ALLOW_MOCK_DISCOVER !== 'false';
 import { Match } from '../types/match';
 import { saveMatchesState } from '../services/persistence';
 import {
@@ -198,11 +201,11 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
       const candidates = rows.map(discoveryProfileRowToUser);
 
       let matches = buildMatchListForDiscover(currentUser, candidates, mergedFilters, {
-        applyRelaxedFallback: __DEV__,
+        applyRelaxedFallback: mockDiscoverAllowed,
       });
 
       let usedMockFallback = false;
-      if (matches.length === 0 && __DEV__) {
+      if (matches.length === 0 && mockDiscoverAllowed) {
         const { findMatches } = await import('../services/mockBackend');
         matches = await findMatches(userId, mergedFilters);
         usedMockFallback = true;
@@ -217,7 +220,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
         await applySupabaseDiscoverState(set, get, safeMatches, filtersToStore, userId, currentUser);
       }
     } catch (error) {
-      if (__DEV__) {
+      if (mockDiscoverAllowed) {
         try {
           const { findMatches } = await import('../services/mockBackend');
           const currentUser = getCurrentUser();

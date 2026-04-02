@@ -38,6 +38,7 @@ import { MatchDetailScreen } from '../screens/MatchDetailScreen';
 
 // Debug screen (dev mode only)
 import { DebugScreen } from '../screens/DebugScreen';
+import { PolicyAcceptanceGate } from '../components/PolicyAcceptanceGate';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -109,6 +110,13 @@ const MainTabNavigator: React.FC = () => {
     </Tab.Navigator>
   );
 };
+
+const MainTabNavigatorWithPolicy: React.FC = () => (
+  <>
+    <PolicyAcceptanceGate />
+    <MainTabNavigator />
+  </>
+);
 
 /**
  * Root App Navigator
@@ -250,7 +258,7 @@ export const AppNavigator: React.FC = () => {
         {/* Main App - Tab Navigator */}
         <Stack.Screen
           name={ROUTES.MAIN_APP}
-          component={MainTabNavigator}
+          component={MainTabNavigatorWithPolicy}
           options={{ headerShown: false }}
         />
 

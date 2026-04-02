@@ -10,6 +10,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -21,8 +22,11 @@ import { MatchChatScreen } from '../components/MatchChatScreen';
 import { ProfileCard } from '../components/ProfileCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { EmptyState } from '../components/EmptyState';
+import { ReportUserModal } from '../components/ReportUserModal';
 import * as chatService from '../services/chatService';
 import { fetchMatchThreadIdForPair } from '../services/supabaseMatching';
+import { insertUserBlock, insertUserReport, type ReportReason } from '../services/supabaseSafety';
+import { trackUserBlocked, trackUserReported } from '../services/analytics';
 import { formatExplanationLines } from '../services/matchingModel';
 import type { RootStackParamList } from '../navigation/types';
 import type { Match } from '../types/match';
@@ -46,8 +50,13 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
   const rankedDiscoverPool = useMatchesStore((s) => s.rankedDiscoverPool);
   const likedUserIds = useMatchesStore((s) => s.likedUserIds);
   const matchIdByPartnerUserId = useMatchesStore((s) => s.matchIdByPartnerUserId);
+  const loadMatches = useMatchesStore((s) => s.loadMatches);
+  const unmatchUser = useMatchesStore((s) => s.unmatchUser);
+  const filters = useMatchesStore((s) => s.filters);
   const seedMockMessages = useChatStore((s) => s.seedMockMessages);
+  const setMessagesForMatch = useChatStore((s) => s.setMessagesForMatch);
   const [resolvedThreadId, setResolvedThreadId] = useState<string | null>(null);
+  const [reportVisible, setReportVisible] = useState(false);
 
   const likedMatches = useMemo(() => {
     if (discoverSwipeMode === 'supabase') {
@@ -165,6 +174,71 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
 
   const displayName = otherName;
 
+  const runBlockAndLeave = useCallback(async () => {
+    if (!matchUserId || !currentUserId) return;
+    try {
+      await insertUserBlock(currentUserId, matchUserId);
+      trackUserBlocked(matchUserId, { source: 'match_detail' });
+      setMessagesForMatch(matchUserId, []);
+      try {
+        await unmatchUser(matchUserId);
+      } catch {
+        /* unmatch optional if no server row */
+      }
+      if (currentUserId) {
+        await loadMatches(currentUserId, filters);
+      }
+      navigation.goBack();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not block user';
+      Alert.alert('Block failed', msg);
+    }
+  }, [
+    matchUserId,
+    currentUserId,
+    setMessagesForMatch,
+    unmatchUser,
+    loadMatches,
+    filters,
+    navigation,
+  ]);
+
+  const openSafetyMenu = useCallback(() => {
+    Alert.alert('Safety', undefined, [
+      { text: 'Report', onPress: () => setReportVisible(true) },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            'Block this person?',
+            'You won’t see each other in Discover or Matches. You can’t undo this here.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Block', style: 'destructive', onPress: () => void runBlockAndLeave() },
+            ]
+          );
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [runBlockAndLeave]);
+
+  const handleReportSubmit = useCallback(
+    async (reason: ReportReason, details: string) => {
+      if (!matchUserId || !currentUserId) return;
+      await insertUserReport({
+        reporterId: currentUserId,
+        reportedUserId: matchUserId,
+        reason,
+        details,
+        matchId: threadMatchUuid ?? null,
+      });
+      trackUserReported(matchUserId, { reason, source: 'match_detail' });
+    },
+    [matchUserId, currentUserId, threadMatchUuid]
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Top bar: back + match name */}
@@ -175,7 +249,14 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
         <Text style={styles.headerName} numberOfLines={1}>
           {displayName}
         </Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          onPress={openSafetyMenu}
+          style={styles.headerSafetyBtn}
+          accessibilityLabel="Safety and report"
+          accessibilityRole="button"
+        >
+          <Text style={styles.headerSafetyBtnText}>Safety</Text>
+        </TouchableOpacity>
       </View>
       {/* Tabs: [Chat] [Profile] */}
       <View style={styles.tabsBar}>
@@ -226,6 +307,12 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
           </View>
         </View>
       )}
+      <ReportUserModal
+        visible={reportVisible}
+        onClose={() => setReportVisible(false)}
+        onSubmit={handleReportSubmit}
+        reportedDisplayName={displayName}
+      />
     </SafeAreaView>
   );
 };
@@ -272,6 +359,17 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 52,
+  },
+  headerSafetyBtn: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    minWidth: 52,
+    alignItems: 'flex-end',
+  },
+  headerSafetyBtnText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   tabsBar: {
     flexDirection: 'row',

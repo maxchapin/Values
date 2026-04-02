@@ -140,7 +140,6 @@ export const MatchesScreen: React.FC = () => {
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList, 'Matches'>>();
   const insets = useSafeAreaInsets();
   const currentUserId = useUserStore((s) => s.currentUser?.id ?? null);
-  const availableMatches = useMatchesStore((s) => s.availableMatches);
   const discoverSwipeMode = useMatchesStore((s) => s.discoverSwipeMode);
   const mutualMatches = useMatchesStore((s) => s.mutualMatches);
   const rankedDiscoverPool = useMatchesStore((s) => s.rankedDiscoverPool);
@@ -156,20 +155,21 @@ export const MatchesScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const didLoadRef = useRef(false);
 
-  // Guard: store may return undefined before ready when switching tabs
-  const matches = Array.isArray(availableMatches) ? availableMatches : [];
-  const likedIds = Array.isArray(likedUserIds) ? likedUserIds : [];
-
-  const likedMatches = useMemo<Match[]>(() => {
-    if (matches.length === 0 || likedIds.length === 0) return [];
-    return matches.filter((match) => {
-      const id = match?.user?.id;
-      return !!id && likedIds.includes(id);
+  /** Same logic as matchesStore.getMatchesForTab: mutuals from Supabase, or pool∩likes in mock (not Discover queue). */
+  const tabMatches = useMemo<Match[]>(() => {
+    if (discoverSwipeMode === 'supabase') {
+      return Array.isArray(mutualMatches) ? mutualMatches : [];
+    }
+    const pool = Array.isArray(rankedDiscoverPool) ? rankedDiscoverPool : [];
+    const ids = Array.isArray(likedUserIds) ? likedUserIds : [];
+    if (ids.length === 0) return [];
+    return pool.filter((m) => {
+      const id = m?.user?.id;
+      return !!id && ids.includes(id);
     });
-  }, [matches, likedIds]);
+  }, [discoverSwipeMode, mutualMatches, rankedDiscoverPool, likedUserIds]);
 
-  // Safe list for effects and render (never undefined)
-  const safeLikedMatches = likedMatches ?? [];
+  const safeLikedMatches = tabMatches;
 
   // Dev-only: fake last-message previews so the list looks populated without real chat backend
   useEffect(() => {
@@ -195,11 +195,12 @@ export const MatchesScreen: React.FC = () => {
       didLoadRef.current = false;
       return;
     }
-    if (!didLoadRef.current && matches.length === 0 && !isLoading) {
+    // Load once per session so mutuals show even when Discover queue (availableMatches) is empty.
+    if (!didLoadRef.current && !isLoading) {
       didLoadRef.current = true;
-      loadMatches(currentUserId);
+      void loadMatches(currentUserId);
     }
-  }, [currentUserId, matches.length, isLoading, loadMatches]);
+  }, [currentUserId, isLoading, loadMatches]);
 
   const onRefresh = async () => {
     if (!currentUserId) return;

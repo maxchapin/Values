@@ -564,23 +564,35 @@ export async function getSupabaseProfile(): Promise<SupabaseProfile | null> {
  * SECURITY: RLS ensures users can only read their own profile.
  */
 export async function getSupabaseProfileByUserId(userId: string): Promise<SupabaseProfile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(PROFILE_SELECT)
-    .eq('id', userId)
-    .single();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(PROFILE_SELECT)
+      .eq('id', userId)
+      .single();
 
-  if (error) {
-    if (error.code === 'PGRST116') {
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      if (__DEV__) {
+        console.error(
+          '[supabaseProfile] Error fetching profile (treat as empty after retries if unresolved):',
+          error.code,
+          error.message,
+          attempt === 0 ? '— retrying once' : '— giving up'
+        );
+      }
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
       return null;
     }
-    if (__DEV__) {
-      console.error('[supabaseProfile] Error fetching profile:', error);
-    }
-    return null;
-  }
 
-  return data as SupabaseProfile;
+    return data as SupabaseProfile;
+  }
+  return null;
 }
 
 /**

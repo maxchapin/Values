@@ -20,9 +20,40 @@ WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_SESSION_POLL_MS = 400;
 const GOOGLE_OAUTH_MAX_WAIT_MS = 120_000;
+/** After browser returns, keep syncing with Supabase until session appears (memory/AsyncStorage). */
+const GOOGLE_POST_BROWSER_WAIT_MS = 90_000;
+/** Bound setSession / exchangeCodeForSession so a hung request cannot block sign-in forever. */
+const OAUTH_NETWORK_TIMEOUT_MS = 25_000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Poll getSession and periodically refreshSession until a user session exists or deadline.
+ */
+async function waitForSupabaseUserSession(maxMs: number): Promise<Session | null> {
+  const deadline = Date.now() + maxMs;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        return session;
+      }
+      if (attempt % 5 === 4) {
+        const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+        if (!refreshErr && refreshData.session?.user) {
+          return refreshData.session;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    attempt += 1;
+    await delay(GOOGLE_SESSION_POLL_MS);
+  }
+  return null;
 }
 
 function buildGoogleAuthFromSupabaseSession(session: Session): {
@@ -112,6 +143,7 @@ function parseOAuthParamsFromUrl(urlString: string): {
 
 /**
  * Apply tokens or PKCE code from a redirect/deep-link URL to the Supabase client.
+ * Network calls are time-bounded; on timeout we return and let waitForSupabaseUserSession recover.
  */
 async function applyOAuthParamsFromUrl(redirectUrl: string): Promise<void> {
   const urlString = String(redirectUrl);
@@ -121,10 +153,21 @@ async function applyOAuthParamsFromUrl(redirectUrl: string): Promise<void> {
     if (__DEV__) {
       console.log('[DEBUG] Setting session from redirect URL tokens...');
     }
-    const { error: sessionError } = await supabase.auth.setSession({
+    const setPromise = supabase.auth.setSession({
       access_token: accessToken,
       refresh_token: refreshToken || '',
     });
+    const setResult = await Promise.race([
+      setPromise.then((r) => ({ kind: 'done' as const, r })),
+      delay(OAUTH_NETWORK_TIMEOUT_MS).then(() => ({ kind: 'timeout' as const })),
+    ]);
+    if (setResult.kind === 'timeout') {
+      if (__DEV__) {
+        console.warn('[DEBUG] setSession timed out; will poll for session');
+      }
+      return;
+    }
+    const { error: sessionError } = setResult.r;
     if (sessionError) {
       if (__DEV__) {
         console.error('[DEBUG] Error setting session:', sessionError.message, sessionError.name);
@@ -142,7 +185,18 @@ async function applyOAuthParamsFromUrl(redirectUrl: string): Promise<void> {
     if (__DEV__) {
       console.log('[DEBUG] Exchanging PKCE authorization code for session...');
     }
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    const exchPromise = supabase.auth.exchangeCodeForSession(code);
+    const exchResult = await Promise.race([
+      exchPromise.then((r) => ({ kind: 'done' as const, r })),
+      delay(OAUTH_NETWORK_TIMEOUT_MS).then(() => ({ kind: 'timeout' as const })),
+    ]);
+    if (exchResult.kind === 'timeout') {
+      if (__DEV__) {
+        console.warn('[DEBUG] exchangeCodeForSession timed out; will poll for session');
+      }
+      return;
+    }
+    const { error: exchangeError } = exchResult.r;
     if (exchangeError) {
       if (__DEV__) {
         console.error('[DEBUG] exchangeCodeForSession failed:', exchangeError.message);
@@ -205,6 +259,7 @@ function raceBrowserWithSupabaseSessionPoll(
     }, GOOGLE_OAUTH_MAX_WAIT_MS);
 
     const clearOAuthTimeout = () => clearTimeout(timeoutId);
+    let pollAttempt = 0;
 
     const pollOnce = () => {
       void (async () => {
@@ -220,6 +275,21 @@ function raceBrowserWithSupabaseSessionPoll(
               /* noop */
             }
             ok({ source: 'session_poll', session });
+            return;
+          }
+          const a = pollAttempt;
+          pollAttempt += 1;
+          if (a % 5 === 4) {
+            const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+            if (!refreshErr && refreshData.session?.user) {
+              clearOAuthTimeout();
+              try {
+                WebBrowser.dismissAuthSession();
+              } catch {
+                /* noop */
+              }
+              ok({ source: 'session_poll', session: refreshData.session });
+            }
           }
         } catch {
           /* ignore transient getSession errors */
@@ -457,21 +527,12 @@ export const authService = {
           }
         }
 
-        const { data: { session: immediateSession } } = await supabase.auth.getSession();
-        if (immediateSession?.user) {
+        const waitedSession = await waitForSupabaseUserSession(GOOGLE_POST_BROWSER_WAIT_MS);
+        if (waitedSession?.user) {
           if (__DEV__) {
-            console.log('[DEBUG] Returning user and session after redirect handling');
+            console.log('[DEBUG] Returning user and session after post-browser wait');
           }
-          return buildGoogleAuthFromSupabaseSession(immediateSession);
-        }
-
-        const shortDeadline = Date.now() + 8000;
-        while (Date.now() < shortDeadline) {
-          const { data: { session: s } } = await supabase.auth.getSession();
-          if (s?.user) {
-            return buildGoogleAuthFromSupabaseSession(s);
-          }
-          await delay(350);
+          return buildGoogleAuthFromSupabaseSession(waitedSession);
         }
 
         throw new AuthError(

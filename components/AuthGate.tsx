@@ -37,7 +37,7 @@ import { theme } from '../theme';
  * - User + complete → Main app
  */
 export const AuthGate: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, profile } = useAuth();
   
   // Sync AuthUser to UserStore when user signs in
   // This creates User in UserStore from AuthUser
@@ -47,9 +47,9 @@ export const AuthGate: React.FC = () => {
   // This ensures AuthUser.isValuesComplete stays updated when onboarding completes
   useValuesCompletionSync();
 
-  // Show loading screen while checking auth state
-  // Prevents flashing between auth and main app during hydration
-  if (loading) {
+  // Show loading while hydrating, and while signed in but Supabase profile is not resolved yet
+  // (avoids routing to values onboarding using stale UserStore when profile === undefined).
+  if (loading || (user != null && profile === undefined)) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.primary} />

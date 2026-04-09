@@ -218,6 +218,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
           await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
           setUser(authUser);
+          // Invalidate stale logged-out `profile === null` so AuthGate blocks until fetch completes
+          // (same tri-state as `persistAuth`: undefined = loading).
+          setProfile(undefined);
+          // Do not block global auth loading on profile fetch (can hang in production).
+          setLoading(false);
 
           // Fetch profile so navigation can decide onboarding vs main app
           const fetchedProfile = await fetchProfileForUser(session.user.id);
@@ -225,7 +230,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setProfile(fetchedProfile ?? null);
           }
           touchLastLoginAt().catch(() => {}); // Update last_login_at for Discover composite score
-          setLoading(false);
           if (__DEV__) {
             console.log('[AuthContext] ✅ User signed in via Supabase:', authUser.id, 'profile:', fetchedProfile ? 'loaded' : 'none');
           }
@@ -276,6 +280,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const persistAuth = useCallback(async (user: AuthUser, session: AuthSession) => {
     try {
+      // Avoid treating logged-out `profile === null` as "no Supabase row" during OAuth.
+      // useAuthUserSync + AppNavigator need the real row (is_values_complete, etc.) before UI runs.
+      setProfile(undefined);
+
       // For Apple Sign-In, preserve existing user data if new data is missing
       // (Apple only provides name/email on first sign-in)
       if (user.authProvider === 'apple') {
@@ -313,6 +321,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[AuthContext] Persisted session:', user.id);
       }
 
+      const fetchedProfile = await fetchProfileForUser(user.id);
+      setProfile(fetchedProfile ?? null);
+      touchLastLoginAt().catch(() => {});
+
       // Create/update profile in Supabase database (non-blocking)
       // This ensures profile exists in Supabase for RLS and future queries
       // Note: For Supabase OAuth, onAuthStateChange listener also handles this
@@ -334,7 +346,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       throw new AuthError('Failed to save authentication session', 'PERSIST_ERROR');
     }
-  }, []);
+  }, [fetchProfileForUser]);
 
   /**
    * Clear persisted auth data

@@ -1,37 +1,36 @@
 /**
  * Values Completion Sync Hook
- * Syncs values onboarding completion from UserStore back to AuthUser
- * Ensures AuthUser.isValuesComplete stays in sync with UserStore.isValuesComplete
+ * Syncs values onboarding completion from UserStore back to AuthUser + Supabase user_metadata.
+ * Ensures AuthUser.isValuesComplete stays in sync with UserStore.isValuesComplete and that
+ * new sessions/devices receive the flags via the JWT before the profiles row loads.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
+import { supabase } from '../services/supabase';
 
 /**
- * Syncs values completion status from UserStore to AuthUser
- * When values onboarding completes, updates AuthUser.isValuesComplete flag
+ * Syncs values completion status from UserStore to AuthUser + Supabase user_metadata.
  */
 export function useValuesCompletionSync(): void {
   const { user: authUser, updateAuthUser } = useAuth();
   const isValuesComplete = useUserStore((state) => state.isValuesComplete);
   const isProfileComplete = useUserStore((state) => state.isProfileComplete);
+  const metadataSyncedRef = useRef(false);
 
   useEffect(() => {
-    // Only sync if we have an auth user
     if (!authUser) {
+      metadataSyncedRef.current = false;
       return;
     }
 
-    // Check if values completion status has changed
     const authValuesComplete = authUser.isValuesComplete ?? false;
     const authProfileComplete = authUser.isProfileComplete ?? false;
     const authOnboardingComplete = authUser.isOnboardingComplete ?? false;
 
-    // Calculate expected onboarding completion
     const expectedOnboardingComplete = isProfileComplete && isValuesComplete;
 
-    // Update if status has changed
     if (
       authValuesComplete !== isValuesComplete ||
       authProfileComplete !== isProfileComplete ||
@@ -46,6 +45,29 @@ export function useValuesCompletionSync(): void {
           console.error('[useValuesCompletionSync] Error syncing completion status:', error);
         }
       });
+
+      // Mirror to Supabase user_metadata so new devices/sessions get flags from the JWT.
+      if (expectedOnboardingComplete && !metadataSyncedRef.current) {
+        metadataSyncedRef.current = true;
+        supabase.auth
+          .updateUser({
+            data: {
+              isProfileComplete: true,
+              isValuesComplete: true,
+              isOnboardingComplete: true,
+            },
+          })
+          .then(({ error }) => {
+            if (error) {
+              metadataSyncedRef.current = false;
+              if (__DEV__) {
+                console.warn('[useValuesCompletionSync] user_metadata sync failed:', error.message);
+              }
+            } else if (__DEV__) {
+              console.log('[useValuesCompletionSync] user_metadata updated (onboarding complete)');
+            }
+          });
+      }
     }
   }, [authUser, isValuesComplete, isProfileComplete, updateAuthUser]);
 }

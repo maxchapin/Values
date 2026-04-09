@@ -217,53 +217,15 @@ export const DiscoverScreen: React.FC = () => {
     );
   }
 
-  // No profiles in the ranked pool (Supabase/mock pool empty, or filters exclude everyone)
-  if (matches.length === 0 && rankedDiscoverPoolLength === 0) {
-    return (
-      <>
-        <EmptyState
-          icon="🔍"
-          title="No profiles yet"
-          message="There's nobody new to show right now. Check back soon—or widen your filters and try again."
-          actionLabel="Adjust Filters"
-          onAction={() => setShowFilters(true)}
-          secondaryActionLabel="Feedback"
-          onSecondaryAction={() => setShowFeedbackModal(true)}
-        />
-        <FeedbackModal
-          visible={showFeedbackModal}
-          onClose={() => setShowFeedbackModal(false)}
-          context="discover_no_matches"
-        />
-      </>
-    );
-  }
+  const isDiscoverPoolEmpty = matches.length === 0 && rankedDiscoverPoolLength === 0;
+  const isQueueExhausted = !isDiscoverPoolEmpty && (!currentMatch || !candidate);
+  const showDiscoverCard = !isDiscoverPoolEmpty && !isQueueExhausted;
 
-  // Reached end of queue (seen all matches)
-  if (!currentMatch || !candidate) {
-    return (
-      <>
-        <EmptyState
-          icon="💫"
-          title="You're All Caught Up"
-          message="There are currently no more matches to show. Adjust your filters or check back later—or send us feedback."
-          actionLabel="Refresh Matches"
-          onAction={() => {
-            if (currentUser) {
-              loadMatches(currentUser.id, filters);
-            }
-          }}
-          secondaryActionLabel="Feedback"
-          onSecondaryAction={() => setShowFeedbackModal(true)}
-        />
-        <FeedbackModal
-          visible={showFeedbackModal}
-          onClose={() => setShowFeedbackModal(false)}
-          context="discover_all_caught_up"
-        />
-      </>
-    );
-  }
+  const discoverFeedbackContext = isDiscoverPoolEmpty
+    ? 'discover_no_matches'
+    : isQueueExhausted
+      ? 'discover_all_caught_up'
+      : 'discover_empty';
 
   return (
     <ScreenContainer
@@ -272,7 +234,7 @@ export const DiscoverScreen: React.FC = () => {
       safeAreaEdges={[]}
     >
       <View style={styles.container}>
-        {/* Header: Filters (left) + Values (centered) */}
+        {/* Header: Filters (left) + Values (centered); shown for card and empty states */}
         <View style={[styles.headerBar, { paddingTop: insets.top + theme.spacing.sm, backgroundColor: theme.colors.headerBackground }]}>
           <TouchableOpacity
             style={styles.filterButton}
@@ -292,7 +254,7 @@ export const DiscoverScreen: React.FC = () => {
               Values
             </Text>
           </TouchableOpacity>
-          {discoverSwipeMode === 'supabase' ? (
+          {discoverSwipeMode === 'supabase' && candidate ? (
             <TouchableOpacity
               style={styles.headerSafety}
               onPress={openDiscoverSafetyMenu}
@@ -319,43 +281,80 @@ export const DiscoverScreen: React.FC = () => {
           </View>
         )}*/}
 
-        {/* Scrollable card area: swipe wrapper so swipe right = like, swipe left = pass */}
-        <View style={styles.cardArea}>
-          <DiscoverSwipeCard
-            onLike={handleLike}
-            onPass={handlePass}
-            disabled={!candidate}
-            cardKey={candidate?.id}
-          >
-            <ProfileCard
-              ref={cardScrollRef}
-              user={candidate}
-              sharedValueIds={sharedValueIds}
-              similarityScore={typeof currentMatch?.similarityScore === 'number' ? currentMatch.similarityScore : 0}
-              sharedValuesCount={typeof currentMatch?.sharedValuesCount === 'number' ? currentMatch.sharedValuesCount : 0}
-              explanationLines={
-                currentMatch?.valuesExplanation
-                  ? formatExplanationLines(currentMatch.valuesExplanation)
-                  : undefined
-              }
-              distanceMiles={currentMatch?.distanceMiles}
-              scrollViewProps={{
-                contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
-              }}
+        {isDiscoverPoolEmpty && (
+          <View style={styles.emptyStateFill}>
+            <EmptyState
+              fullScreen={false}
+              icon="🔍"
+              title="No profiles yet"
+              message="There's nobody new to show right now. Check back soon—or widen your filters and try again."
+              actionLabel="Adjust Filters"
+              onAction={() => setShowFilters(true)}
+              secondaryActionLabel="Feedback"
+              onSecondaryAction={() => setShowFeedbackModal(true)}
+              containerStyle={styles.emptyStateInner}
             />
-          </DiscoverSwipeCard>
-        </View>
+          </View>
+        )}
 
-        {/* Fixed bottom bar: Like/Pass (match score is on the card) */}
-        <View style={styles.fixedBottomBar}>
-          <DiscoverActionBar
-            onPass={handlePass}
-            onLike={handleLike}
-            disabled={!candidate}
-          />
-        </View>
+        {isQueueExhausted && (
+          <View style={styles.emptyStateFill}>
+            <EmptyState
+              fullScreen={false}
+              icon="💫"
+              title="You're All Caught Up"
+              message="There are currently no more matches to show. Adjust your filters or check back later—or send us feedback."
+              actionLabel="Refresh Matches"
+              onAction={() => {
+                if (currentUser) {
+                  loadMatches(currentUser.id, filters);
+                }
+              }}
+              secondaryActionLabel="Feedback"
+              onSecondaryAction={() => setShowFeedbackModal(true)}
+              containerStyle={styles.emptyStateInner}
+            />
+          </View>
+        )}
+
+        {showDiscoverCard && candidate && currentMatch && (
+          <>
+            <View style={styles.cardArea}>
+              <DiscoverSwipeCard
+                onLike={handleLike}
+                onPass={handlePass}
+                disabled={false}
+                cardKey={candidate.id}
+              >
+                <ProfileCard
+                  ref={cardScrollRef}
+                  user={candidate}
+                  sharedValueIds={sharedValueIds}
+                  similarityScore={typeof currentMatch.similarityScore === 'number' ? currentMatch.similarityScore : 0}
+                  sharedValuesCount={typeof currentMatch.sharedValuesCount === 'number' ? currentMatch.sharedValuesCount : 0}
+                  explanationLines={
+                    currentMatch.valuesExplanation
+                      ? formatExplanationLines(currentMatch.valuesExplanation)
+                      : undefined
+                  }
+                  distanceMiles={currentMatch.distanceMiles}
+                  scrollViewProps={{
+                    contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
+                  }}
+                />
+              </DiscoverSwipeCard>
+            </View>
+
+            <View style={styles.fixedBottomBar}>
+              <DiscoverActionBar
+                onPass={handlePass}
+                onLike={handleLike}
+                disabled={!candidate}
+              />
+            </View>
+          </>
+        )}
       </View>
-      
 
       <FiltersSheet
         visible={showFilters}
@@ -363,6 +362,11 @@ export const DiscoverScreen: React.FC = () => {
         onClose={() => setShowFilters(false)}
         onApply={handleApplyFilters}
         onReset={handleResetFilters}
+      />
+      <FeedbackModal
+        visible={showFeedbackModal}
+        onClose={() => setShowFeedbackModal(false)}
+        context={discoverFeedbackContext}
       />
       <ReportUserModal
         visible={reportVisible}
@@ -379,6 +383,15 @@ export default DiscoverScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  emptyStateFill: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 0,
+    backgroundColor: theme.colors.background,
+  },
+  emptyStateInner: {
+    paddingTop: theme.spacing.md,
   },
   headerBar: {
     paddingHorizontal: theme.spacing.md,

@@ -75,6 +75,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const PROFILE_FETCH_TIMEOUT_MS = 10_000;
+
+  /** Time-bounded profile fetch. Returns null on timeout so the UI is never stuck. */
+  const fetchProfileWithTimeout = useCallback(
+    async (userId: string): Promise<SupabaseProfile | null> => {
+      const timeout = new Promise<null>((resolve) => {
+        setTimeout(() => {
+          if (__DEV__) {
+            console.warn(`[AuthContext] Profile fetch timed out after ${PROFILE_FETCH_TIMEOUT_MS}ms`);
+          }
+          resolve(null);
+        }, PROFILE_FETCH_TIMEOUT_MS);
+      });
+      return Promise.race([fetchProfileForUser(userId), timeout]);
+    },
+    [fetchProfileForUser]
+  );
+
   /**
    * Convert Supabase user to AuthUser format
    */
@@ -136,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(authUser);
 
           // Fetch profile from Supabase so we know if onboarding is already complete
-          const fetchedProfile = await fetchProfileForUser(supabaseSession.user.id);
+          const fetchedProfile = await fetchProfileWithTimeout(supabaseSession.user.id);
           if (isMounted) {
             setProfile(fetchedProfile ?? null);
           }
@@ -225,7 +243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLoading(false);
 
           // Fetch profile so navigation can decide onboarding vs main app
-          const fetchedProfile = await fetchProfileForUser(session.user.id);
+          const fetchedProfile = await fetchProfileWithTimeout(session.user.id);
           if (isMounted) {
             setProfile(fetchedProfile ?? null);
           }
@@ -271,7 +289,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [convertSupabaseUserToAuthUser, fetchProfileForUser]);
+  }, [convertSupabaseUserToAuthUser, fetchProfileWithTimeout]);
 
   /**
    * Persist auth session and user to secure storage
@@ -321,7 +339,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[AuthContext] Persisted session:', user.id);
       }
 
-      const fetchedProfile = await fetchProfileForUser(user.id);
+      const fetchedProfile = await fetchProfileWithTimeout(user.id);
       setProfile(fetchedProfile ?? null);
       touchLastLoginAt().catch(() => {});
 
@@ -345,8 +363,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('[AuthContext] Error persisting session:', error);
       }
       throw new AuthError('Failed to save authentication session', 'PERSIST_ERROR');
+    } finally {
+      // Never leave profile in the `undefined` state — AuthGate would spin forever.
+      setProfile((prev) => (prev === undefined ? null : prev));
     }
-  }, [fetchProfileForUser]);
+  }, [fetchProfileWithTimeout]);
 
   /**
    * Clear persisted auth data
@@ -380,7 +401,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(null);
         return;
       }
-      const fetched = await fetchProfileForUser(session.user.id);
+      const fetched = await fetchProfileWithTimeout(session.user.id);
       setProfile(fetched ?? null);
       if (__DEV__) {
         console.log('[AuthContext] refreshProfile:', fetched ? 'loaded' : 'none');
@@ -391,7 +412,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setProfile(null);
     }
-  }, [fetchProfileForUser]);
+  }, [fetchProfileWithTimeout]);
 
   /**
    * Sign in with Google

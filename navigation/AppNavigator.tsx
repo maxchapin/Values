@@ -134,10 +134,13 @@ const MainTabNavigatorWithPolicy: React.FC = () => (
 export const AppNavigator: React.FC = () => {
   const { user: authUser, profile } = useAuth();
 
-  // Prefer Supabase profile for routing so logout → login respects onboarding_completed
-  const isProfileComplete = profile?.is_profile_complete ?? useUserStore((state) => state.isProfileComplete);
-  const isValuesComplete = profile?.is_values_complete ?? useUserStore((state) => state.isValuesComplete);
-  const isOnboardingComplete = profile?.is_onboarding_complete ?? (isProfileComplete && isValuesComplete);
+  const storeIsProfileComplete = useUserStore((state) => state.isProfileComplete);
+  const storeIsValuesComplete = useUserStore((state) => state.isValuesComplete);
+
+  // Fallback chain: Supabase profile row → AuthUser flags (persisted in SecureStore) → UserStore
+  const isProfileComplete = profile?.is_profile_complete ?? authUser?.isProfileComplete ?? storeIsProfileComplete;
+  const isValuesComplete = profile?.is_values_complete ?? authUser?.isValuesComplete ?? storeIsValuesComplete;
+  const isOnboardingComplete = profile?.is_onboarding_complete ?? authUser?.isOnboardingComplete ?? (isProfileComplete && isValuesComplete);
 
   const phase = useMemo<'auth' | 'profile' | 'values' | 'main'>(() => {
     if (!authUser) return 'auth';

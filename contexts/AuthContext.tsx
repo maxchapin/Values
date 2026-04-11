@@ -3,7 +3,7 @@
  * Provides unified authentication state and methods for Google, Apple, and Phone sign-in
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import type { AuthUser, AuthProvider as AuthProviderType, AuthSession, PhoneAuthState } from '../types/auth';
 import { AuthError } from '../types/auth';
@@ -62,6 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<AuthProfile>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
   const [phoneAuthState, setPhoneAuthState] = useState<PhoneAuthState | null>(null);
+  const profileFetchInFlightRef = useRef<string | null>(null);
 
   /** Fetch profile from Supabase for the given user id. Returns null if no row or error. */
   const fetchProfileForUser = useCallback(async (userId: string): Promise<SupabaseProfile | null> => {
@@ -149,19 +150,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           // Persist to secure storage
-          await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
-          await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
+          await Promise.all([
+            SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession)),
+            SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser)),
+          ]);
           setUser(authUser);
 
-          // Fetch profile from Supabase so we know if onboarding is already complete
-          const fetchedProfile = await fetchProfileWithTimeout(supabaseSession.user.id);
-          if (isMounted) {
-            setProfile(fetchedProfile ?? null);
+          const hasOnboardingHint = authUser.isOnboardingComplete === true;
+
+          if (hasOnboardingHint) {
+            setProfile(null);
+            fetchProfileWithTimeout(supabaseSession.user.id)
+              .then((p) => { if (isMounted && p) setProfile(p); })
+              .catch(() => {});
+          } else {
+            const fetchedProfile = await fetchProfileWithTimeout(supabaseSession.user.id);
+            if (isMounted) {
+              setProfile(fetchedProfile ?? null);
+            }
           }
-          touchLastLoginAt().catch(() => {}); // Update last_login_at for Discover composite score
+          touchLastLoginAt().catch(() => {});
 
           if (__DEV__) {
-            console.log('[AuthContext] ✅ Restored Supabase session:', authUser.id, 'profile:', fetchedProfile ? 'loaded' : 'none');
+            console.log('[AuthContext] ✅ Restored Supabase session:', authUser.id, hasOnboardingHint ? '(fast path)' : '(full fetch)');
           }
         } else {
           // No Supabase session: profile is resolved (no row to show)
@@ -221,7 +232,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (event === 'SIGNED_IN' && session?.user) {
-        // Convert Supabase user to AuthUser
+        // persistAuth already handling this user — skip duplicate work
+        if (profileFetchInFlightRef.current === session.user.id) {
+          if (__DEV__) {
+            console.log('[AuthContext] SIGNED_IN skipped — persistAuth in flight for', session.user.id);
+          }
+          return;
+        }
+
         const authUser = convertSupabaseUserToAuthUser(session.user);
         const authSession: AuthSession = {
           userId: authUser.id,
@@ -231,40 +249,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           expiresAt: session.expires_at ? session.expires_at * 1000 : undefined,
         };
 
-        // Persist to secure storage
         try {
-          await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession));
-          await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser));
+          await Promise.all([
+            SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(authSession)),
+            SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(authUser)),
+          ]);
           setUser(authUser);
-          // Invalidate stale logged-out `profile === null` so AuthGate blocks until fetch completes
-          // (same tri-state as `persistAuth`: undefined = loading).
-          setProfile(undefined);
-          // Do not block global auth loading on profile fetch (can hang in production).
           setLoading(false);
 
-          // Fetch profile so navigation can decide onboarding vs main app
-          const fetchedProfile = await fetchProfileWithTimeout(session.user.id);
-          if (isMounted) {
-            setProfile(fetchedProfile ?? null);
-          }
-          touchLastLoginAt().catch(() => {}); // Update last_login_at for Discover composite score
-          if (__DEV__) {
-            console.log('[AuthContext] ✅ User signed in via Supabase:', authUser.id, 'profile:', fetchedProfile ? 'loaded' : 'none');
+          const hasOnboardingHint = authUser.isOnboardingComplete === true;
+
+          if (hasOnboardingHint) {
+            setProfile(null);
+            fetchProfileWithTimeout(session.user.id)
+              .then((p) => { if (isMounted && p) setProfile(p); })
+              .catch(() => {});
+          } else {
+            setProfile(undefined);
+            const fetchedProfile = await fetchProfileWithTimeout(session.user.id);
+            if (isMounted) {
+              setProfile(fetchedProfile ?? null);
+            }
+
+            if (!fetchedProfile) {
+              upsertSupabaseProfile(authUser)
+                .then(() => {
+                  if (__DEV__) console.log('[AuthContext] ✅ Profile created/updated in Supabase');
+                })
+                .catch((profileError) => {
+                  if (__DEV__) console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
+                });
+            }
           }
 
-          // Create/update profile in Supabase database if no row yet (non-blocking)
-          if (!fetchedProfile) {
-            upsertSupabaseProfile(authUser)
-              .then(() => {
-                if (__DEV__) {
-                  console.log('[AuthContext] ✅ Profile created/updated in Supabase');
-                }
-              })
-              .catch((profileError) => {
-                if (__DEV__) {
-                  console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
-                }
-              });
+          touchLastLoginAt().catch(() => {});
+          if (__DEV__) {
+            console.log('[AuthContext] ✅ User signed in via Supabase:', authUser.id, hasOnboardingHint ? '(fast path)' : '(full fetch)');
           }
         } catch (error) {
           if (__DEV__) {
@@ -298,9 +318,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const persistAuth = useCallback(async (user: AuthUser, session: AuthSession) => {
     try {
-      // Avoid treating logged-out `profile === null` as "no Supabase row" during OAuth.
-      // useAuthUserSync + AppNavigator need the real row (is_values_complete, etc.) before UI runs.
-      setProfile(undefined);
+      profileFetchInFlightRef.current = user.id;
 
       // For Apple Sign-In, preserve existing user data if new data is missing
       // (Apple only provides name/email on first sign-in)
@@ -309,11 +327,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const existingUserJson = await SecureStore.getItemAsync(AUTH_USER_KEY);
           if (existingUserJson) {
             const existingUser: AuthUser = JSON.parse(existingUserJson);
-            // If this is the same user, merge data (preserve existing name/email)
             if (existingUser.id === user.id) {
               user = {
                 ...user,
-                // Preserve existing name/email if new data is missing
                 displayName: user.displayName || existingUser.displayName,
                 firstName: user.firstName || existingUser.firstName,
                 lastName: user.lastName || existingUser.lastName,
@@ -325,38 +341,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
         } catch (mergeError) {
-          // If merge fails, continue with new user data
           if (__DEV__) {
             console.warn('[AuthContext] Could not merge user data:', mergeError);
           }
         }
       }
 
-      await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(session));
-      await SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(user));
+      await Promise.all([
+        SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(session)),
+        SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(user)),
+      ]);
       setUser(user);
       if (__DEV__) {
         console.log('[AuthContext] Persisted session:', user.id);
       }
 
-      const fetchedProfile = await fetchProfileWithTimeout(user.id);
-      setProfile(fetchedProfile ?? null);
+      const hasOnboardingHint = user.isOnboardingComplete === true;
+
+      if (hasOnboardingHint) {
+        // Returning user: unblock UI immediately; AuthUser flags drive routing
+        setProfile(null);
+        // Background fetch to hydrate profile for screens that need full data
+        fetchProfileWithTimeout(user.id)
+          .then((p) => { if (p) setProfile(p); })
+          .catch(() => {});
+      } else {
+        // New user or unknown: must block until we know the real state
+        setProfile(undefined);
+        const fetchedProfile = await fetchProfileWithTimeout(user.id);
+        setProfile(fetchedProfile ?? null);
+      }
+
       touchLastLoginAt().catch(() => {});
 
-      // Create/update profile in Supabase database (non-blocking)
-      // This ensures profile exists in Supabase for RLS and future queries
-      // Note: For Supabase OAuth, onAuthStateChange listener also handles this
       upsertSupabaseProfile(user)
         .then(() => {
-          if (__DEV__) {
-            console.log('[AuthContext] ✅ Profile created/updated in Supabase');
-          }
+          if (__DEV__) console.log('[AuthContext] ✅ Profile created/updated in Supabase');
         })
         .catch((profileError) => {
-          // Log but don't fail auth - profile can be created later
-          if (__DEV__) {
-            console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
-          }
+          if (__DEV__) console.warn('[AuthContext] ⚠️ Profile creation failed (non-critical):', profileError);
         });
     } catch (error) {
       if (__DEV__) {
@@ -364,6 +387,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       throw new AuthError('Failed to save authentication session', 'PERSIST_ERROR');
     } finally {
+      profileFetchInFlightRef.current = null;
       // Never leave profile in the `undefined` state — AuthGate would spin forever.
       setProfile((prev) => (prev === undefined ? null : prev));
     }

@@ -90,9 +90,6 @@ export default function App() {
               console.log('[App] ❌ Auto-login skipped: keepSignedIn=false');
               console.log('[App] User data is still persisted but session not restored');
             }
-            // Mark store as hydrated even though we're not restoring session
-            // This allows the navigator to render and show the login screen
-            const { useUserStore } = await import('./store/userStore');
             useUserStore.setState({ isHydrated: true });
             
             setRehydrationResult({
@@ -198,8 +195,6 @@ export default function App() {
                 console.log('[App] User data validation failed');
               }
             }
-            // Mark store as hydrated so navigator can render
-            const { useUserStore } = await import('./store/userStore');
             useUserStore.setState({ isHydrated: true });
             
             setRehydrationResult({
@@ -212,8 +207,6 @@ export default function App() {
           if (__DEV__) {
             console.log('[App] ❌ Auto-login skipped: No persisted auth state found');
           }
-          // Mark store as hydrated so navigator can render
-          const { useUserStore } = await import('./store/userStore');
           useUserStore.setState({ isHydrated: true });
           
           setRehydrationResult({
@@ -226,8 +219,6 @@ export default function App() {
         if (__DEV__) {
           console.error('[App] ❌ Error rehydrating app state:', error);
         }
-        // Mark store as hydrated even on error so navigator can render
-        const { useUserStore } = await import('./store/userStore');
         useUserStore.setState({ isHydrated: true });
         
         setRehydrationResult({

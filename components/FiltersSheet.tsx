@@ -43,14 +43,14 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
   }, [visible, initialAgeRange, initialRadius]);
 
   /** Save current draft and close. Used for tap-outside and close X. */
-  const saveAndClose = async (): Promise<void> => {
+  const saveAndClose = (): void => {
     const next: MatchFilters = {
       ...filters,
       ageRange,
       radiusMiles,
     };
-    await onApply(next);
     onClose();
+    void onApply(next);
   };
 
   /** Reset filters to defaults and notify parent. */
@@ -84,7 +84,7 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
             <Text style={styles.valueText}>Ages {ageRange[0]}–{ageRange[1]}</Text>
             <RangeSlider
               min={18}
-              max={99}
+              max={122}
               step={1}
               value={ageRange}
               onChange={setAgeRange}

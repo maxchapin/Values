@@ -97,7 +97,6 @@ export default function App() {
               reason: 'keepSignedIn disabled',
             });
             setRehydrationStatus('Keep signed in disabled, showing login...');
-            setIsRehydrating(false);
             return;
           }
           

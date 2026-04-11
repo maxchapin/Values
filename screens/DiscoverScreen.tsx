@@ -19,7 +19,7 @@ import { ScreenContainer } from '../components/ScreenContainer';
 import { DiscoverActionBar } from '../components/DiscoverActionBar';
 import { ProfileCard } from '../components/ProfileCard';
 import { DiscoverSwipeCard } from '../components/DiscoverSwipeCard';
-import { FiltersSheet } from '../components/FiltersSheet';
+import { FiltersSheet, DEFAULT_AGE_RANGE, DEFAULT_RADIUS_MILES } from '../components/FiltersSheet';
 import { FeedbackModal } from '../components/FeedbackModal';
 import { ReportUserModal } from '../components/ReportUserModal';
 import { insertUserBlock, insertUserReport, type ReportReason } from '../services/supabaseSafety';
@@ -118,14 +118,14 @@ export const DiscoverScreen: React.FC = () => {
     }
   };
 
-  const handleApplyFilters = async (nextFilters: typeof filters): Promise<void> => {
-    await setFilters(nextFilters);
+  const handleApplyFilters = (nextFilters: typeof filters): Promise<void> => {
+    return setFilters(nextFilters);
   };
 
   const handleResetFilters = async (): Promise<void> => {
     await setFilters({
-      ageRange: [18, 99],
-      radiusMiles: 50,
+      ageRange: DEFAULT_AGE_RANGE,
+      radiusMiles: DEFAULT_RADIUS_MILES,
     });
   };
 

@@ -13,8 +13,8 @@ interface FiltersSheetProps {
   onReset: () => Promise<void> | void;
 }
 
-const DEFAULT_AGE_RANGE: [number, number] = [18, 122];
-const DEFAULT_RADIUS_MILES = 20;
+export const DEFAULT_AGE_RANGE: [number, number] = [18, 122];
+export const DEFAULT_RADIUS_MILES = 20;
 const RADIUS_MIN_MILES = 1;
 const RADIUS_MAX_MILES = 100;
 const RADIUS_STEP_MILES = 1;
@@ -50,7 +50,9 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
       radiusMiles,
     };
     onClose();
-    void onApply(next);
+    Promise.resolve(onApply(next)).catch((e) => {
+      if (__DEV__) console.error('[FiltersSheet] onApply error:', e);
+    });
   };
 
   /** Reset filters to defaults and notify parent. */

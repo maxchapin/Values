@@ -1,19 +1,35 @@
-/**
- * Production telemetry wiring. Replace the stub provider with Firebase/Mixpanel/etc. via initializeAnalytics.
- */
+import { Mixpanel } from 'mixpanel-react-native';
+import { initializeAnalytics, type AnalyticsProvider, type BaseEventProperties } from './analytics';
 
-import { initializeAnalytics, type AnalyticsProvider } from './analytics';
+class MixpanelAnalyticsProvider implements AnalyticsProvider {
+  private mp: Mixpanel;
 
-/** No-op implementation for release builds until a real SDK is configured. */
-class ProductionAnalyticsStub implements AnalyticsProvider {
-  trackEvent(): void {}
-  trackScreenView(): void {}
-  setUserProperties(): void {}
-  setUserId(): void {}
+  constructor(token: string) {
+    this.mp = new Mixpanel(token, false);
+    this.mp.init();
+    this.mp.registerSuperProperties({ environment: __DEV__ ? 'development' : 'production' });
+  }
+
+  trackEvent(eventName: string, properties?: BaseEventProperties): void {
+    this.mp.track(eventName, properties ?? {});
+  }
+
+  trackScreenView(screenName: string, properties?: BaseEventProperties): void {
+    this.mp.track('Screen View', { screen: screenName, ...(properties ?? {}) });
+  }
+
+  setUserProperties(properties: BaseEventProperties): void {
+    this.mp.getPeople().set(properties);
+  }
+
+  setUserId(userId: string): void {
+    this.mp.identify(userId);
+  }
 }
 
-/** Call once at app startup (e.g. App.tsx). In __DEV__, keep default console analytics. */
+/** Call once at app startup (App.tsx). Initializes Mixpanel in all environments so Live View works during dev. */
 export function initProductionTelemetry(): void {
-  if (__DEV__) return;
-  initializeAnalytics(new ProductionAnalyticsStub());
+  const token = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN;
+  if (!token) return;
+  initializeAnalytics(new MixpanelAnalyticsProvider(token));
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Button } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -13,6 +13,26 @@ import type { PersistedUserData } from './utils/storage';
 import { theme } from './theme';
 import { User } from './types/user';
 import { initProductionTelemetry } from './services/telemetry';
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 
 /**
@@ -36,7 +56,7 @@ const LoadingScreen: React.FC = () => (
  * UserStore rehydration is kept for backward compatibility but AuthContext
  * handles session restoration independently.
  */
-export default function App() {
+export default Sentry.wrap(function App() {
   useEffect(() => {
     initProductionTelemetry();
   }, []);
@@ -278,6 +298,11 @@ export default function App() {
                   </Text>
                 </View>
               )}
+              {__DEV__ && (
+                <View style={styles.devSentryBtn}>
+                  <Button title='Try!' onPress={() => { Sentry.captureException(new Error('First error')); }} />
+                </View>
+              )}
               </AuthProvider>
             </SafeAreaProvider>
           </GestureHandlerRootView>
@@ -285,7 +310,7 @@ export default function App() {
       )}
     </>
   );
-}
+});
 
 const styles = StyleSheet.create({
   flex1: { flex: 1 },
@@ -330,5 +355,11 @@ const styles = StyleSheet.create({
     padding: theme.spacing.sm,
     borderRadius: theme.borderRadius.base,
     zIndex: 1000,
+  },
+  devSentryBtn: {
+    position: 'absolute',
+    bottom: 80,
+    right: 10,
+    zIndex: 1001,
   },
 });

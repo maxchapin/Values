@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMatchesStore } from '../store/matchesStore';
@@ -45,6 +46,7 @@ export const DiscoverScreen: React.FC = () => {
     passUser,
     setFilters,
     discoverSwipeMode,
+    discoverMode,
   } = useMatchesStore();
 
   // Guard: store may not have availableMatches on first paint when switching tabs
@@ -254,18 +256,26 @@ export const DiscoverScreen: React.FC = () => {
               Values
             </Text>
           </TouchableOpacity>
-          {discoverSwipeMode === 'supabase' && candidate ? (
+          <View style={styles.headerRight}>
+            {discoverSwipeMode === 'supabase' && candidate ? (
+              <TouchableOpacity
+                style={styles.headerSafety}
+                onPress={openDiscoverSafetyMenu}
+                accessibilityLabel="Safety and report"
+                accessibilityRole="button"
+              >
+                <Text style={styles.headerSafetyText}>Safety</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              style={styles.headerSafety}
-              onPress={openDiscoverSafetyMenu}
-              accessibilityLabel="Safety and report"
+              style={styles.qrButton}
+              onPress={() => (navigation as any).navigate('QRScanner')}
+              accessibilityLabel="Check in to a venue"
               accessibilityRole="button"
             >
-              <Text style={styles.headerSafetyText}>Safety</Text>
+              <Ionicons name="qr-code-outline" size={22} color={theme.colors.primary} />
             </TouchableOpacity>
-          ) : (
-            <View style={styles.headerSpacer} />
-          )}
+          </View>
         </View>
 
         {/*{__DEV__ && (
@@ -319,6 +329,13 @@ export const DiscoverScreen: React.FC = () => {
 
         {showDiscoverCard && candidate && currentMatch && (
           <>
+            {discoverMode === 'city' && (
+              <View style={styles.cityBanner}>
+                <Text style={styles.cityBannerText}>
+                  Showing city-wide profiles — check in somewhere to see who's nearby
+                </Text>
+              </View>
+            )}
             <View style={styles.cardArea}>
               <DiscoverSwipeCard
                 onLike={handleLike}
@@ -338,6 +355,7 @@ export const DiscoverScreen: React.FC = () => {
                       : undefined
                   }
                   distanceMiles={currentMatch.distanceMiles}
+                  sharedVenueName={currentMatch.sharedVenueName}
                   scrollViewProps={{
                     contentContainerStyle: { paddingBottom: theme.spacing['2xl'] },
                   }}
@@ -432,8 +450,19 @@ const styles = StyleSheet.create({
     color: theme.colors.headerTint,
     textAlign: 'center',
   },
-  headerSpacer: {
-    width: 72,
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 72,
+    gap: theme.spacing.xs,
+  },
+  qrButton: {
+    padding: theme.spacing.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerSafety: {
     minWidth: 72,
@@ -445,6 +474,21 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.primary,
+  },
+  cityBanner: {
+    marginHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.base,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.primaryLight + '18',
+    borderRadius: theme.borderRadius.base,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + '30',
+  },
+  cityBannerText: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.primary,
+    textAlign: 'center',
   },
   cardArea: {
     flex: 1,

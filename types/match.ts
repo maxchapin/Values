@@ -24,6 +24,8 @@ export interface Match {
   valuesExplanation?: ValuesExplanation;
   /** Distance in miles from viewer to this match (when center coords available). Omitted if unavailable. */
   distanceMiles?: number | null;
+  /** Most recent venue both users have checked into. Populated from get_checkin_feed; undefined in city-wide mode. */
+  sharedVenueName?: string;
 }
 
 export interface MatchFilters {

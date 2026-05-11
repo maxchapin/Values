@@ -50,6 +50,9 @@ export type RootStackParamList = {
   Debug: undefined;
   // Match detail (Profile + Chat)
   MatchDetail: { matchUserId: string };
+  // Check-in flow
+  QRScanner: undefined;
+  CheckinConfirmation: { qrToken: string };
   // Legacy (can be removed later)
   Home: undefined;
   Details: { itemId: string };
@@ -80,6 +83,9 @@ export const ROUTES = {
   SETTINGS: 'Settings',
   // Match detail
   MATCH_DETAIL: 'MatchDetail',
+  // Check-in flow
+  QR_SCANNER: 'QRScanner',
+  CHECKIN_CONFIRMATION: 'CheckinConfirmation',
   // Debug
   DEBUG: 'Debug',
   // Legacy

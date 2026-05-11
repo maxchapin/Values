@@ -54,6 +54,8 @@ export interface ProfileCardProps {
   sharedValuesCount?: number;
   explanationLines?: string[];
   distanceMiles?: number | null;
+  /** Venue both users recently checked into. Shows a badge when set. */
+  sharedVenueName?: string;
   /** Show Edit button on card (Profile tab). */
   showEditButton?: boolean;
   onEditPress?: () => void;
@@ -72,6 +74,7 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
       sharedValuesCount,
       explanationLines,
       distanceMiles,
+      sharedVenueName,
       showEditButton = false,
       onEditPress,
       onValuesPress,
@@ -157,6 +160,17 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
               ) : null}
             </View>
           </View>
+
+          {!isSelfMode && sharedVenueName ? (
+            <View style={cardStyles.section}>
+              <View style={cardStyles.venueBadge}>
+                <Text style={cardStyles.venueBadgeIcon}>📍</Text>
+                <Text style={cardStyles.venueBadgeText} numberOfLines={1}>
+                  Both at {sharedVenueName}
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           <View style={[cardStyles.section, cardStyles.sectionCard, cardStyles.detailsCard]}>
             <Text style={cardStyles.sectionCardTitle}>Details</Text>

@@ -35,6 +35,8 @@ import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ProfilePreviewScreen } from '../screens/ProfilePreviewScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { MatchDetailScreen } from '../screens/MatchDetailScreen';
+import { QRScannerScreen } from '../screens/QRScannerScreen';
+import { CheckinConfirmationScreen } from '../screens/CheckinConfirmationScreen';
 
 // Debug screen (dev mode only)
 import { DebugScreen } from '../screens/DebugScreen';
@@ -294,6 +296,18 @@ export const AppNavigator: React.FC = () => {
           name={ROUTES.MATCH_DETAIL}
           component={MatchDetailScreen}
           options={{ title: 'Match', headerShown: false }}
+        />
+
+        {/* Check-in flow */}
+        <Stack.Screen
+          name={ROUTES.QR_SCANNER}
+          component={QRScannerScreen}
+          options={{ headerShown: false, presentation: 'fullScreenModal' }}
+        />
+        <Stack.Screen
+          name={ROUTES.CHECKIN_CONFIRMATION}
+          component={CheckinConfirmationScreen}
+          options={{ headerShown: false }}
         />
 
         {/* Debug Screen (dev mode only) */}

@@ -57,6 +57,7 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
   const setMessagesForMatch = useChatStore((s) => s.setMessagesForMatch);
   const [resolvedThreadId, setResolvedThreadId] = useState<string | null>(null);
   const [reportVisible, setReportVisible] = useState(false);
+  const [sharedVenueName, setSharedVenueName] = useState<string | null>(null);
 
   const likedMatches = useMemo(() => {
     if (discoverSwipeMode === 'supabase') {
@@ -166,6 +167,16 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
     );
   }
 
+  useEffect(() => {
+    if (!currentUserId || !otherUser?.id) return;
+    let cancelled = false;
+    import('../services/supabaseCheckin')
+      .then(({ getSharedVenueForPair }) => getSharedVenueForPair(currentUserId, otherUser.id))
+      .then((name) => { if (!cancelled) setSharedVenueName(name); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentUserId, otherUser?.id]);
+
   const sharedValueIds = useMemo(() => new Set(match.sharedValues ?? []), [match.sharedValues]);
   const explanationLines = useMemo(
     () => (match.valuesExplanation ? formatExplanationLines(match.valuesExplanation) : undefined),
@@ -273,6 +284,14 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
           <Text style={[styles.segmentText, tab === 1 && styles.segmentTextActive]}>Profile</Text>
         </Pressable>
       </View>
+
+      {tab === 0 && sharedVenueName ? (
+        <View style={styles.icebreakerBanner}>
+          <Text style={styles.icebreakerText}>
+            📍 You both checked in at {sharedVenueName} — break the ice!
+          </Text>
+        </View>
+      ) : null}
 
       {tab === 0 ? (
         /* TAB 1: Chat – current implementation, ~80% height feel via flex */
@@ -433,5 +452,20 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: theme.typography.fontSize.base,
     color: theme.colors.textSecondary,
+  },
+  icebreakerBanner: {
+    backgroundColor: theme.colors.success + '18',
+    borderRadius: theme.borderRadius.base,
+    borderWidth: 1,
+    borderColor: theme.colors.success + '35',
+    paddingHorizontal: theme.spacing.base,
+    paddingVertical: theme.spacing.sm,
+    marginHorizontal: theme.spacing.base,
+    marginTop: theme.spacing.sm,
+  },
+  icebreakerText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.success,
+    textAlign: 'center',
   },
 });

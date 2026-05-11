@@ -54,6 +54,8 @@ interface MatchesStore {
   error: string | null;
   isHydrated: boolean;
   _conversationPreviews: Record<string, ConversationPreviewData>;
+  /** 'checkin' = check-in pool active; 'city' = city-wide fallback */
+  discoverMode: 'checkin' | 'city';
 
   loadMatches: (userId: string, filters?: MatchFilters) => Promise<void>;
   setFilters: (filters: MatchFilters) => Promise<void>;
@@ -82,7 +84,8 @@ async function applySupabaseDiscoverState(
   rankedPool: Match[],
   filtersUpdate: MatchFilters | undefined,
   userId: string,
-  currentUser: import('../types/user').User
+  currentUser: import('../types/user').User,
+  discoverMode: 'checkin' | 'city' = 'city'
 ): Promise<void> {
   const {
     fetchSwipedTargetIds,
@@ -97,6 +100,7 @@ async function applySupabaseDiscoverState(
   const queue = buildDiscoverQueueExcludingTargets(rankedPool, new Set(swipedIds));
   set({
     discoverSwipeMode: 'supabase',
+    discoverMode,
     rankedDiscoverPool: rankedPool,
     rankedDiscoverPoolLength: rankedPool.length,
     availableMatches: queue,
@@ -144,6 +148,7 @@ function applyMockDiscoverState(
 
 export const useMatchesStore = create<MatchesStore>((set, get) => ({
   discoverSwipeMode: 'supabase',
+  discoverMode: 'city',
   rankedDiscoverPool: [],
   rankedDiscoverPoolLength: 0,
   availableMatches: [],
@@ -192,17 +197,40 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
         interestedIn: (filters ?? get().filters)?.interestedIn ?? currentUser?.interestedIn ?? undefined,
       };
 
-      const { getDiscoveryProfiles, discoveryProfileRowToUser } = await import('../services/supabaseProfile');
+      const { getDiscoveryProfiles, discoveryProfileRowToUser, getDiscoveryProfileRowsByIds } = await import('../services/supabaseProfile');
       const { buildMatchListForDiscover } = await import('../services/mockBackend');
 
-      const rows = await getDiscoveryProfiles(userId, {
-        interestedIn: mergedFilters.interestedIn,
-      });
-      const candidates = rows.map(discoveryProfileRowToUser);
+      // Try check-in feed first; fall back to city-wide discovery if empty
+      const { getCheckinFeed } = await import('../services/supabaseCheckin');
+      const feedRows = await getCheckinFeed(userId); // never throws
 
-      let matches = buildMatchListForDiscover(currentUser, candidates, mergedFilters, {
-        applyRelaxedFallback: mockDiscoverAllowed,
-      });
+      let matches: Match[];
+      let discoverMode: 'checkin' | 'city';
+
+      if (feedRows.length > 0) {
+        const userIds = feedRows.map((r) => r.user_id);
+        const profileRows = await getDiscoveryProfileRowsByIds(userIds);
+        const candidates = profileRows.map(discoveryProfileRowToUser);
+        const baseMatches = buildMatchListForDiscover(currentUser, candidates, mergedFilters, {
+          applyRelaxedFallback: false,
+        });
+        const feedMap = new Map(feedRows.map((r) => [r.user_id, r]));
+        matches = baseMatches
+          .map((m) => ({ ...m, sharedVenueName: feedMap.get(m.user.id)?.latest_shared_venue_name }))
+          .sort((a, b) => {
+            const aCount = feedMap.get(a.user.id)?.overlap_count ?? 0;
+            const bCount = feedMap.get(b.user.id)?.overlap_count ?? 0;
+            return bCount - aCount || b.similarityScore - a.similarityScore;
+          });
+        discoverMode = 'checkin';
+      } else {
+        const rows = await getDiscoveryProfiles(userId, { interestedIn: mergedFilters.interestedIn });
+        const candidates = rows.map(discoveryProfileRowToUser);
+        matches = buildMatchListForDiscover(currentUser, candidates, mergedFilters, {
+          applyRelaxedFallback: mockDiscoverAllowed,
+        });
+        discoverMode = 'city';
+      }
 
       let usedMockFallback = false;
       if (matches.length === 0 && mockDiscoverAllowed) {
@@ -217,7 +245,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
       if (usedMockFallback) {
         applyMockDiscoverState(set, get, safeMatches, filtersToStore);
       } else {
-        await applySupabaseDiscoverState(set, get, safeMatches, filtersToStore, userId, currentUser);
+        await applySupabaseDiscoverState(set, get, safeMatches, filtersToStore, userId, currentUser, discoverMode);
       }
     } catch (error) {
       if (mockDiscoverAllowed) {
@@ -441,6 +469,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
   reset: (): void => {
     set({
       discoverSwipeMode: 'supabase',
+      discoverMode: 'city',
       rankedDiscoverPool: [],
       rankedDiscoverPoolLength: 0,
       availableMatches: [],

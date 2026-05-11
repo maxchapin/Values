@@ -154,19 +154,17 @@ Deno.serve(async (req: Request) => {
     console.warn(`Outside hours: user=${userId} venue=${venue.id}`);
   }
 
-  // ── Idempotency: already checked in today? ────────────────────────────────
-  const todayStart    = new Date();
-  todayStart.setUTCHours(0, 0, 0, 0);
-  const tomorrowStart = new Date(todayStart);
-  tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+  // ── Idempotency: already checked in within the last 8 hours? ─────────────
+  const windowStart = new Date(Date.now() - 8 * 60 * 60 * 1_000);
 
   const { data: existing } = await userClient
     .from('checkins')
     .select('id, visible_after')
     .eq('user_id', userId)
     .eq('venue_id', venue.id)
-    .gte('scanned_at', todayStart.toISOString())
-    .lt('scanned_at', tomorrowStart.toISOString())
+    .gte('scanned_at', windowStart.toISOString())
+    .order('scanned_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (existing) {
@@ -183,9 +181,9 @@ Deno.serve(async (req: Request) => {
   const scannedAt    = new Date();
   const visibleAfter = new Date(scannedAt.getTime() + 10 * 60 * 60 * 1_000); // +10 hrs
 
-  // check_in_date is the UTC calendar date of the scan — stored as a plain
-  // date column so the unique index (user_id, venue_id, check_in_date) doesn't
-  // need an expression and avoids Postgres's IMMUTABLE restriction.
+  // check_in_date stores the UTC calendar date of the scan — kept for
+  // display and analytics. Idempotency is enforced by the 8-hour rolling
+  // window query above, not by a unique index.
   const checkInDate = scannedAt.toISOString().slice(0, 10); // "YYYY-MM-DD"
 
   const { data: checkin, error: insertErr } = await userClient

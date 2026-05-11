@@ -194,4 +194,26 @@ export const cardStyles = StyleSheet.create({
     color: theme.colors.textSecondary,
     lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.normal,
   },
+
+  // Shared venue badge — shown on Discover cards when both users checked in
+  venueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    backgroundColor: theme.colors.success + '18',
+    borderRadius: theme.borderRadius.full,
+    paddingHorizontal: theme.spacing.base,
+    paddingVertical: theme.spacing.sm,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: theme.colors.success + '40',
+  },
+  venueBadgeIcon: {
+    fontSize: 13,
+  },
+  venueBadgeText: {
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.success,
+  },
 });

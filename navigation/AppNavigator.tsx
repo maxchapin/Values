@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import * as Linking from 'expo-linking';
+import { saveToStorage, loadFromStorage, removeFromStorage, STORAGE_KEYS } from '../utils/storage';
 import type { TextStyle } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import {
@@ -45,6 +47,15 @@ import { PolicyAcceptanceGate } from '../components/PolicyAcceptanceGate';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+function extractCheckinToken(url: string): string | null {
+  try {
+    const match = url.match(/[?&]token=([^&#]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Matches native-stack `headerTitleStyle` (Pick of TextStyle — not full `TextStyle`). */
 type NativeStackHeaderTitleStyle = Pick<TextStyle, 'fontFamily' | 'fontSize' | 'fontWeight'> & {
@@ -194,6 +205,65 @@ export const AppNavigator: React.FC = () => {
       routes: [{ name: phaseRootRoute }],
     });
   }, [phase, phaseRootRoute]);
+
+  // Capture the initial URL on cold launch before auth resolves.
+  // Stored in a ref so the pending-checkin effect can consume it once navigation is ready.
+  const pendingInitialUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      if (url?.includes('/checkin')) {
+        pendingInitialUrlRef.current = url;
+      }
+    });
+  }, []);
+
+  // Handle foreground deep links (app already open).
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (!url.includes('/checkin')) return;
+      const token = extractCheckinToken(url);
+      if (!token) return;
+      if (authUser) {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate(ROUTES.CHECKIN_CONFIRMATION, { qrToken: token });
+        }
+      } else {
+        // Not logged in — park the token so post-login resume picks it up.
+        saveToStorage(STORAGE_KEYS.PENDING_CHECKIN_TOKEN, token).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, [authUser]);
+
+  // Once the user reaches the main app (either on cold start or after login),
+  // check for a pending checkin token from an earlier deep link and navigate.
+  const hasResumedPendingCheckinRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'main' || hasResumedPendingCheckinRef.current) return;
+    hasResumedPendingCheckinRef.current = true;
+
+    const resume = async () => {
+      // Try in-memory initial URL first (fastest, avoids async storage round-trip).
+      const initialUrl = pendingInitialUrlRef.current;
+      pendingInitialUrlRef.current = null;
+
+      let token: string | null = initialUrl ? extractCheckinToken(initialUrl) : null;
+
+      // Fall back to AsyncStorage for the "not-logged-in → login" flow.
+      if (!token) {
+        token = await loadFromStorage<string>(STORAGE_KEYS.PENDING_CHECKIN_TOKEN);
+        if (token) await removeFromStorage(STORAGE_KEYS.PENDING_CHECKIN_TOKEN);
+      }
+
+      if (token && navigationRef.isReady()) {
+        navigationRef.navigate(ROUTES.CHECKIN_CONFIRMATION, { qrToken: token });
+      }
+    };
+
+    // Small delay lets the navigation container settle after a phase-driven root reset.
+    const timer = setTimeout(resume, 300);
+    return () => clearTimeout(timer);
+  }, [phase]);
 
   return (
     <NavigationContainer ref={navigationRef}>

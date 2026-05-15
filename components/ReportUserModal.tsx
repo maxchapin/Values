@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: theme.colors.overlay,
   },
   backdropPress: { ...StyleSheet.absoluteFillObject },
   sheet: {
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.backgroundSecondary,
   },
   reasonRowActive: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.background,
   },

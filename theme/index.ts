@@ -7,57 +7,56 @@
 
 export const theme = {
   colors: {
-    // App-wide header (status bar + header bar) - single color from notch to content
-    headerBackground: '#e3f5ff',
-    headerTint: '##e3f5ff',
-    headerTintSecondary: '#666666',
-    headerBorder: 'rgba(0,0,0,0.12)',
+    // Header chrome — white bar, dark text, hairline border
+    headerBackground: '#FFFFFF',
+    headerTint: '#14141C',
+    headerTintSecondary: '#5A586A',
+    headerBorder: '#E4E2EE',
 
-    // Primary colors
-    primary: '#007AFF',
-    primaryDark: '#0051D5',
-    primaryLight: '#5AC8FA',
-    
-    // Secondary colors
-    secondary: '#5856D6',
-    secondaryDark: '#3D3AA3',
-    secondaryLight: '#AF52DE',
-    
-    // Neutral colors
+    // Primary — warm violet
+    primary: '#7C5CFF',
+    primaryDark: '#5538D4',
+    primaryLight: '#B6A4FF',
+
+    // Secondary (kept for compatibility)
+    secondary: '#5538D4',
+    secondaryDark: '#3D2FAA',
+    secondaryLight: '#B6A4FF',
+
+    // Surfaces — three tones, light scheme
     background: '#FFFFFF',
-    backgroundSecondary: '#F5F5F5',
-    backgroundTertiary: '#F9F9F9',
-    surface: '#FFFFFF', // Card/surface background
-    surfaceSecondary: '#F9F9F9', // Secondary surface (e.g., modals)
-    
-    // Text colors
-    text: '#333333',
-    textSecondary: '#666666',
-    textTertiary: '#999999',
+    backgroundSecondary: '#F6F5FB',
+    backgroundTertiary: '#EFEEF7',
+    surface: '#FFFFFF',
+    surfaceSecondary: '#F6F5FB',
+
+    // Text
+    text: '#14141C',
+    textSecondary: '#5A586A',
+    textTertiary: '#8E8C9E',
     textInverse: '#FFFFFF',
-    
-    // Border colors
-    border: '#E0E0E0',
-    borderLight: '#F0F0F0',
-    borderDark: '#CCCCCC',
-    
-    // Status colors
-    success: '#34C759',
-    error: '#FF3B30',
-    warning: '#FF9500',
-    info: '#007AFF',
-    danger: '#FF3B30', // Alias for error, for semantic clarity
-    
-    // Disabled state
-    disabled: '#CCCCCC',
-    disabledText: '#999999',
-    
+
+    // Borders — hairlines
+    border: '#E4E2EE',
+    borderLight: '#EFEEF5',
+    borderDark: '#D4D2E0',
+
+    // Status
+    success: '#2BA471',
+    error: '#E2455B',
+    warning: '#D9892C',
+    info: '#7C5CFF',
+    danger: '#E2455B',
+
+    // Disabled
+    disabled: '#C8C6D6',
+    disabledText: '#8E8C9E',
+
     // Overlay
-    overlay: 'rgba(0, 0, 0, 0.5)',
+    overlay: 'rgba(20, 16, 40, 0.55)',
   },
-  
+
   typography: {
-    // Font sizes
     fontSize: {
       xs: 12,
       sm: 14,
@@ -68,85 +67,71 @@ export const theme = {
       '3xl': 28,
       '4xl': 36,
     },
-    
-    // Font weights
+
     fontWeight: {
       normal: '400' as const,
       medium: '500' as const,
       semibold: '600' as const,
       bold: '700' as const,
     },
-    
-    // Line heights
+
     lineHeight: {
       tight: 1.2,
       normal: 1.5,
-      relaxed: 1.75,
+      relaxed: 1.625,
     },
   },
-  
+
   spacing: {
     xs: 4,
     sm: 8,
     md: 12,
     base: 16,
-    lg: 20,
-    xl: 24,
-    '2xl': 32,
-    '3xl': 40,
-    '4xl': 60,
+    lg: 24,
+    xl: 32,
+    '2xl': 48,
+    '3xl': 64,
+    '4xl': 96,
   },
-  
+
   borderRadius: {
     none: 0,
     sm: 4,
     base: 8,
     md: 12,
     lg: 16,
-    xl: 20,
+    xl: 24,
     full: 9999,
   },
-  
+
   shadows: {
     sm: {
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.05,
+      shadowColor: 'rgba(20, 16, 40, 1)',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
       shadowRadius: 2,
-      elevation: 1, // Android
+      elevation: 1,
     },
     base: {
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: 0.1,
+      shadowColor: 'rgba(20, 16, 40, 1)',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
       shadowRadius: 4,
-      elevation: 2, // Android
+      elevation: 2,
     },
     md: {
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 4,
-      },
-      shadowOpacity: 0.15,
-      shadowRadius: 6,
-      elevation: 4, // Android
+      shadowColor: 'rgba(20, 16, 40, 1)',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.10,
+      shadowRadius: 18,
+      elevation: 4,
     },
     lg: {
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 8,
-      },
-      shadowOpacity: 0.2,
-      shadowRadius: 12,
-      elevation: 8, // Android
+      shadowColor: 'rgba(20, 16, 40, 1)',
+      shadowOffset: { width: 0, height: 18 },
+      shadowOpacity: 0.18,
+      shadowRadius: 40,
+      elevation: 8,
     },
   },
 } as const;

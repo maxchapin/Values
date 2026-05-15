@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
   },
   sharedPill: {
     borderColor: theme.colors.primary,
-    borderWidth: 2,
+    borderWidth: 1,
     backgroundColor: theme.colors.primaryLight + '20',
   },
   sharedPillText: {

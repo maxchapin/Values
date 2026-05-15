@@ -38,21 +38,19 @@ export const SecondaryButton: React.FC<SecondaryButtonProps> = ({
 };
 
 const styles = StyleSheet.create({
-  
   button: {
     backgroundColor: theme.colors.background,
-    paddingVertical: theme.spacing.md + 2, // 14px
-    paddingHorizontal: theme.spacing.xl, // 24px
-    borderRadius: theme.borderRadius.base,
+    paddingVertical: theme.spacing.md + 2,
+    paddingHorizontal: theme.spacing.xl,
+    borderRadius: theme.borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
-    borderWidth: 2,
+    minHeight: 50,
+    borderWidth: 1,
     borderColor: theme.colors.primary,
   },
   buttonDisabled: {
-    borderColor: theme.colors.disabled,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   buttonText: {
     color: theme.colors.primary,

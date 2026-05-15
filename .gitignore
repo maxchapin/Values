@@ -26,6 +26,9 @@ expo-env.d.ts
 .metro/
 *.hprof
 
+# Generated QR code output (regenerate with node scripts/generate-qr-codes.js)
+qr-codes/
+
 # Build artifacts
 build/
 *.apk

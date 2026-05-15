@@ -2,11 +2,11 @@
  * Shared profile card styles for Discover and Profile screens.
  * Pixel-perfect match so Profile uses the same card design as Discover.
  */
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
 import { theme } from '../theme';
 import { sectionCardStyles } from './sectionCardStyles';
 
-export const CARD_PHOTO_HEIGHT = theme.spacing['4xl'] * 6; // 360
+export const CARD_PHOTO_HEIGHT = Math.round(Dimensions.get('window').height * 0.45);
 
 export const cardStyles = StyleSheet.create({
   // Outer card (Discover card container)
@@ -173,7 +173,7 @@ export const cardStyles = StyleSheet.create({
   },
   sharedPill: {
     borderColor: theme.colors.primary,
-    borderWidth: 2,
+    borderWidth: 1,
     backgroundColor: theme.colors.primaryLight + '20',
   },
   sharedPillText: {

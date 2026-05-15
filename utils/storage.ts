@@ -13,6 +13,7 @@ export const STORAGE_KEYS = {
   USER_DATA: '@Values:userData',
   MATCHES_STATE: '@Values:matchesState',
   KEEP_SIGNED_IN: '@Values:keepSignedIn',
+  PENDING_CHECKIN_TOKEN: '@Values:pendingCheckinToken',
 } as const;
 
 /**

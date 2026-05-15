@@ -22,9 +22,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
   return (
     <ScreenContainer style={styles.container}>
       <View style={styles.content}>
+        <View style={styles.logoMark}>
+          <Text style={styles.logoLetter}>V</Text>
+        </View>
         <Text style={styles.title}>Welcome to Values</Text>
         <Text style={styles.subtitle}>
-          Find meaningful connections based on shared values
+          Find meaningful connections based on shared values — not photos.
         </Text>
       </View>
       <View style={styles.footer}>
@@ -38,27 +41,46 @@ const styles = StyleSheet.create({
   container: {
     justifyContent: 'space-between',
     padding: theme.spacing.lg,
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: theme.spacing.base,
+  },
+  logoMark: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: theme.spacing.sm,
+    ...theme.shadows.lg,
+  },
+  logoLetter: {
+    fontSize: 44,
+    fontWeight: '800',
+    color: theme.colors.textInverse,
+    letterSpacing: -1,
   },
   title: {
-    fontSize: theme.typography.fontSize['4xl'],
+    fontSize: theme.typography.fontSize['3xl'],
     fontWeight: theme.typography.fontWeight.bold,
-    marginBottom: theme.spacing.base,
     color: theme.colors.text,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: theme.typography.fontSize.lg,
+    fontSize: theme.typography.fontSize.base,
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    lineHeight: theme.typography.fontSize.lg * theme.typography.lineHeight.relaxed,
-    paddingHorizontal: theme.spacing.lg,
+    lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.relaxed,
+    paddingHorizontal: theme.spacing.xl,
+    maxWidth: 300,
   },
   footer: {
-    paddingBottom: theme.spacing['3xl'],
+    paddingBottom: theme.spacing['2xl'],
   },
 });

@@ -504,15 +504,15 @@ const styles = StyleSheet.create({
   disabledSection: {
     opacity: 0.6,
     backgroundColor: theme.colors.backgroundSecondary,
-    padding: 16,
-    borderRadius: 12,
-    marginVertical: 8,
+    padding: theme.spacing.base,
+    borderRadius: theme.borderRadius.md,
+    marginVertical: theme.spacing.sm,
   },
   disabledToggle: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: theme.spacing.md,
     opacity: 0.8,
   },
   toggleLabel: {
@@ -527,8 +527,8 @@ const styles = StyleSheet.create({
   },
   comingSoon: {
     color: theme.colors.textTertiary,
-    fontSize: 14,
+    fontSize: theme.typography.fontSize.sm,
     fontStyle: 'italic',
-    marginBottom: 12,
+    marginBottom: theme.spacing.md,
   },
 });

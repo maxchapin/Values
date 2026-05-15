@@ -28,6 +28,7 @@
     "expo-file-system": "~19.0.21",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.10",
+    "expo-linking": "~8.0.12",
     "expo-mail-composer": "~15.0.8",
     "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",
@@ -47,8 +48,11 @@
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/react": "~19.1.0",
+    "dotenv": "^17.4.2",
     "jest": "^29.7.0",
     "jest-expo": "~52.0.4",
+    "pdfkit": "^0.18.0",
+    "qrcode": "^1.5.4",
     "ts-jest": "^29.4.6",
     "typescript": "~5.9.2"
   },

@@ -10,11 +10,7 @@ export const sectionCardStyles = {
     borderRadius: theme.borderRadius.lg,
     padding: theme.spacing.lg,
     marginBottom: theme.spacing.xl,
-    shadowColor: '#000' as const,
-    shadowOffset: { width: 0, height: 1 } as const,
-    shadowOpacity: 0.05 as number,
-    shadowRadius: 3 as number,
-    elevation: 2 as number,
+    ...theme.shadows.sm,
   },
   cardTitle: {
     fontSize: theme.typography.fontSize.lg,

@@ -38,16 +38,15 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 const styles = StyleSheet.create({
   button: {
     backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.md + 2, // 14px
-    paddingHorizontal: theme.spacing.xl, // 24px
-    borderRadius: theme.borderRadius.base,
+    paddingVertical: theme.spacing.md + 2,
+    paddingHorizontal: theme.spacing.xl,
+    borderRadius: theme.borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 50,
   },
   buttonDisabled: {
-    backgroundColor: theme.colors.disabled,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   buttonText: {
     color: theme.colors.textInverse,

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
-import { ValueCard } from '../../components/ValueCard';
+import { TagPill } from '../../components/TagPill';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { EmptyState } from '../../components/EmptyState';
@@ -122,14 +122,17 @@ export const ValuesSelectionScreen: React.FC<ValuesSelectionScreenProps> = ({ na
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {availableValues.map((value) => (
-          <ValueCard
-            key={value.id}
-            value={value}
-            isSelected={currentSelections.includes(value.id)}
-            onPress={() => handleValuePress(value.id)}
-          />
-        ))}
+        <View style={styles.chipsGrid}>
+          {availableValues.map((value) => (
+            <TagPill
+              key={value.id}
+              label={value.name}
+              selected={currentSelections.includes(value.id)}
+              onPress={() => handleValuePress(value.id)}
+              size="md"
+            />
+          ))}
+        </View>
       </ScrollView>
 
       <View style={styles.footer}>
@@ -176,6 +179,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: theme.spacing.base,
+  },
+  chipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
   },
   footer: {
     padding: theme.spacing.lg,

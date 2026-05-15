@@ -389,11 +389,11 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
               <Text style={styles.legendText}>Core 5</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#90CAF9' }]} />
+              <View style={[styles.legendDot, { backgroundColor: theme.colors.primaryLight }]} />
               <Text style={styles.legendText}>Next 5</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#E3F2FD' }]} />
+              <View style={[styles.legendDot, { backgroundColor: theme.colors.primaryLight + '55' }]} />
               <Text style={styles.legendText}>Top 20</Text>
             </View>
             <View style={styles.legendItem}>

@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   pill: {
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: theme.borderRadius.full,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: theme.colors.border,
     alignSelf: 'flex-start',
     paddingHorizontal: theme.spacing.base,

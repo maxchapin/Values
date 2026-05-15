@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { useValuesSelectionStore } from '../../store/valuesSelectionStore';
 import { useUserStore } from '../../store/userStore';
-import { ValueCard } from '../../components/ValueCard';
+import { TagPill } from '../../components/TagPill';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { SecondaryButton } from '../../components/SecondaryButton';
 import { EmptyState } from '../../components/EmptyState';
@@ -180,15 +180,18 @@ export const ValuesFinalScreen: React.FC<ValuesFinalScreenProps> = ({ navigation
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {valuesToShow.map((value) => (
-          <ValueCard
-            key={value.id}
-            value={value}
-            isSelected={currentSelections.includes(value.id)}
-            onPress={() => handleValuePress(value.id)}
-            disabled={!currentSelections.includes(value.id) && currentCount >= (requiredCount || 0)}
-          />
-        ))}
+        <View style={styles.chipsGrid}>
+          {valuesToShow.map((value) => (
+            <TagPill
+              key={value.id}
+              label={value.name}
+              selected={currentSelections.includes(value.id)}
+              onPress={() => handleValuePress(value.id)}
+              disabled={!currentSelections.includes(value.id) && currentCount >= (requiredCount || 0)}
+              size="md"
+            />
+          ))}
+        </View>
       </ScrollView>
 
       <View style={styles.footer}>
@@ -260,6 +263,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: theme.spacing.base,
+  },
+  chipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
   },
   footer: {
     padding: theme.spacing.lg,

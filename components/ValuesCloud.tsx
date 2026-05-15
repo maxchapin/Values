@@ -1,7 +1,8 @@
 /**
  * ValuesCloud Component
- * Renders values as pill-shaped bubbles in a word cloud layout
- * with tier-based styling and micro-interactions
+ * Renders values in a structured two-section grid:
+ * 1. Active selections (pinned top, flex-wrap chips)
+ * 2. Available values (2-column alphabetized grid)
  */
 
 import React, { useRef } from 'react';
@@ -19,12 +20,9 @@ import { theme } from '../theme';
 interface ValuesCloudProps {
   values: ValueItem[];
   onValuePress: (id: string) => void;
-  blockedBubbleId?: string | null; // ID of bubble that was blocked (for shake animation)
+  blockedBubbleId?: string | null;
 }
 
-/**
- * Get tier-based styles for a value bubble
- */
 function getValueStylesByTier(tier: ValueTier): {
   backgroundColor: string;
   borderColor: string;
@@ -34,44 +32,39 @@ function getValueStylesByTier(tier: ValueTier): {
   switch (tier) {
     case 'none':
       return {
-        backgroundColor: theme.colors.backgroundSecondary, // light gray
+        backgroundColor: theme.colors.backgroundSecondary,
         borderColor: theme.colors.border,
         borderWidth: 1,
-        textColor: theme.colors.textSecondary, // dark gray
+        textColor: theme.colors.textSecondary,
       };
-
     case 'initial':
       return {
-        backgroundColor: theme.colors.background, // soft neutral
+        backgroundColor: theme.colors.background,
         borderColor: theme.colors.primary,
-        borderWidth: 1.5,
-        textColor: theme.colors.text, // dark neutral
+        borderWidth: 1,
+        textColor: theme.colors.text,
       };
-
     case 'top20':
       return {
-        backgroundColor: '#E3F2FD', // very pale accent tint (light blue)
+        backgroundColor: theme.colors.primaryLight + '22',
         borderColor: theme.colors.primaryLight,
         borderWidth: 1,
-        textColor: theme.colors.text, // dark neutral
+        textColor: theme.colors.primaryDark,
       };
-
     case 'top10':
       return {
-        backgroundColor: '#90CAF9', // medium accent tint (medium blue)
+        backgroundColor: theme.colors.primaryLight + '55',
         borderColor: theme.colors.primary,
-        borderWidth: 1.5,
-        textColor: theme.colors.textInverse, // white for contrast
+        borderWidth: 1,
+        textColor: theme.colors.primaryDark,
       };
-
     case 'top5':
       return {
-        backgroundColor: theme.colors.primary, // strongest/saturated accent
+        backgroundColor: theme.colors.primary,
         borderColor: theme.colors.primaryDark,
-        borderWidth: 2,
-        textColor: theme.colors.textInverse, // white
+        borderWidth: 1,
+        textColor: theme.colors.textInverse,
       };
-
     default:
       return {
         backgroundColor: theme.colors.backgroundSecondary,
@@ -82,101 +75,40 @@ function getValueStylesByTier(tier: ValueTier): {
   }
 }
 
-/**
- * Sort values by tier importance for render order
- * Order: top5 → top10 → top20 → initial → none
- */
-function sortValuesByTier(values: ValueItem[]): ValueItem[] {
-  const tierOrder: Record<ValueTier, number> = {
-    top5: 0,
-    top10: 1,
-    top20: 2,
-    initial: 3,
-    none: 4,
-  };
-
-  return [...values].sort((a, b) => {
-    return tierOrder[a.tier] - tierOrder[b.tier];
-  });
-}
+const TIER_ORDER: Record<ValueTier, number> = {
+  top5: 0,
+  top10: 1,
+  top20: 2,
+  initial: 3,
+  none: 4,
+};
 
 interface ValueBubbleProps {
   value: ValueItem;
   onPress: (id: string) => void;
-  isBlocked?: boolean; // Whether this bubble was blocked (for shake animation)
+  isBlocked?: boolean;
 }
 
 const ValueBubble: React.FC<ValueBubbleProps> = ({ value, onPress, isBlocked = false }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const stylesByTier = getValueStylesByTier(value.tier);
 
-  // Trigger shake animation when blocked
   React.useEffect(() => {
     if (isBlocked) {
       Animated.sequence([
-        Animated.timing(shakeAnim, {
-          toValue: 10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: -10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 0,
-          duration: 50,
-          useNativeDriver: true,
-        }),
+        Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
       ]).start();
     }
   }, [isBlocked, shakeAnim]);
 
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1.03,
-      useNativeDriver: true,
-      tension: 300,
-      friction: 10,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 300,
-      friction: 10,
-    }).start();
-  };
-
-  const handlePress = () => {
-    onPress(value.id);
-  };
-
   return (
-    <Animated.View
-      style={[
-        {
-          transform: [
-            { scale: scaleAnim },
-            { translateX: shakeAnim },
-          ],
-        },
-      ]}
-    >
+    <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
       <TouchableOpacity
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.8}
+        onPress={() => onPress(value.id)}
+        activeOpacity={0.7}
         style={[
           styles.bubble,
           {
@@ -186,16 +118,12 @@ const ValueBubble: React.FC<ValueBubbleProps> = ({ value, onPress, isBlocked = f
           },
         ]}
       >
-        <Text
-          style={[
-            styles.bubbleText,
-            {
-              color: stylesByTier.textColor,
-            },
-          ]}
-        >
+        <Text style={[styles.bubbleText, { color: stylesByTier.textColor }]}>
           {value.label}
         </Text>
+        {value.tier !== 'none' && (
+          <Text style={[styles.removeIcon, { color: stylesByTier.textColor }]}>×</Text>
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -206,25 +134,63 @@ export const ValuesCloud: React.FC<ValuesCloudProps> = ({
   onValuePress,
   blockedBubbleId,
 }) => {
-  // Sort values by tier importance (top5 first, then top10, etc.)
-  const sortedValues = sortValuesByTier(values);
+  const active = [...values]
+    .filter((v) => v.tier !== 'none')
+    .sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier] || a.label.localeCompare(b.label));
+
+  const available = [...values]
+    .filter((v) => v.tier === 'none')
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  // Build 2-column rows for available values
+  const availableRows: ValueItem[][] = [];
+  for (let i = 0; i < available.length; i += 2) {
+    availableRows.push(available.slice(i, i + 2));
+  }
 
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.contentContainer}
+      contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.cloud}>
-        {sortedValues.map((value) => (
-          <ValueBubble
-            key={value.id}
-            value={value}
-            onPress={onValuePress}
-            isBlocked={value.id === blockedBubbleId}
-          />
-        ))}
-      </View>
+      {active.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>YOUR SELECTIONS</Text>
+          <View style={styles.activeGrid}>
+            {active.map((v) => (
+              <ValueBubble
+                key={v.id}
+                value={v}
+                onPress={onValuePress}
+                isBlocked={v.id === blockedBubbleId}
+              />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {available.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>ALL VALUES</Text>
+          <View style={styles.twoColGrid}>
+            {availableRows.map((row, rowIdx) => (
+              <View key={rowIdx} style={styles.gridRow}>
+                {row.map((v) => (
+                  <View key={v.id} style={styles.gridCell}>
+                    <ValueBubble
+                      value={v}
+                      onPress={onValuePress}
+                      isBlocked={v.id === blockedBubbleId}
+                    />
+                  </View>
+                ))}
+                {row.length === 1 && <View style={styles.gridCell} />}
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
     </ScrollView>
   );
 };
@@ -233,25 +199,53 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  contentContainer: {
+  content: {
     padding: theme.spacing.base,
+    paddingBottom: theme.spacing.xl,
   },
-  cloud: {
+  section: {
+    marginBottom: theme.spacing.lg,
+  },
+  sectionHeader: {
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.textTertiary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing.sm,
+  },
+  activeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+  },
+  twoColGrid: {
+    gap: theme.spacing.sm,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  gridCell: {
+    flex: 1,
   },
   bubble: {
-    borderRadius: theme.borderRadius.full, // Pill/oval shape
+    borderRadius: theme.borderRadius.full,
     paddingHorizontal: theme.spacing.base,
     paddingVertical: theme.spacing.sm,
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-    // Smooth color transitions handled by React Native's default behavior
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    justifyContent: 'center',
   },
   bubbleText: {
     fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.medium,
+    fontWeight: theme.typography.fontWeight.semibold,
+    textAlign: 'center',
+  },
+  removeIcon: {
+    fontSize: 14,
+    fontWeight: '400',
+    opacity: 0.7,
   },
 });

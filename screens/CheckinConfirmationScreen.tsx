@@ -161,7 +161,7 @@ export const CheckinConfirmationScreen: React.FC = () => {
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={theme.colors.textInverse} size="small" />
               ) : (
                 <Text style={styles.primaryButtonText}>Check In</Text>
               )}
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
   segmentTextActive: {
-    color: '#fff',
+    color: theme.colors.textInverse,
   },
   visibilityCaption: {
     fontSize: theme.typography.fontSize.sm,
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: theme.colors.textInverse,
     fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.semibold,
   },

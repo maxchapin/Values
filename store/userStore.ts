@@ -76,14 +76,12 @@ export const useUserStore = create<UserStore>((set, get) => ({
     return hasRequiredFields && hasAtLeastOnePrompt;
   },
 
-  // Helper to check if values selection is complete
   checkValuesComplete: (user: User | null): boolean => {
     if (!user) return false;
-    // Check new tiered values profile first, fall back to legacy selectedValues
-    if (user.valuesProfile) {
-      return user.valuesProfile.top5Ids.length === 5;
+    if (user.valuesProfile?.selectedValueIds) {
+      return user.valuesProfile.selectedValueIds.length >= 3;
     }
-    return user.selectedValues.length === 5; // Legacy: Final top 5
+    return (user.selectedValues?.length ?? 0) >= 3;
   },
 
   // Set current user

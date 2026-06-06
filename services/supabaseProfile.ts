@@ -10,7 +10,6 @@ import { calculateAge } from '../utils/dateUtils';
 import type { AuthUser } from '../types/auth';
 import type { User, UserValuesProfile } from '../types/user';
 import type { ProfileGender, InterestedIn } from '../types/user';
-import type { ValueTier } from '../types/value';
 import { INITIAL_VALUES } from '../data/valuesConstants';
 import {
   normalizeProfilePhotoUri,
@@ -83,96 +82,33 @@ function normalizeProfilePhotosFromRow(photos: string[] | null | undefined): str
 }
 
 /**
- * Rebuild `UserValuesProfile` from Supabase `selected_values` only (no `values_profile`).
- * Used as fallback when `values_profile` is missing or invalid. Tiers beyond top 5 are not recoverable.
+ * Rebuild `UserValuesProfile` from a flat list of value IDs (legacy selected_values fallback).
  */
 export function buildValuesProfileFromSelectedValues(
   selected_values: string[] | null | undefined
 ): UserValuesProfile {
   const ids = Array.isArray(selected_values)
-    ? selected_values.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    ? selected_values
+        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        .slice(0, 10)
     : [];
-  const top5Ids = ids.slice(0, 5);
-  const top5Set = new Set(top5Ids);
-
-  const allValues = INITIAL_VALUES.map((v) => ({
-    ...v,
-    tier: (top5Set.has(v.id) ? 'top5' : 'none') as ValueTier,
-  }));
-
-  return {
-    allValues,
-    top5Ids,
-    top10Ids: top5Ids,
-    top20Ids: top5Ids,
-    initialIds: top5Ids,
-  };
+  const selectedValues = ids
+    .map((id) => {
+      const found = INITIAL_VALUES.find((v) => v.id === id);
+      return found ? { id: found.id, label: found.label } : null;
+    })
+    .filter((v): v is { id: string; label: string } => v !== null);
+  return { selectedValueIds: ids, selectedValues };
 }
-
-const VALID_VALUE_TIERS = new Set<ValueTier>(['none', 'initial', 'top20', 'top10', 'top5']);
 
 function parseStoredIdList(val: unknown): string[] {
   if (!Array.isArray(val)) return [];
   return val.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
 }
 
-function coerceValueTier(raw: unknown): ValueTier | null {
-  if (typeof raw !== 'string') return null;
-  const t = raw as ValueTier;
-  return VALID_VALUE_TIERS.has(t) ? t : null;
-}
-
-/** Same ordering rules as `ValuesOnboardingScreen` when building id lists from tiered values. */
-function deriveIdListsFromAllValues(
-  allValues: Array<{ id: string; tier: ValueTier }>
-): Pick<UserValuesProfile, 'top5Ids' | 'top10Ids' | 'top20Ids' | 'initialIds'> {
-  const top5Ids = allValues.filter((v) => v.tier === 'top5').map((v) => v.id);
-  const top10Ids = allValues
-    .filter((v) => v.tier === 'top10' || v.tier === 'top5')
-    .map((v) => v.id);
-  const top20Ids = allValues
-    .filter((v) => v.tier === 'top20' || v.tier === 'top10' || v.tier === 'top5')
-    .map((v) => v.id);
-  const initialIds = allValues.filter((v) => v.tier !== 'none').map((v) => v.id);
-  return { top5Ids, top10Ids, top20Ids, initialIds };
-}
-
-function buildValuesProfileFromIdLists(
-  top5Ids: string[],
-  top10Ids: string[],
-  top20Ids: string[],
-  initialIds: string[]
-): UserValuesProfile {
-  const top5 = new Set(top5Ids);
-  const top10 = new Set(top10Ids);
-  const top20 = new Set(top20Ids);
-  const initial = new Set(initialIds);
-
-  const tierForId = (id: string): ValueTier => {
-    if (top5.has(id)) return 'top5';
-    if (top10.has(id)) return 'top10';
-    if (top20.has(id)) return 'top20';
-    if (initial.has(id)) return 'initial';
-    return 'none';
-  };
-
-  const allValues = INITIAL_VALUES.map((v) => ({
-    ...v,
-    tier: tierForId(v.id),
-  }));
-
-  return {
-    allValues,
-    top5Ids,
-    top10Ids,
-    top20Ids,
-    initialIds,
-  };
-}
-
 /**
  * Parse `profiles.values_profile` JSONB into `UserValuesProfile`.
- * Handles full documents, partial backfill (id lists only), and invalid data (returns null).
+ * Reads flat selectedValueIds first; falls back to legacy top5Ids for old records.
  */
 export function userValuesProfileFromRow(
   values_profile: unknown,
@@ -182,76 +118,38 @@ export function userValuesProfileFromRow(
   if (typeof values_profile !== 'object' || Array.isArray(values_profile)) return null;
 
   const raw = values_profile as Record<string, unknown>;
-  let top5Ids = parseStoredIdList(raw.top5Ids);
-  let top10Ids = parseStoredIdList(raw.top10Ids);
-  let top20Ids = parseStoredIdList(raw.top20Ids);
-  let initialIds = parseStoredIdList(raw.initialIds);
 
-  const sel = Array.isArray(selected_values)
-    ? selected_values.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-    : [];
-  if (top5Ids.length === 0 && sel.length > 0) {
-    top5Ids = sel.slice(0, 5);
+  // New flat model
+  const flatIds = parseStoredIdList(raw.selectedValueIds);
+  if (flatIds.length > 0) {
+    const selectedValues = flatIds
+      .map((id) => {
+        const found = INITIAL_VALUES.find((v) => v.id === id);
+        return found ? { id: found.id, label: found.label } : null;
+      })
+      .filter((v): v is { id: string; label: string } => v !== null);
+    return { selectedValueIds: flatIds, selectedValues };
   }
 
-  const avRaw = raw.allValues;
-  if (Array.isArray(avRaw) && avRaw.length > 0) {
-    const tierById = new Map<string, ValueTier>();
-    for (const item of avRaw) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-      const o = item as Record<string, unknown>;
-      const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : null;
-      if (!id) continue;
-      const tier = coerceValueTier(o.tier) ?? 'none';
-      tierById.set(id, tier);
-    }
-    if (tierById.size === 0) {
-      if (top5Ids.length === 0 && top10Ids.length === 0 && top20Ids.length === 0 && initialIds.length === 0) {
-        return null;
-      }
-      return buildValuesProfileFromIdLists(top5Ids, top10Ids, top20Ids, initialIds);
-    }
-
-    const allValues = INITIAL_VALUES.map((v) => ({
-      id: v.id,
-      label: v.label,
-      tier: tierById.get(v.id) ?? ('none' as ValueTier),
-    }));
-
-    const derived = deriveIdListsFromAllValues(allValues);
-    const lists =
-      top5Ids.length > 0 || top10Ids.length > 0 || top20Ids.length > 0 || initialIds.length > 0
-        ? { top5Ids, top10Ids, top20Ids, initialIds }
-        : derived;
-
-    return {
-      allValues,
-      top5Ids: lists.top5Ids,
-      top10Ids: lists.top10Ids,
-      top20Ids: lists.top20Ids,
-      initialIds: lists.initialIds,
-    };
+  // Legacy fallback: use top5Ids as selectedValueIds
+  const legacyIds = parseStoredIdList(raw.top5Ids);
+  if (legacyIds.length > 0) {
+    return buildValuesProfileFromSelectedValues(legacyIds);
   }
 
-  if (top5Ids.length === 0 && top10Ids.length === 0 && top20Ids.length === 0 && initialIds.length === 0) {
-    return null;
+  // Final fallback: raw selected_values column
+  if (Array.isArray(selected_values) && selected_values.length > 0) {
+    return buildValuesProfileFromSelectedValues(selected_values);
   }
 
-  return buildValuesProfileFromIdLists(top5Ids, top10Ids, top20Ids, initialIds);
+  return null;
 }
 
-/** Serialize `UserValuesProfile` for JSONB `values_profile` (plain JSON only). */
+/** Serialize `UserValuesProfile` for JSONB `values_profile`. */
 export function userValuesProfileToJson(profile: UserValuesProfile): Record<string, unknown> {
   return {
-    allValues: profile.allValues.map((v) => ({
-      id: v.id,
-      label: v.label,
-      tier: v.tier,
-    })),
-    top5Ids: [...profile.top5Ids],
-    top10Ids: [...profile.top10Ids],
-    top20Ids: [...profile.top20Ids],
-    initialIds: [...profile.initialIds],
+    selectedValueIds: [...profile.selectedValueIds],
+    selectedValues: profile.selectedValues.map((v) => ({ id: v.id, label: v.label })),
   };
 }
 
@@ -268,8 +166,8 @@ export function profileGenderToUserGender(g: ProfileGender | null | undefined): 
 export function supabaseProfileToUser(profile: SupabaseProfile): User {
   const parsedValues = userValuesProfileFromRow(profile.values_profile, profile.selected_values);
   const selectedValues =
-    parsedValues && parsedValues.top5Ids.length > 0
-      ? parsedValues.top5Ids
+    parsedValues && parsedValues.selectedValueIds.length > 0
+      ? parsedValues.selectedValueIds
       : (profile.selected_values ?? []);
   const age =
     profile.birthday != null

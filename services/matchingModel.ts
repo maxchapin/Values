@@ -7,15 +7,6 @@
 import { User } from '../types/user';
 import type { ValuesExplanation } from '../types/match';
 
-/** Tier → numeric weight (none=0 … top5=4). */
-const TIER_WEIGHT: Record<string, number> = {
-  none: 0,
-  initial: 1,
-  top20: 2,
-  top10: 3,
-  top5: 4,
-};
-
 /** Fixed list entry: id (slug from valuesConstants) and label for explanation copy. */
 export interface FixedValue {
   id: string;
@@ -23,50 +14,32 @@ export interface FixedValue {
 }
 
 /**
- * Build a map of valueId → weight for a user.
- * Uses valuesProfile (slug ids from valuesConstants) if available; otherwise legacy selectedValues.
+ * Build a binary weight map (1 = selected, 0 = not selected) for a user.
+ * Uses flat selectedValueIds from valuesProfile; falls back to legacy selectedValues array.
  */
 export function userToWeightMap(user: User, fixedValues: FixedValue[]): Map<string, number> {
   const map = new Map<string, number>();
 
-  if (user.valuesProfile?.allValues && user.valuesProfile.allValues.length > 0) {
-    for (const v of user.valuesProfile.allValues) {
-      const w = TIER_WEIGHT[v.tier] ?? 0;
-      map.set(v.id, w);
-    }
+  // New flat model
+  if (user.valuesProfile?.selectedValueIds && user.valuesProfile.selectedValueIds.length > 0) {
+    const selected = new Set(user.valuesProfile.selectedValueIds);
     for (const f of fixedValues) {
-      if (!map.has(f.id)) map.set(f.id, 0);
+      map.set(f.id, selected.has(f.id) ? 1 : 0);
     }
     return map;
   }
 
-  // Legacy: selectedValues (e.g. slug ids or v1, v2); first 5=top5, next 5=top10, next 10=top20, rest=initial
-  const ids = user.selectedValues ?? [];
-  for (let i = 0; i < ids.length; i++) {
-    const id = ids[i];
-    let tier: keyof typeof TIER_WEIGHT = 'initial';
-    if (i < 5) tier = 'top5';
-    else if (i < 10) tier = 'top10';
-    else if (i < 20) tier = 'top20';
-    map.set(id, TIER_WEIGHT[tier] ?? 1);
-  }
+  // Legacy fallback: selectedValues string array
+  const ids = new Set(user.selectedValues ?? []);
   for (const f of fixedValues) {
-    if (!map.has(f.id)) map.set(f.id, 0);
+    map.set(f.id, ids.has(f.id) ? 1 : 0);
   }
   return map;
 }
 
-/**
- * Model 3 score for one value (per spec):
- *   base = min(weightA, weightB)
- *   boost = 1.5 if (weightA === weightB && weightA >= 3), else 1
- *   valueScore = base * boost
- */
+/** Binary score: 1 if both selected, 0 otherwise. */
 function valueScore(weightA: number, weightB: number): number {
-  const base = Math.min(weightA, weightB);
-  const boost =
-    weightA === weightB && weightA >= 3 ? 1.5 : 1;
-  return base * boost;
+  return Math.min(weightA, weightB);
 }
 
 /**
@@ -108,7 +81,8 @@ export function computeModel3Score(
 }
 
 /**
- * Bucket values into strong alignment, partial overlap, and potential friction.
+ * Bucket shared values into alignment buckets.
+ * With binary weights: strongAlignment = both selected; partialOverlap and potentialFriction unused.
  */
 export function computeValuesExplanation(
   weightMapA: Map<string, number>,
@@ -122,25 +96,12 @@ export function computeValuesExplanation(
   for (const { id, label } of fixedValues) {
     const wA = weightMapA.get(id) ?? 0;
     const wB = weightMapB.get(id) ?? 0;
-
-    if (wA === wB && wA >= 3) {
+    if (wA >= 1 && wB >= 1) {
       strongAlignment.push(label);
-      continue;
-    }
-    if ((wA >= 3 && wB <= 1) || (wB >= 3 && wA <= 1)) {
-      potentialFriction.push(label);
-      continue;
-    }
-    if (Math.min(wA, wB) >= 1) {
-      partialOverlap.push(label);
     }
   }
 
-  return {
-    strongAlignment,
-    partialOverlap,
-    potentialFriction,
-  };
+  return { strongAlignment, partialOverlap, potentialFriction };
 }
 
 /**
@@ -158,11 +119,11 @@ export function formatExplanationLines(explanation: ValuesExplanation): string[]
   }
   if (partialOverlap.length > 0) {
     const list = formatList(partialOverlap);
-    lines.push(`You're aligned on ${list}, but at different levels.`);
+    lines.push(`You share an interest in ${list}.`);
   }
   if (potentialFriction.length > 0) {
     const list = formatList(potentialFriction);
-    lines.push(`You have different priorities around ${list}.`);
+    lines.push(`You have differing priorities around ${list}.`);
   }
 
   return lines;

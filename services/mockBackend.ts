@@ -26,36 +26,16 @@ function slug(label: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-/**
- * Build a UserValuesProfile for mock users (tiered values use slugified IDs from valuesConstants).
- * Pass arrays of value labels; they will be slugified and assigned to tiers.
- */
-function buildValuesProfile(
-  top5Labels: string[],
-  top10Extra: string[] = [],
-  top20Extra: string[] = [],
-  initialExtra: string[] = []
-): UserValuesProfile {
-  const top5Ids = top5Labels.slice(0, 5).map(slug);
-  const top10Ids = [...top5Ids, ...top10Extra.slice(0, 5).map(slug)];
-  const top20Ids = [...top10Ids, ...top20Extra.slice(0, 10).map(slug)];
-  const initialIds = [...top20Ids, ...initialExtra.map(slug)];
-
-  const allValues = INITIAL_VALUES.map((v) => {
-    if (top5Ids.includes(v.id)) return { ...v, tier: 'top5' as const };
-    if (top10Ids.includes(v.id)) return { ...v, tier: 'top10' as const };
-    if (top20Ids.includes(v.id)) return { ...v, tier: 'top20' as const };
-    if (initialIds.includes(v.id)) return { ...v, tier: 'initial' as const };
-    return { ...v, tier: 'none' as const };
-  });
-
-  return {
-    allValues,
-    top5Ids,
-    top10Ids,
-    top20Ids,
-    initialIds,
-  };
+/** Build a flat UserValuesProfile for mock users from an array of value labels. */
+function buildValuesProfile(labels: string[]): UserValuesProfile {
+  const selectedValueIds = labels.slice(0, 10).map(slug);
+  const selectedValues = selectedValueIds
+    .map((id) => {
+      const found = INITIAL_VALUES.find((v) => v.id === id);
+      return found ? { id: found.id, label: found.label } : null;
+    })
+    .filter((v): v is { id: string; label: string } => v !== null);
+  return { selectedValueIds, selectedValues };
 }
 
 /** All values as Value[] for getAllValues (id, name from label, category). */
@@ -103,12 +83,7 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v1', 'v5', 'v7', 'v14', 'v15', 'v19', 'v23', 'v25', 'v28', 'v32'],
-    valuesProfile: buildValuesProfile(
-      ['Adventure', 'Growth', 'Connection', 'Well-being', 'Authenticity'],
-      ['Balance', 'Freedom', 'Joy', 'Peace', 'Honesty'],
-      ['Family', 'Health', 'Trust', 'Respect', 'Compassion', 'Laughter', 'Fun', 'Stability', 'Safety', 'Community'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Adventure', 'Growth', 'Connection', 'Well-being', 'Authenticity', 'Balance', 'Freedom', 'Joy', 'Peace', 'Honesty']),
     createdAt: '2024-01-15T10:00:00Z',
     lastLoginAt: lastLoginDaysAgo(1),
   },
@@ -142,12 +117,7 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v2', 'v10', 'v11', 'v13', 'v16', 'v17', 'v20', 'v22', 'v26', 'v31'],
-    valuesProfile: buildValuesProfile(
-      ['Growth', 'Experiment', 'Balance', 'Cooperation', 'Achievement'],
-      ['Fairness', 'Freedom', 'Connection', 'Honesty', 'Integrity'],
-      ['Trust', 'Responsibility', 'Challenge', 'Determination', 'Purpose', 'Wisdom', 'Open-Minded', 'Collaboration', 'Community', 'Security'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Growth', 'Experiment', 'Balance', 'Cooperation', 'Achievement', 'Fairness', 'Freedom', 'Connection', 'Honesty', 'Integrity']),
     createdAt: '2024-01-16T11:30:00Z',
     lastLoginAt: lastLoginDaysAgo(5),
   },
@@ -179,12 +149,7 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v3', 'v4', 'v6', 'v9', 'v14', 'v18', 'v23', 'v24', 'v27', 'v33'],
-    valuesProfile: buildValuesProfile(
-      ['Well-being', 'Peace', 'Compassion', 'Awareness', 'Authenticity'],
-      ['Growth', 'Connection', 'Balance', 'Joy', 'Nurturance'],
-      ['Health', 'Calm', 'Presence', 'Acceptance', 'Kindness', 'Harmony', 'Sensitivity', 'Spirituality', 'Rest', 'Safety'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Well-being', 'Peace', 'Compassion', 'Awareness', 'Authenticity', 'Growth', 'Connection', 'Balance', 'Joy', 'Nurturance']),
     createdAt: '2024-01-17T14:20:00Z',
     lastLoginAt: lastLoginDaysAgo(0),
   },
@@ -217,12 +182,7 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v1', 'v2', 'v5', 'v7', 'v15', 'v17', 'v19', 'v25', 'v28', 'v34'],
-    valuesProfile: buildValuesProfile(
-      ['Connection', 'Growth', 'Adventure', 'Honesty', 'Well-being'],
-      ['Balance', 'Peace', 'Family', 'Trust', 'Respect'],
-      ['Community', 'Compassion', 'Authenticity', 'Joy', 'Health', 'Safety', 'Stability', 'Laughter', 'Appreciation', 'Inspiration'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Connection', 'Growth', 'Adventure', 'Honesty', 'Well-being', 'Balance', 'Peace', 'Family', 'Trust', 'Respect']),
     createdAt: '2024-01-18T09:15:00Z',
     lastLoginAt: lastLoginDaysAgo(7),
   },
@@ -256,12 +216,7 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v6', 'v8', 'v12', 'v13', 'v16', 'v21', 'v22', 'v29', 'v30', 'v35'],
-    valuesProfile: buildValuesProfile(
-      ['Community', 'Connection', 'Cooperation', 'Collaboration', 'Growth'],
-      ['Fun', 'Laughter', 'Adventure', 'Honesty', 'Authenticity'],
-      ['Fairness', 'Respect', 'Kindness', 'Friendship', 'Participation', 'Celebration', 'Joy', 'Balance', 'Freedom', 'Creativity'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Community', 'Connection', 'Cooperation', 'Collaboration', 'Growth', 'Fun', 'Laughter', 'Adventure', 'Honesty', 'Authenticity']),
     createdAt: '2024-01-19T16:45:00Z',
     lastLoginAt: lastLoginDaysAgo(2),
   },
@@ -293,12 +248,7 @@ const MOCK_USERS: User[] = [
       },
     ],
     selectedValues: ['v15', 'v20', 'v25', 'v26', 'v34', 'v35', 'v36', 'v37', 'v38', 'v39'],
-    valuesProfile: buildValuesProfile(
-      ['Adventure', 'Freedom', 'Growth', 'Authenticity', 'Connection'],
-      ['Justice', 'Community', 'Fairness', 'Honesty', 'Determination'],
-      ['Challenge', 'Risk', 'Determination', 'Freedom', 'Experiment', 'Expression', 'Spontaneity', 'Fun', 'Balance', 'Adventure'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Adventure', 'Freedom', 'Growth', 'Authenticity', 'Connection', 'Justice', 'Community', 'Fairness', 'Honesty', 'Determination']),
     createdAt: '2024-01-20T12:00:00Z',
     lastLoginAt: lastLoginDaysAgo(0),
   },
@@ -323,12 +273,7 @@ const MOCK_USERS: User[] = [
       { id: 'p2', question: 'My simple pleasures', answer: 'Sketching, espresso, long walks', isCustom: false },
     ],
     selectedValues: [],
-    valuesProfile: buildValuesProfile(
-      ['Connection', 'Kindness', 'Well-being', 'Growth', 'Authenticity'],
-      ['Creativity', 'Joy', 'Peace', 'Balance', 'Compassion'],
-      ['Expression', 'Adventure', 'Laughter', 'Family', 'Trust', 'Respect', 'Honesty', 'Community', 'Freedom', 'Health'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Connection', 'Kindness', 'Well-being', 'Growth', 'Authenticity', 'Creativity', 'Joy', 'Peace', 'Balance', 'Compassion']),
     createdAt: '2024-01-21T10:00:00Z',
     lastLoginAt: lastLoginDaysAgo(14),
   },
@@ -353,12 +298,7 @@ const MOCK_USERS: User[] = [
       { id: 'p2', question: 'My simple pleasures', answer: 'Trails, game nights, good food', isCustom: false },
     ],
     selectedValues: [],
-    valuesProfile: buildValuesProfile(
-      ['Honesty', 'Growth', 'Connection', 'Adventure', 'Balance'],
-      ['Fun', 'Achievement', 'Trust', 'Family', 'Well-being'],
-      ['Integrity', 'Responsibility', 'Challenge', 'Freedom', 'Joy', 'Community', 'Respect', 'Laughter', 'Stability', 'Health'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Honesty', 'Growth', 'Connection', 'Adventure', 'Balance', 'Fun', 'Achievement', 'Trust', 'Family', 'Well-being']),
     createdAt: '2024-01-22T11:00:00Z',
     lastLoginAt: lastLoginDaysAgo(10),
   },
@@ -381,12 +321,7 @@ const MOCK_USERS: User[] = [
       { id: 'p2', question: 'My simple pleasures', answer: 'Books, protests, tea with friends', isCustom: false },
     ],
     selectedValues: [],
-    valuesProfile: buildValuesProfile(
-      ['Equality', 'Community', 'Growth', 'Honesty', 'Connection'],
-      ['Fairness', 'Freedom', 'Compassion', 'Authenticity', 'Respect'],
-      ['Diversity', 'Participation', 'Kindness', 'Trust', 'Integrity', 'Cooperation', 'Balance', 'Well-being', 'Safety', 'Family'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Equality', 'Community', 'Growth', 'Honesty', 'Connection', 'Fairness', 'Freedom', 'Compassion', 'Authenticity', 'Respect']),
     createdAt: '2024-01-23T14:00:00Z',
     lastLoginAt: lastLoginDaysAgo(3),
   },
@@ -410,12 +345,7 @@ const MOCK_USERS: User[] = [
       { id: 'p2', question: 'My simple pleasures', answer: 'Sunrise yoga, new places, deep talks', isCustom: false },
     ],
     selectedValues: [],
-    valuesProfile: buildValuesProfile(
-      ['Peace', 'Adventure', 'Well-being', 'Connection', 'Authenticity'],
-      ['Balance', 'Growth', 'Joy', 'Freedom', 'Health'],
-      ['Calm', 'Presence', 'Compassion', 'Laughter', 'Family', 'Trust', 'Respect', 'Community', 'Safety', 'Harmony'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Peace', 'Adventure', 'Well-being', 'Connection', 'Authenticity', 'Balance', 'Growth', 'Joy', 'Freedom', 'Health']),
     createdAt: '2024-01-24T09:00:00Z',
     lastLoginAt: lastLoginDaysAgo(1),
   },
@@ -440,12 +370,7 @@ const MOCK_USERS: User[] = [
       { id: 'p2', question: 'My simple pleasures', answer: 'Summit views, campfires, starry skies', isCustom: false },
     ],
     selectedValues: [],
-    valuesProfile: buildValuesProfile(
-      ['Adventure', 'Honesty', 'Simplicity', 'Well-being', 'Connection'],
-      ['Freedom', 'Growth', 'Authenticity', 'Balance', 'Peace'],
-      ['Health', 'Inspiration', 'Respect', 'Trust', 'Family', 'Joy', 'Fun', 'Community', 'Safety', 'Stability'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Adventure', 'Honesty', 'Simplicity', 'Well-being', 'Connection', 'Freedom', 'Growth', 'Authenticity', 'Balance', 'Peace']),
     createdAt: '2024-01-25T16:00:00Z',
     lastLoginAt: lastLoginDaysAgo(30),
   },
@@ -468,12 +393,7 @@ const MOCK_USERS: User[] = [
       { id: 'p2', question: 'My simple pleasures', answer: 'Design sprints, farmers markets, wine', isCustom: false },
     ],
     selectedValues: [],
-    valuesProfile: buildValuesProfile(
-      ['Growth', 'Kindness', 'Connection', 'Well-being', 'Authenticity'],
-      ['Creativity', 'Adventure', 'Balance', 'Joy', 'Honesty'],
-      ['Community', 'Respect', 'Trust', 'Family', 'Freedom', 'Fun', 'Laughter', 'Health', 'Peace', 'Compassion'],
-      []
-    ),
+    valuesProfile: buildValuesProfile(['Growth', 'Kindness', 'Connection', 'Well-being', 'Authenticity', 'Creativity', 'Adventure', 'Balance', 'Joy', 'Honesty']),
     createdAt: '2024-01-26T12:00:00Z',
     lastLoginAt: lastLoginDaysAgo(0),
   },

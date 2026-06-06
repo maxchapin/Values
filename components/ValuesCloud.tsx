@@ -1,148 +1,62 @@
 /**
  * ValuesCloud Component
- * Renders values in a structured two-section grid:
- * 1. Active selections (pinned top, flex-wrap chips)
- * 2. Available values (2-column alphabetized grid)
+ * Binary selected/unselected grid. No tiers or ranking.
+ * Selected values pinned to the top; available values in a 2-column grid below.
  */
 
-import React, { useRef } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Animated,
 } from 'react-native';
-import { ValueItem, ValueTier } from '../types/value';
+import { ValueItem } from '../types/value';
 import { theme } from '../theme';
 
 interface ValuesCloudProps {
   values: ValueItem[];
-  onValuePress: (id: string) => void;
-  blockedBubbleId?: string | null;
+  selectedValueIds: string[];
+  onToggle: (id: string) => void;
+  maxReached: boolean;
 }
-
-function getValueStylesByTier(tier: ValueTier): {
-  backgroundColor: string;
-  borderColor: string;
-  borderWidth: number;
-  textColor: string;
-} {
-  switch (tier) {
-    case 'none':
-      return {
-        backgroundColor: theme.colors.backgroundSecondary,
-        borderColor: theme.colors.border,
-        borderWidth: 1,
-        textColor: theme.colors.textSecondary,
-      };
-    case 'initial':
-      return {
-        backgroundColor: theme.colors.background,
-        borderColor: theme.colors.primary,
-        borderWidth: 1,
-        textColor: theme.colors.text,
-      };
-    case 'top20':
-      return {
-        backgroundColor: theme.colors.primaryLight + '22',
-        borderColor: theme.colors.primaryLight,
-        borderWidth: 1,
-        textColor: theme.colors.primaryDark,
-      };
-    case 'top10':
-      return {
-        backgroundColor: theme.colors.primaryLight + '55',
-        borderColor: theme.colors.primary,
-        borderWidth: 1,
-        textColor: theme.colors.primaryDark,
-      };
-    case 'top5':
-      return {
-        backgroundColor: theme.colors.primary,
-        borderColor: theme.colors.primaryDark,
-        borderWidth: 1,
-        textColor: theme.colors.textInverse,
-      };
-    default:
-      return {
-        backgroundColor: theme.colors.backgroundSecondary,
-        borderColor: theme.colors.border,
-        borderWidth: 1,
-        textColor: theme.colors.textSecondary,
-      };
-  }
-}
-
-const TIER_ORDER: Record<ValueTier, number> = {
-  top5: 0,
-  top10: 1,
-  top20: 2,
-  initial: 3,
-  none: 4,
-};
 
 interface ValueBubbleProps {
   value: ValueItem;
+  isSelected: boolean;
   onPress: (id: string) => void;
-  isBlocked?: boolean;
 }
 
-const ValueBubble: React.FC<ValueBubbleProps> = ({ value, onPress, isBlocked = false }) => {
-  const shakeAnim = useRef(new Animated.Value(0)).current;
-  const stylesByTier = getValueStylesByTier(value.tier);
-
-  React.useEffect(() => {
-    if (isBlocked) {
-      Animated.sequence([
-        Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [isBlocked, shakeAnim]);
-
-  return (
-    <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
-      <TouchableOpacity
-        onPress={() => onPress(value.id)}
-        activeOpacity={0.7}
-        style={[
-          styles.bubble,
-          {
-            backgroundColor: stylesByTier.backgroundColor,
-            borderColor: stylesByTier.borderColor,
-            borderWidth: stylesByTier.borderWidth,
-          },
-        ]}
-      >
-        <Text style={[styles.bubbleText, { color: stylesByTier.textColor }]}>
-          {value.label}
-        </Text>
-        {value.tier !== 'none' && (
-          <Text style={[styles.removeIcon, { color: stylesByTier.textColor }]}>×</Text>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
+const ValueBubble: React.FC<ValueBubbleProps> = ({ value, isSelected, onPress }) => (
+  <TouchableOpacity
+    onPress={() => onPress(value.id)}
+    activeOpacity={0.7}
+    style={[styles.bubble, isSelected ? styles.bubbleSelected : styles.bubbleUnselected]}
+  >
+    <Text style={[styles.bubbleText, isSelected ? styles.bubbleTextSelected : styles.bubbleTextUnselected]}>
+      {value.label}
+    </Text>
+    {isSelected && <Text style={styles.removeIcon}>×</Text>}
+  </TouchableOpacity>
+);
 
 export const ValuesCloud: React.FC<ValuesCloudProps> = ({
   values,
-  onValuePress,
-  blockedBubbleId,
+  selectedValueIds,
+  onToggle,
+  maxReached,
 }) => {
-  const active = [...values]
-    .filter((v) => v.tier !== 'none')
-    .sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier] || a.label.localeCompare(b.label));
+  const selectedSet = new Set(selectedValueIds);
 
-  const available = [...values]
-    .filter((v) => v.tier === 'none')
+  const selected = [...values]
+    .filter((v) => selectedSet.has(v.id))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  // Build 2-column rows for available values
+  const available = [...values]
+    .filter((v) => !selectedSet.has(v.id))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
   const availableRows: ValueItem[][] = [];
   for (let i = 0; i < available.length; i += 2) {
     availableRows.push(available.slice(i, i + 2));
@@ -154,17 +68,18 @@ export const ValuesCloud: React.FC<ValuesCloudProps> = ({
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {active.length > 0 && (
+      {maxReached && (
+        <View style={styles.capBanner}>
+          <Text style={styles.capBannerText}>10 values selected — remove one to add another</Text>
+        </View>
+      )}
+
+      {selected.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>YOUR SELECTIONS</Text>
           <View style={styles.activeGrid}>
-            {active.map((v) => (
-              <ValueBubble
-                key={v.id}
-                value={v}
-                onPress={onValuePress}
-                isBlocked={v.id === blockedBubbleId}
-              />
+            {selected.map((v) => (
+              <ValueBubble key={v.id} value={v} isSelected onPress={onToggle} />
             ))}
           </View>
         </View>
@@ -178,11 +93,7 @@ export const ValuesCloud: React.FC<ValuesCloudProps> = ({
               <View key={rowIdx} style={styles.gridRow}>
                 {row.map((v) => (
                   <View key={v.id} style={styles.gridCell}>
-                    <ValueBubble
-                      value={v}
-                      onPress={onValuePress}
-                      isBlocked={v.id === blockedBubbleId}
-                    />
+                    <ValueBubble value={v} isSelected={false} onPress={onToggle} />
                   </View>
                 ))}
                 {row.length === 1 && <View style={styles.gridCell} />}
@@ -202,6 +113,20 @@ const styles = StyleSheet.create({
   content: {
     padding: theme.spacing.base,
     paddingBottom: theme.spacing.xl,
+  },
+  capBanner: {
+    backgroundColor: theme.colors.warning + '22',
+    borderRadius: theme.borderRadius.base,
+    paddingHorizontal: theme.spacing.base,
+    paddingVertical: theme.spacing.sm,
+    marginBottom: theme.spacing.base,
+    borderWidth: 1,
+    borderColor: theme.colors.warning + '44',
+  },
+  capBannerText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.warning,
+    textAlign: 'center',
   },
   section: {
     marginBottom: theme.spacing.lg,
@@ -237,15 +162,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     justifyContent: 'center',
+    borderWidth: 1,
+  },
+  bubbleSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primaryDark,
+  },
+  bubbleUnselected: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderColor: theme.colors.border,
   },
   bubbleText: {
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
     textAlign: 'center',
   },
+  bubbleTextSelected: {
+    color: theme.colors.textInverse,
+  },
+  bubbleTextUnselected: {
+    color: theme.colors.textSecondary,
+  },
   removeIcon: {
     fontSize: 14,
     fontWeight: '400',
-    opacity: 0.7,
+    color: theme.colors.textInverse,
+    opacity: 0.8,
   },
 });

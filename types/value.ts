@@ -31,12 +31,9 @@ export enum ValuesSelectionStep {
  * New tiered "values cloud" concept for onboarding
  */
 
-export type ValueTier = 'none' | 'initial' | 'top20' | 'top10' | 'top5';
-
-export type ValuesOnboardingStep = 'broad' | 'top20' | 'top10' | 'top5' | 'summary';
+export type ValuesOnboardingStep = 'select' | 'summary';
 
 export interface ValueItem {
   id: string;
   label: string;
-  tier: ValueTier;
 }

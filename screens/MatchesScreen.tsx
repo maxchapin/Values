@@ -46,11 +46,10 @@ export const MatchRow: React.FC<MatchRowProps> = ({
   onPress,
   onUnmatch,
 }) => {
-  const { user, similarityScore, valuesExplanation } = match;
+  const { user, valuesExplanation } = match;
   const userId = user.id;
   const name = user.name || 'Unknown';
   const age = user.age != null ? user.age : '?';
-  const score = typeof similarityScore === 'number' ? similarityScore : 0;
   const oneLineExplanation = valuesExplanation ? formatExplanationOneLine(valuesExplanation) : '';
   const { lastMessage, unreadCount, lastMessageAt } = conversationPreview;
   const messagePreview =
@@ -82,9 +81,6 @@ export const MatchRow: React.FC<MatchRowProps> = ({
               <Text style={styles.name} numberOfLines={1}>
                 {`${name}, ${age}`}
               </Text>
-              <View style={styles.scorePill}>
-                <Text style={styles.scoreText}>{score}%</Text>
-              </View>
             </View>
             {/* 
             {oneLineExplanation ? (
@@ -170,21 +166,6 @@ export const MatchesScreen: React.FC = () => {
   }, [discoverSwipeMode, mutualMatches, rankedDiscoverPool, likedUserIds]);
 
   const safeLikedMatches = tabMatches;
-
-  // Dev-only: fake last-message previews so the list looks populated without real chat backend
-  useEffect(() => {
-    if (!__DEV__) return;
-    if (safeLikedMatches.length === 0) return;
-    const [first, second] = safeLikedMatches;
-    const oneHourAgo = Date.now() - 3600000;
-    const yesterday = Date.now() - 86400000;
-    if (first?.user?.id) {
-      setConversationPreview(first.user.id, "Hey! Love your Growth value 🥰", 1, oneHourAgo);
-    }
-    if (second?.user?.id) {
-      setConversationPreview(second.user.id, "Your Privacy value resonates", 0, yesterday);
-    }
-  }, [safeLikedMatches.length, setConversationPreview]);
 
   useEffect(() => {
     trackScreenView('Matches');
@@ -425,19 +406,6 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.text,
     flex: 1,
-  },
-  scorePill: {
-    backgroundColor: theme.colors.primaryLight + '30',
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
-    borderColor: theme.colors.primary + '50',
-  },
-  scoreText: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.primary,
   },
   explanationLine: {
     fontSize: theme.typography.fontSize.xs,

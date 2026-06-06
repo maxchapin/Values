@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,16 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
+
+function extractTokenFromData(data: string): string {
+  // QR codes contain a full URL (e.g. https://site.com/checkin?token=abc123).
+  // Extract just the token value; fall back to raw data for plain-token QRs.
+  const match = data.match(/[?&]token=([^&#]+)/);
+  return match ? decodeURIComponent(match[1]) : data;
+}
 
 export const QRScannerScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -17,10 +24,25 @@ export const QRScannerScreen: React.FC = () => {
   // useRef prevents double-fires from the barcode scanner callback
   const scannedRef = useRef(false);
 
+  // Reset on focus so the user can scan again after navigating back
+  useFocusEffect(
+    useCallback(() => {
+      scannedRef.current = false;
+    }, [])
+  );
+
   const handleScan = ({ data }: { data: string }) => {
     if (scannedRef.current) return;
     scannedRef.current = true;
-    (navigation as any).navigate('CheckinConfirmation', { qrToken: data });
+
+    const qrToken = extractTokenFromData(data);
+    if (__DEV__) {
+      console.log('[QRScanner] Raw scanned data:', data);
+      console.log('[QRScanner] Extracted qrToken:', qrToken);
+      console.log('[QRScanner] Was URL?', data !== qrToken);
+    }
+
+    (navigation as any).navigate('CheckinConfirmation', { qrToken });
   };
 
   if (!permission) {

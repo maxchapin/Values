@@ -11,8 +11,8 @@
  * - Yesterday: "Yesterday"
  * - Older: short date e.g. "Mon, Jan 26" or "1/26"
  */
-export function formatRelativeTime(timestamp: Date | number): string {
-  const date = typeof timestamp === 'number' ? new Date(timestamp) : timestamp;
+export function formatRelativeTime(timestamp: Date | number | string): string {
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp as string | number);
   if (!date || !Number.isFinite(date.getTime())) return '';
   const now = new Date();
   const ms = now.getTime() - date.getTime();

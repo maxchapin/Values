@@ -66,11 +66,16 @@ export async function getCheckinFeed(viewerId: string): Promise<CheckinFeedRow[]
 export async function recordCheckin(params: RecordCheckinParams): Promise<RecordCheckinResult> {
   const { qrToken, visibilityMode, userLat, userLng } = params;
 
+  if (__DEV__) {
+    console.log('[recordCheckin] params:', JSON.stringify(params));
+  }
+
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
   const edgeUrl = process.env.EXPO_PUBLIC_CHECKIN_EDGE_URL;
+  if (__DEV__) console.log('[recordCheckin] edge URL:', edgeUrl);
   if (!edgeUrl) throw new Error('EXPO_PUBLIC_CHECKIN_EDGE_URL is not configured');
 
   const body: Record<string, unknown> = {
@@ -79,6 +84,8 @@ export async function recordCheckin(params: RecordCheckinParams): Promise<Record
   };
   if (userLat != null) body.user_lat = userLat;
   if (userLng != null) body.user_lng = userLng;
+
+  if (__DEV__) console.log('[recordCheckin] POST body:', JSON.stringify(body));
 
   const res = await fetch(edgeUrl, {
     method: 'POST',
@@ -89,7 +96,11 @@ export async function recordCheckin(params: RecordCheckinParams): Promise<Record
     body: JSON.stringify(body),
   });
 
+  if (__DEV__) console.log('[recordCheckin] HTTP status:', res.status, res.statusText);
+
   const json = await res.json();
+
+  if (__DEV__) console.log('[recordCheckin] Response JSON:', JSON.stringify(json));
 
   if (!res.ok) {
     throw new Error(json?.error ?? `Check-in failed (${res.status})`);

@@ -7,18 +7,12 @@
 export type AuthStackParamList = {
   Welcome: undefined;
   SignUp: undefined;
-  PhoneSignIn: undefined;
-  PhoneCode: { phoneNumber: string };
   ProfileSetup: undefined;
 };
 
-// Values selection flow routes
+// Values onboarding route types
 export type ValuesStackParamList = {
-  ValuesSelection: undefined;
-  ValuesNarrow20: undefined;
-  ValuesNarrow10: undefined;
-  ValuesFinal5: undefined;
-  ValuesOnboarding: undefined; // New unified onboarding screen
+  ValuesOnboarding: undefined;
 };
 
 // Main app routes
@@ -35,10 +29,6 @@ export type RootStackParamList = {
   SignUp: undefined;
   ProfileSetup: undefined;
   // Values flow
-  ValuesSelection: undefined;
-  ValuesNarrow20: undefined;
-  ValuesNarrow10: undefined;
-  ValuesFinal5: undefined;
   ValuesOnboarding: { fromEditProfile?: boolean; fromProfileCard?: boolean } | undefined;
   // Main app (tabs)
   MainApp: undefined;
@@ -53,9 +43,6 @@ export type RootStackParamList = {
   // Check-in flow
   QRScanner: undefined;
   CheckinConfirmation: { qrToken: string };
-  // Legacy (can be removed later)
-  Home: undefined;
-  Details: { itemId: string };
 };
 
 // Route name constants to avoid duplication
@@ -67,10 +54,6 @@ export const ROUTES = {
   PHONE_CODE: 'PhoneCode',
   PROFILE_SETUP: 'ProfileSetup',
   // Values
-  VALUES_SELECTION: 'ValuesSelection',
-  VALUES_NARROW_20: 'ValuesNarrow20',
-  VALUES_NARROW_10: 'ValuesNarrow10',
-  VALUES_FINAL_5: 'ValuesFinal5',
   VALUES_ONBOARDING: 'ValuesOnboarding',
   // Main app
   MAIN_APP: 'MainApp',
@@ -88,7 +71,4 @@ export const ROUTES = {
   CHECKIN_CONFIRMATION: 'CheckinConfirmation',
   // Debug
   DEBUG: 'Debug',
-  // Legacy
-  HOME: 'Home',
-  DETAILS: 'Details',
 } as const;

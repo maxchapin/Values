@@ -379,7 +379,6 @@ export const DiscoverScreen: React.FC = () => {
         filters={filters}
         onClose={() => setShowFilters(false)}
         onApply={handleApplyFilters}
-        onReset={handleResetFilters}
       />
       <FeedbackModal
         visible={showFeedbackModal}

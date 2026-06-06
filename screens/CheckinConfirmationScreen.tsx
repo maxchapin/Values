@@ -16,32 +16,34 @@ import type { RootStackParamList } from '../navigation/types';
 
 type CheckinConfirmationRouteProp = RouteProp<RootStackParamList, 'CheckinConfirmation'>;
 
-type VisibilityMode = 'public' | 'matches_only' | 'private';
-
-const VISIBILITY_OPTIONS: { key: VisibilityMode; label: string; caption: string }[] = [
-  { key: 'public', label: 'Public', caption: 'Anyone checking in here can see you' },
-  { key: 'matches_only', label: 'Matches', caption: 'Only your matches see you here' },
-  { key: 'private', label: 'Private', caption: 'Not shown to others' },
-];
-
 export const CheckinConfirmationScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<CheckinConfirmationRouteProp>();
   const insets = useSafeAreaInsets();
   const { qrToken } = route.params;
 
-  const [visibility, setVisibility] = useState<VisibilityMode>('public');
+  if (__DEV__) {
+    console.log('[CheckinConfirmation] Received qrToken:', qrToken);
+    console.log('[CheckinConfirmation] Token length:', qrToken?.length);
+    console.log('[CheckinConfirmation] Looks like URL?', qrToken?.startsWith('http'));
+  }
+
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<RecordCheckinResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleCheckin = async () => {
+    if (__DEV__) {
+      console.log('[CheckinConfirmation] Submitting check-in with token:', qrToken);
+    }
     setLoading(true);
     setError(null);
     try {
-      const res = await recordCheckin({ qrToken, visibilityMode: visibility });
+      const res = await recordCheckin({ qrToken, visibilityMode: 'private' });
+      if (__DEV__) console.log('[CheckinConfirmation] Check-in result:', JSON.stringify(res));
       setResult(res);
     } catch (e) {
+      if (__DEV__) console.log('[CheckinConfirmation] Check-in error:', e);
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
@@ -82,14 +84,9 @@ export const CheckinConfirmationScreen: React.FC = () => {
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>📍</Text>
             <Text style={styles.venueName}>{result.venueName}</Text>
-            {result.category ? (
-              <Text style={styles.venueCategory}>{result.category}</Text>
-            ) : null}
 
             <Text style={styles.successMessage}>
-              {result.alreadyCheckedIn
-                ? "You're already checked in here today"
-                : "You're checked in!"}
+              {"You'll be able to see others who checked in here, and they'll be able to see you, within 24 hours."}
             </Text>
 
             {result.gpsMismatch ? (
@@ -100,15 +97,7 @@ export const CheckinConfirmationScreen: React.FC = () => {
               </View>
             ) : null}
 
-            {result.outsideHours ? (
-              <View style={styles.flagBanner}>
-                <Text style={styles.flagText}>
-                  🕐 This venue may be closed right now
-                </Text>
-              </View>
-            ) : null}
-
-            <TouchableOpacity style={styles.primaryButton} onPress={handleDone}>
+            <TouchableOpacity style={[styles.primaryButton, styles.doneButton]} onPress={handleDone}>
               <Text style={styles.primaryButtonText}>Done</Text>
             </TouchableOpacity>
           </View>
@@ -125,48 +114,27 @@ export const CheckinConfirmationScreen: React.FC = () => {
           </View>
         )}
 
+        {/* DEV: token debug banner */}
+        {__DEV__ && (
+          <View style={styles.debugBanner}>
+            <Text style={styles.debugLabel}>DEV — qrToken</Text>
+            <Text style={styles.debugValue} selectable>{qrToken}</Text>
+          </View>
+        )}
+
         {/* Pre-submit state */}
         {!result && !error && (
-          <>
-            <Text style={styles.sectionTitle}>Who can see your check-in?</Text>
-
-            {/* Segmented visibility selector */}
-            <View style={styles.segmentRow}>
-              {VISIBILITY_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.segment, visibility === opt.key && styles.segmentActive]}
-                  onPress={() => setVisibility(opt.key)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: visibility === opt.key }}
-                >
-                  <Text
-                    style={[styles.segmentText, visibility === opt.key && styles.segmentTextActive]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Caption for selected option */}
-            <Text style={styles.visibilityCaption}>
-              {VISIBILITY_OPTIONS.find((o) => o.key === visibility)?.caption}
-            </Text>
-
-            {/* Check In button */}
-            <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
-              onPress={handleCheckin}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={theme.colors.textInverse} size="small" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Check In</Text>
-              )}
-            </TouchableOpacity>
-          </>
+          <TouchableOpacity
+            style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+            onPress={handleCheckin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={theme.colors.textInverse} size="small" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Check In</Text>
+            )}
+          </TouchableOpacity>
         )}
       </ScrollView>
     </View>
@@ -209,41 +177,6 @@ const styles = StyleSheet.create({
     padding: theme.spacing.xl,
     gap: theme.spacing.base,
   },
-  sectionTitle: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-  },
-  segmentRow: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderRadius: theme.borderRadius.lg,
-    padding: 3,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: theme.spacing.sm,
-    alignItems: 'center',
-    borderRadius: theme.borderRadius.md,
-  },
-  segmentActive: {
-    backgroundColor: theme.colors.primary,
-  },
-  segmentText: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.textSecondary,
-  },
-  segmentTextActive: {
-    color: theme.colors.textInverse,
-  },
-  visibilityCaption: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-    marginTop: theme.spacing.xs,
-  },
   primaryButton: {
     backgroundColor: theme.colors.primary,
     borderRadius: theme.borderRadius.full,
@@ -277,10 +210,8 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     textAlign: 'center',
   },
-  venueCategory: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textTransform: 'capitalize',
+  doneButton: {
+    alignSelf: 'stretch',
   },
   successMessage: {
     fontSize: theme.typography.fontSize.base,
@@ -301,6 +232,26 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     color: theme.colors.warning,
     textAlign: 'center',
+  },
+
+  // Dev debug banner
+  debugBanner: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 4,
+  },
+  debugLabel: {
+    color: '#7fdbff',
+    fontSize: 10,
+    fontWeight: '700' as const,
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
+  debugValue: {
+    color: '#fff',
+    fontSize: 11,
+    fontFamily: 'monospace',
   },
 
   // Error state

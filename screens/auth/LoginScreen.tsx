@@ -18,8 +18,8 @@ import { theme } from '../../theme';
 import { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../services/supabase';
 
-const ENABLE_APPLE_SIGN_IN = false;
-const ENABLE_PHONE_SIGN_IN = false;
+const ENABLE_APPLE_SIGN_IN = true;   // Required by Apple when offering any third-party OAuth
+const ENABLE_PHONE_SIGN_IN = false;  // Backend is mock-only; enable when SMS provider is wired
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 

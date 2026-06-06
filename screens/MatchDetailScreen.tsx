@@ -341,7 +341,7 @@ export default MatchDetailScreen;
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: theme.colors.backgroundSecondary,
+    backgroundColor: theme.colors.background,
   },
   header: {
     flexDirection: 'row',

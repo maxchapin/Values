@@ -10,7 +10,6 @@ interface FiltersSheetProps {
   filters: MatchFilters;
   onClose: () => void;
   onApply: (next: MatchFilters) => Promise<void> | void;
-  onReset: () => Promise<void> | void;
 }
 
 export const DEFAULT_AGE_RANGE: [number, number] = [18, 122];
@@ -24,7 +23,6 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
   filters,
   onClose,
   onApply,
-  onReset,
 }) => {
   const initialAgeRange = useMemo<[number, number]>(() => {
     const ar = filters.ageRange;
@@ -55,13 +53,6 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
     });
   };
 
-  /** Reset filters to defaults and notify parent. */
-  const handleReset = async (): Promise<void> => {
-    setAgeRange(DEFAULT_AGE_RANGE);
-    setRadiusMiles(DEFAULT_RADIUS_MILES);
-    await onReset();
-  };
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={saveAndClose}>
       <View style={styles.overlay} pointerEvents="box-none">
@@ -71,14 +62,9 @@ export const FiltersSheet: React.FC<FiltersSheetProps> = ({
         <View style={styles.sheet} pointerEvents="box-none">
           <View style={styles.header}>
             <Text style={styles.title}>Filters</Text>
-            <View style={styles.headerActions}>
-              <Pressable onPress={handleReset} hitSlop={12} style={styles.resetButton} accessibilityLabel="Reset filters">
-                <Text style={styles.resetText}>Reset</Text>
-              </Pressable>
-              <Pressable onPress={saveAndClose} hitSlop={12} accessibilityLabel="Close filters">
-                <Text style={styles.close}>✕</Text>
-              </Pressable>
-            </View>
+            <Pressable onPress={saveAndClose} hitSlop={12} accessibilityLabel="Close filters">
+              <Text style={styles.close}>✕</Text>
+            </Pressable>
           </View>
 
           <View style={styles.section}>
@@ -142,20 +128,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize['2xl'],
     fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.text,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.base,
-  },
-  resetButton: {
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.sm,
-  },
-  resetText: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.primary,
   },
   close: {
     fontSize: theme.typography.fontSize['2xl'],

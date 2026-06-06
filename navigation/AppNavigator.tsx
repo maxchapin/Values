@@ -23,11 +23,6 @@ import { ProfileSetupScreen } from '../screens/auth/ProfileSetupScreen';
 
 // Values screens
 import { ValuesOnboardingScreen } from '../screens/values/ValuesOnboardingScreen';
-// DEPRECATED: Old values screens - kept only for emergency fallback/debugging
-// These should not be used in normal onboarding flow
-import { ValuesSelectionScreen } from '../screens/values/ValuesSelectionScreen';
-import { ValuesNarrowScreen } from '../screens/values/ValuesNarrowScreen';
-import { ValuesFinalScreen } from '../screens/values/ValuesFinalScreen';
 
 // Main app screens (default import so navigator always receives a function component)
 import DiscoverScreen from '../screens/DiscoverScreen';
@@ -301,35 +296,6 @@ export const AppNavigator: React.FC = () => {
           options={{ headerShown: false }}
         />
         
-        {/* DEPRECATED: Old values screens - kept only for emergency fallback/debugging
-            These should not be used in normal onboarding flow.
-            TODO: Remove these screens and routes after confirming new flow works in production.
-        */}
-        {__DEV__ && (
-          <>
-            <Stack.Screen
-              name={ROUTES.VALUES_SELECTION}
-              component={ValuesSelectionScreen}
-              options={{ title: 'Select Values (DEPRECATED)' }}
-            />
-            <Stack.Screen
-              name={ROUTES.VALUES_NARROW_20}
-              component={ValuesNarrowScreen}
-              options={{ title: 'Narrow to 20 (DEPRECATED)' }}
-            />
-            <Stack.Screen
-              name={ROUTES.VALUES_NARROW_10}
-              component={ValuesNarrowScreen}
-              options={{ title: 'Narrow to 10 (DEPRECATED)' }}
-            />
-            <Stack.Screen
-              name={ROUTES.VALUES_FINAL_5}
-              component={ValuesFinalScreen}
-              options={{ title: 'Select Top 5 (DEPRECATED)' }}
-            />
-          </>
-        )}
-
         {/* Main App - Tab Navigator */}
         <Stack.Screen
           name={ROUTES.MAIN_APP}

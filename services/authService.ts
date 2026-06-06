@@ -6,12 +6,13 @@
 
 import { Platform, Linking } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import type { AuthUser, AuthProvider, AuthSession as AuthSessionType, PhoneAuthState } from '../types/auth';
 import { AuthError } from '../types/auth';
 import type { Session } from '@supabase/supabase-js';
-import { loginWithApple, verifyPhoneCode } from './backendAuthApi';
+import { verifyPhoneCode } from './backendAuthApi';
 import { supabase } from './supabase';
 import Constants from 'expo-constants';
 
@@ -88,6 +89,42 @@ function buildGoogleAuthFromSupabaseSession(session: Session): {
   const authSession: AuthSessionType = {
     userId: authUser.id,
     authProvider: authUser.authProvider,
+    token: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresAt: session.expires_at ? session.expires_at * 1000 : undefined,
+  };
+  return { user: authUser, session: authSession };
+}
+
+function buildAppleAuthFromSupabaseSession(
+  session: Session,
+  credential: { fullName?: AppleAuthentication.AppleAuthenticationFullName | null; email?: string | null },
+): { user: AuthUser; session: AuthSessionType } {
+  const meta = session.user.user_metadata || {};
+  const givenName = credential.fullName?.givenName || meta.given_name || undefined;
+  const familyName = credential.fullName?.familyName || meta.family_name || undefined;
+  const displayName =
+    [givenName, familyName].filter(Boolean).join(' ') ||
+    meta.full_name ||
+    meta.name ||
+    session.user.email?.split('@')[0];
+  const authUser: AuthUser = {
+    id: session.user.id,
+    displayName,
+    firstName: givenName,
+    lastName: familyName,
+    email: credential.email || session.user.email || undefined,
+    photoUrl: undefined,
+    authProvider: 'apple',
+    createdAt: session.user.created_at,
+    updatedAt: session.user.updated_at,
+    isOnboardingComplete: meta.isOnboardingComplete,
+    isProfileComplete: meta.isProfileComplete,
+    isValuesComplete: meta.isValuesComplete,
+  };
+  const authSession: AuthSessionType = {
+    userId: authUser.id,
+    authProvider: 'apple',
     token: session.access_token,
     refreshToken: session.refresh_token,
     expiresAt: session.expires_at ? session.expires_at * 1000 : undefined,
@@ -582,25 +619,20 @@ export const authService = {
   },
 
   /**
-   * Sign in with Apple using native Apple Authentication
-   * Uses expo-apple-authentication for iOS-only sign-in
-   * 
-   * Important: Apple only provides name/email on FIRST sign-in.
-   * Subsequent sign-ins will not include this data for privacy.
-   * 
+   * Sign in with Apple using native Apple Authentication + Supabase signInWithIdToken.
+   *
    * Flow:
-   * 1. Request Apple authentication credential
-   * 2. Extract identity token and user info (if available)
-   * 3. Send identity token to backend for validation
-   * 4. Backend returns user + session
+   * 1. Generate a random nonce; pass its SHA-256 hash to Apple to prevent replay attacks.
+   * 2. Apple returns an identity token (JWT) bound to that nonce.
+   * 3. Supabase validates the token server-side and creates/returns a session.
+   *
+   * Note: Apple only provides fullName and email on the VERY FIRST sign-in per app install.
    */
   async signInWithApple(): Promise<{ user: AuthUser; session: AuthSessionType }> {
-    // Platform check - Apple Sign In is iOS only
     if (Platform.OS !== 'ios') {
       throw new AuthError('Apple Sign In is only available on iOS', 'APPLE_IOS_ONLY', 'apple');
     }
 
-    // Check if Apple Authentication is available
     const isAvailable = await AppleAuthentication.isAvailableAsync();
     if (!isAvailable) {
       throw new AuthError(
@@ -611,60 +643,59 @@ export const authService = {
     }
 
     try {
-      if (__DEV__) {
-        console.log('[authService] Starting Apple Sign In...');
-      }
+      if (__DEV__) console.log('[authService] Starting Apple Sign In...');
 
-      // Request Apple authentication credential
+      // Generate nonce — raw value sent to Supabase, hashed value sent to Apple
+      const rawNonce = Math.random().toString(36).substring(2, 15) +
+                       Math.random().toString(36).substring(2, 15);
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce,
+      );
+
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce: hashedNonce,
       });
 
-      // Handle cancellation
       if (!credential.identityToken) {
-        throw new AuthError('Sign in cancelled by user', 'USER_CANCELLED', 'apple');
+        throw new AuthError('Apple did not return an identity token', 'USER_CANCELLED', 'apple');
       }
-
-      // Extract user information
-      // Note: fullName and email are ONLY available on FIRST sign-in
-      // Subsequent sign-ins will have these as null/undefined
-      const identityToken = credential.identityToken;
-      const userIdentifier = credential.user; // Stable Apple user ID
-      const fullName = credential.fullName;
-      const email = credential.email;
 
       if (__DEV__) {
         console.log('[authService] Apple credential received:', {
-          userIdentifier,
-          hasFullName: !!fullName,
-          hasEmail: !!email,
-          firstName: fullName?.givenName,
-          lastName: fullName?.familyName,
+          hasFullName: !!credential.fullName,
+          hasEmail: !!credential.email,
         });
       }
 
-      // Exchange identity token with backend
-      const { user, session } = await loginWithApple(
-        identityToken,
-        userIdentifier,
-        fullName,
-        email
-      );
+      // Exchange with Supabase — server-side token validation, no client-side JWT decoding
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+        nonce: rawNonce,
+      });
 
-      if (__DEV__) {
-        console.log('[authService] Apple sign-in complete:', user.id);
+      if (error || !data.session) {
+        throw new AuthError(
+          error?.message || 'Supabase did not return a session',
+          'APPLE_SIGN_IN_ERROR',
+          'apple',
+        );
       }
 
-      return { user, session };
+      if (__DEV__) console.log('[authService] Apple sign-in complete:', data.session.user.id);
+
+      return buildAppleAuthFromSupabaseSession(data.session, {
+        fullName: credential.fullName,
+        email: credential.email,
+      });
     } catch (error: unknown) {
-      if (error instanceof AuthError) {
-        throw error;
-      }
+      if (error instanceof AuthError) throw error;
 
-      // expo-apple-authentication rejects with code ERR_REQUEST_CANCELED on user cancel (no AppleAuthenticationError in module types).
       if (error && typeof error === 'object' && 'code' in error) {
         const code = (error as { code?: string }).code;
         if (code === 'ERR_REQUEST_CANCELED') {
@@ -678,18 +709,10 @@ export const authService = {
       }
 
       if (error instanceof Error) {
-        throw new AuthError(
-          error.message || 'Failed to sign in with Apple',
-          'APPLE_SIGN_IN_ERROR',
-          'apple'
-        );
+        throw new AuthError(error.message || 'Failed to sign in with Apple', 'APPLE_SIGN_IN_ERROR', 'apple');
       }
 
-      throw new AuthError(
-        'An unexpected error occurred during Apple sign-in',
-        'UNKNOWN_ERROR',
-        'apple'
-      );
+      throw new AuthError('An unexpected error occurred during Apple sign-in', 'UNKNOWN_ERROR', 'apple');
     }
   },
 

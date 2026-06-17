@@ -13,7 +13,6 @@ export interface CheckinFeedRow {
 
 export interface RecordCheckinParams {
   qrToken: string;
-  visibilityMode: 'public' | 'matches_only' | 'private';
   userLat?: number;
   userLng?: number;
 }
@@ -35,7 +34,15 @@ export interface UserCheckinRecord {
   venueName: string;
   category: string | null;
   scannedAt: string;
-  visibilityMode: 'public' | 'matches_only' | 'private';
+  visibleAfter: string;
+}
+
+export interface NearbyVenueRow {
+  id: string;
+  name: string;
+  category: string | null;
+  address: string | null;
+  distanceMiles: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +71,7 @@ export async function getCheckinFeed(viewerId: string): Promise<CheckinFeedRow[]
 // Calls the POST /checkin edge function with the user's current JWT.
 // ---------------------------------------------------------------------------
 export async function recordCheckin(params: RecordCheckinParams): Promise<RecordCheckinResult> {
-  const { qrToken, visibilityMode, userLat, userLng } = params;
+  const { qrToken, userLat, userLng } = params;
 
   if (__DEV__) {
     console.log('[recordCheckin] params:', JSON.stringify(params));
@@ -80,7 +87,6 @@ export async function recordCheckin(params: RecordCheckinParams): Promise<Record
 
   const body: Record<string, unknown> = {
     qr_token: qrToken,
-    visibility_mode: visibilityMode,
   };
   if (userLat != null) body.user_lat = userLat;
   if (userLng != null) body.user_lng = userLng;
@@ -121,39 +127,25 @@ export async function recordCheckin(params: RecordCheckinParams): Promise<Record
 // ---------------------------------------------------------------------------
 // getSharedVenueForPair
 // Returns the name of the most recent venue both users checked into, or null.
-// Two sequential queries — no new DB function required.
+// Calls a SECURITY DEFINER function — clients can no longer read other
+// users' check-in rows directly.
 // ---------------------------------------------------------------------------
 export async function getSharedVenueForPair(
   viewerId: string,
   partnerId: string,
 ): Promise<string | null> {
   try {
-    const [viewerRes, partnerRes] = await Promise.all([
-      supabase
-        .from('checkins')
-        .select('venue_id, venues(name)')
-        .eq('user_id', viewerId)
-        .order('scanned_at', { ascending: false })
-        .limit(15),
-      supabase
-        .from('checkins')
-        .select('venue_id')
-        .eq('user_id', partnerId)
-        .limit(50),
-    ]);
-
-    if (!viewerRes.data?.length || !partnerRes.data?.length) return null;
-
-    const partnerVenueIds = new Set(partnerRes.data.map((r) => r.venue_id as string));
-
-    for (const row of viewerRes.data) {
-      if (partnerVenueIds.has(row.venue_id as string)) {
-        return (row.venues as { name: string } | null)?.name ?? null;
-      }
+    const { data, error } = await supabase.rpc('get_shared_venue_for_pair', {
+      viewer_id: viewerId,
+      partner_id: partnerId,
+    });
+    if (error) {
+      if (__DEV__) console.warn('[supabaseCheckin] getSharedVenueForPair error:', error.message);
+      return null;
     }
-    return null;
+    return (data as string | null) ?? null;
   } catch (e) {
-    if (__DEV__) console.warn('[supabaseCheckin] getSharedVenueForPair:', e);
+    if (__DEV__) console.warn('[supabaseCheckin] getSharedVenueForPair threw:', e);
     return null;
   }
 }
@@ -166,7 +158,7 @@ export async function getUserCheckinHistory(userId: string): Promise<UserCheckin
   try {
     const { data, error } = await supabase
       .from('checkins')
-      .select('id, venue_id, scanned_at, visibility_mode, venues(name, category)')
+      .select('id, venue_id, scanned_at, visible_after, venues(name, category)')
       .eq('user_id', userId)
       .order('scanned_at', { ascending: false })
       .limit(100);
@@ -182,10 +174,58 @@ export async function getUserCheckinHistory(userId: string): Promise<UserCheckin
       venueName: (row.venues as { name: string; category: string } | null)?.name ?? 'Unknown venue',
       category: (row.venues as { name: string; category: string } | null)?.category ?? null,
       scannedAt: row.scanned_at as string,
-      visibilityMode: row.visibility_mode as 'public' | 'matches_only' | 'private',
+      visibleAfter: row.visible_after as string,
     }));
   } catch (e) {
     if (__DEV__) console.warn('[supabaseCheckin] getUserCheckinHistory threw:', e);
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// getNearbyVenues
+// Returns active venues within radiusMiles of the given coordinates,
+// nearest first. Never throws — returns [] on any error.
+// ---------------------------------------------------------------------------
+export async function getNearbyVenues(
+  userLat: number,
+  userLng: number,
+  radiusMiles = 5,
+): Promise<NearbyVenueRow[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_nearby_venues', {
+      user_lat: userLat,
+      user_lng: userLng,
+      radius_miles: radiusMiles,
+    });
+    if (error) {
+      if (__DEV__) console.warn('[supabaseCheckin] getNearbyVenues error:', error.message);
+      return [];
+    }
+    return ((data ?? []) as Array<{
+      id: string;
+      name: string;
+      category: string | null;
+      address: string | null;
+      distance_miles: number;
+    }>).map((row) => ({
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      address: row.address,
+      distanceMiles: row.distance_miles,
+    }));
+  } catch (e) {
+    if (__DEV__) console.warn('[supabaseCheckin] getNearbyVenues threw:', e);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// deleteCheckin
+// Removes a check-in record (Places tab "remove" action).
+// ---------------------------------------------------------------------------
+export async function deleteCheckin(checkinId: string): Promise<void> {
+  const { error } = await supabase.from('checkins').delete().eq('id', checkinId);
+  if (error) throw new Error(error.message);
 }

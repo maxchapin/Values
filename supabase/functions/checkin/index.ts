@@ -1,7 +1,7 @@
 /**
  * POST /checkin — validates a venue QR token and records a check-in.
  *
- * Body: { qr_token, visibility_mode?, user_lat?, user_lng? }
+ * Body: { qr_token, user_lat?, user_lng? }
  * Auth: Bearer <user JWT> (user_id is derived from the token, not the body)
  *
  * Deploy: `supabase functions deploy checkin`
@@ -64,6 +64,7 @@ type VenueRow = {
   lat: number | null;
   lng: number | null;
   operating_hours: OperatingHours | null;
+  is_active: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -101,7 +102,6 @@ Deno.serve(async (req: Request) => {
   // ── Parse body ───────────────────────────────────────────────────────────
   let body: {
     qr_token: string;
-    visibility_mode?: string;
     user_lat?: number;
     user_lng?: number;
   };
@@ -112,10 +112,6 @@ Deno.serve(async (req: Request) => {
   }
 
   const { qr_token, user_lat, user_lng } = body;
-  const visibilityMode = (['public', 'matches_only', 'private'] as const)
-    .includes(body.visibility_mode as never)
-    ? (body.visibility_mode as 'public' | 'matches_only' | 'private')
-    : 'public';
 
   if (!qr_token) {
     return json({ error: 'qr_token is required' }, 400);
@@ -124,12 +120,16 @@ Deno.serve(async (req: Request) => {
   // ── Venue lookup ─────────────────────────────────────────────────────────
   const { data: venue, error: venueErr } = await userClient
     .from('venues')
-    .select('id, name, category, lat, lng, operating_hours')
+    .select('id, name, category, lat, lng, operating_hours, is_active')
     .eq('qr_token', qr_token)
     .single<VenueRow>();
 
   if (venueErr || !venue) {
     return json({ error: 'Venue not found' }, 404);
+  }
+
+  if (!venue.is_active) {
+    return json({ error: 'This venue is no longer accepting check-ins' }, 410);
   }
 
   const flags: { gps_mismatch?: true; outside_hours?: true } = {};
@@ -179,7 +179,7 @@ Deno.serve(async (req: Request) => {
 
   // ── Write check-in ────────────────────────────────────────────────────────
   const scannedAt    = new Date();
-  const visibleAfter = new Date(scannedAt.getTime() + 10 * 60 * 60 * 1_000); // +10 hrs
+  const visibleAfter = new Date(scannedAt.getTime() + 24 * 60 * 60 * 1_000); // +24 hrs
 
   // check_in_date stores the UTC calendar date of the scan — kept for
   // display and analytics. Idempotency is enforced by the 8-hour rolling
@@ -189,12 +189,13 @@ Deno.serve(async (req: Request) => {
   const { data: checkin, error: insertErr } = await userClient
     .from('checkins')
     .insert({
-      user_id:         userId,
-      venue_id:        venue.id,
-      scanned_at:      scannedAt.toISOString(),
-      check_in_date:   checkInDate,
-      visible_after:   visibleAfter.toISOString(),
-      visibility_mode: visibilityMode,
+      user_id:       userId,
+      venue_id:      venue.id,
+      scanned_at:    scannedAt.toISOString(),
+      check_in_date: checkInDate,
+      visible_after: visibleAfter.toISOString(),
+      gps_mismatch:  !!flags.gps_mismatch,
+      outside_hours: !!flags.outside_hours,
     })
     .select('id, visible_after')
     .single();

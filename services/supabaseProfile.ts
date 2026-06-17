@@ -203,6 +203,7 @@ export function supabaseProfileToUser(profile: SupabaseProfile): User {
           notifications: {
             newMatch: profile.preferences.push_new_match !== false,
             newMessage: profile.preferences.push_new_message !== false,
+            checkinOverlap: profile.preferences.push_checkin_overlap !== false,
           },
         }
       : undefined,
@@ -525,8 +526,8 @@ export interface DiscoveryProfileRow {
 export function discoveryProfileRowToUser(row: DiscoveryProfileRow): User {
   const parsedValues = userValuesProfileFromRow(row.values_profile, row.selected_values);
   const selectedValues =
-    parsedValues && parsedValues.top5Ids.length > 0
-      ? parsedValues.top5Ids
+    parsedValues && parsedValues.selectedValueIds.length > 0
+      ? parsedValues.selectedValueIds
       : (row.selected_values ?? []);
   const age = row.age ?? 0;
   return {
@@ -648,6 +649,7 @@ export interface SupabasePreferences {
   is_profile_visible?: boolean;
   push_new_match?: boolean;
   push_new_message?: boolean;
+  push_checkin_overlap?: boolean;
   /** Mirrors app `User.interestedIn` — stored in JSONB (no dedicated column). */
   interested_in?: InterestedIn;
 }

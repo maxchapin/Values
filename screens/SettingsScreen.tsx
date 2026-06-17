@@ -18,6 +18,12 @@ import {
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
+const NOTIFICATION_LABELS: Record<keyof UserSettings['notifications'], string> = {
+  newMatch: 'New Match',
+  newMessage: 'New Message',
+  checkinOverlap: 'Nearby Check-ins',
+};
+
 function supportEmailFromConfig(): string {
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
   const v = extra?.supportEmail;
@@ -54,6 +60,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   const [notifications, setNotifications] = useState<UserSettings['notifications']>({
     newMatch: true,
     newMessage: true,
+    checkinOverlap: true,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -67,6 +74,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
       setNotifications({
         newMatch: currentUser.settings.notifications.newMatch,
         newMessage: currentUser.settings.notifications.newMessage,
+        checkinOverlap: currentUser.settings.notifications.checkinOverlap,
       });
     }
   }, [currentUser]);
@@ -75,6 +83,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     is_profile_visible: boolean;
     push_new_match: boolean;
     push_new_message: boolean;
+    push_checkin_overlap: boolean;
   }): Promise<void> => {
     if (!authUser) return;
     if (__DEV__) {
@@ -104,6 +113,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         is_profile_visible: value,
         push_new_match: notifications.newMatch,
         push_new_message: notifications.newMessage,
+        push_checkin_overlap: notifications.checkinOverlap,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Sync failed';
@@ -128,7 +138,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
       await updateSettings({ notifications: updated });
     } catch (error) {
       setNotifications({ ...notifications, [key]: !value });
-      Alert.alert('Error', `Failed to update ${key === 'newMatch' ? 'New Match' : 'New Message'} notification`);
+      Alert.alert('Error', `Failed to update ${NOTIFICATION_LABELS[key]} notification`);
       setIsSaving(false);
       return;
     }
@@ -137,6 +147,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         is_profile_visible: isProfileVisible,
         push_new_match: updated.newMatch,
         push_new_message: updated.newMessage,
+        push_checkin_overlap: updated.checkinOverlap,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Sync failed';
@@ -327,19 +338,52 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         </TouchableOpacity>
       </View>
 
-      {/* Notifications – grayed out until implemented */}
-      <View style={styles.disabledSection}>
+      {/* Notifications */}
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Notifications</Text>
-        <Text style={styles.comingSoon}>Coming soon...</Text>
 
-        <View style={styles.disabledToggle}>
-          <Text style={styles.toggleLabel}>Match alerts</Text>
-          <View style={styles.disabledSwitch} />
+        <View style={styles.settingRow}>
+          <View style={styles.settingContent}>
+            <Text style={styles.settingLabel}>Match alerts</Text>
+            <Text style={styles.settingDescription}>Get notified about new matches</Text>
+          </View>
+          <Switch
+            value={notifications.newMatch}
+            onValueChange={(value) => handleNotificationToggle('newMatch', value)}
+            disabled={isSaving}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            thumbColor={theme.colors.background}
+          />
         </View>
 
-        <View style={styles.disabledToggle}>
-          <Text style={styles.toggleLabel}>New messages</Text>
-          <View style={styles.disabledSwitch} />
+        <View style={styles.settingRow}>
+          <View style={styles.settingContent}>
+            <Text style={styles.settingLabel}>New messages</Text>
+            <Text style={styles.settingDescription}>Get notified about new messages</Text>
+          </View>
+          <Switch
+            value={notifications.newMessage}
+            onValueChange={(value) => handleNotificationToggle('newMessage', value)}
+            disabled={isSaving}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            thumbColor={theme.colors.background}
+          />
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingContent}>
+            <Text style={styles.settingLabel}>Nearby check-ins</Text>
+            <Text style={styles.settingDescription}>
+              Get notified when someone new checks in nearby
+            </Text>
+          </View>
+          <Switch
+            value={notifications.checkinOverlap}
+            onValueChange={(value) => handleNotificationToggle('checkinOverlap', value)}
+            disabled={isSaving}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            thumbColor={theme.colors.background}
+          />
         </View>
       </View>
 
@@ -500,35 +544,5 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: theme.typography.fontSize.base,
     color: theme.colors.textSecondary,
-  },
-  disabledSection: {
-    opacity: 0.6,
-    backgroundColor: theme.colors.backgroundSecondary,
-    padding: theme.spacing.base,
-    borderRadius: theme.borderRadius.md,
-    marginVertical: theme.spacing.sm,
-  },
-  disabledToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    opacity: 0.8,
-  },
-  toggleLabel: {
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.textSecondary,
-  },
-  disabledSwitch: {
-    width: 50,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: theme.colors.border,
-  },
-  comingSoon: {
-    color: theme.colors.textTertiary,
-    fontSize: theme.typography.fontSize.sm,
-    fontStyle: 'italic',
-    marginBottom: theme.spacing.md,
   },
 });

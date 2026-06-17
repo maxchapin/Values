@@ -43,6 +43,8 @@ export type RootStackParamList = {
   // Check-in flow
   QRScanner: undefined;
   CheckinConfirmation: { qrToken: string };
+  // Cold-start venue browsing
+  NearbyVenues: undefined;
 };
 
 // Route name constants to avoid duplication
@@ -69,6 +71,8 @@ export const ROUTES = {
   // Check-in flow
   QR_SCANNER: 'QRScanner',
   CHECKIN_CONFIRMATION: 'CheckinConfirmation',
+  // Cold-start venue browsing
+  NEARBY_VENUES: 'NearbyVenues',
   // Debug
   DEBUG: 'Debug',
 } as const;

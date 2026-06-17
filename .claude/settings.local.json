@@ -4,7 +4,8 @@
       "Bash(sed -n '665,680p' screens/auth/ProfileSetupScreen.tsx)",
       "Bash(sed -n '408,420p' components/DiscoverProfileCard.tsx)",
       "Bash(sed -n '165,175p' components/ReportUserModal.tsx)",
-      "PowerShell(\"Deleted deprecated values screens.\")"
+      "PowerShell(\"Deleted deprecated values screens.\")",
+      "Bash(npx tsc *)"
     ]
   }
 }

@@ -90,11 +90,17 @@ export const MatchRow: React.FC<MatchRowProps> = ({
             ) : null}
             */}
             {messagePreview ? (
-              <Text style={styles.messagePreview} numberOfLines={1}>
+              <Text
+                style={unreadCount > 0 ? [styles.messagePreview, styles.messagePreviewUnread] : styles.messagePreview}
+                numberOfLines={1}
+              >
                 "{messagePreview}"
               </Text>
             ) : (
-              <Text style={styles.messagePreview} numberOfLines={1}>
+              <Text
+                style={unreadCount > 0 ? [styles.messagePreview, styles.messagePreviewUnread] : styles.messagePreview}
+                numberOfLines={1}
+              >
                 No messages yet — say hi
               </Text>
             )}
@@ -106,16 +112,13 @@ export const MatchRow: React.FC<MatchRowProps> = ({
           </View>
         </View>
         <View style={styles.actions}>
-          <View style={styles.chatIconWrap}>
-            <Text style={styles.chatIcon}>💬</Text>
-            {unreadCount > 0 ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          {unreadCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          ) : null}
           <Pressable
             style={styles.unmatchButton}
             onPress={(e) => {
@@ -417,6 +420,11 @@ const styles = StyleSheet.create({
     color: theme.colors.textTertiary,
     fontStyle: 'italic',
   },
+  messagePreviewUnread: {
+    fontStyle: 'normal',
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.text,
+  },
   relativeTime: {
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.textTertiary,
@@ -428,20 +436,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     marginLeft: theme.spacing.sm,
   },
-  chatIconWrap: {
-    position: 'relative',
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chatIcon: {
-    fontSize: 20,
-  },
   badge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
     minWidth: 18,
     height: 18,
     borderRadius: 9,

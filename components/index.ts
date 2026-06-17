@@ -17,7 +17,6 @@ export { ProfilePromptsEditor } from './ProfilePromptsEditor';
 export { LocationPicker } from './LocationPicker';
 export { BirthdayPicker } from './BirthdayPicker';
 export type { BirthdayPickerProps } from './BirthdayPicker';
-export { DiscoverProfileCard } from './DiscoverProfileCard';
 export { ProfileCard } from './ProfileCard';
 export type { ProfileCardProps, CandidateValueItem } from './ProfileCard';
 export { DiscoverActionBar } from './DiscoverActionBar';

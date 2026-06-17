@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,15 +13,20 @@ import { EmptyState } from '../components/EmptyState';
 import { ProfileCard } from '../components/ProfileCard';
 import { useDebugAccess } from '../hooks/useDebugAccess';
 import { trackScreenView } from '../services/analytics';
-import { formatRelativeTime } from '../utils/formatRelativeTime';
-import type { UserCheckinRecord } from '../services/supabaseCheckin';
+import { formatRelativeTime, formatDuration } from '../utils/formatRelativeTime';
+import { deleteCheckin, type UserCheckinRecord } from '../services/supabaseCheckin';
 import { theme } from '../theme';
 
-const VISIBILITY_LABELS: Record<string, string> = {
-  public: '👁 Public',
-  matches_only: '💜 Matches',
-  private: '🔒 Private',
-};
+const CHECKIN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function getCheckinStatus(r: UserCheckinRecord): { label: string; tone: 'pending' | 'visible' | 'expired' } {
+  const now = Date.now();
+  const visibleAfter = new Date(r.visibleAfter).getTime();
+  const expiresAt = new Date(r.scannedAt).getTime() + CHECKIN_WINDOW_MS;
+  if (now < visibleAfter) return { label: `Visible in ${formatDuration(visibleAfter - now)}`, tone: 'pending' };
+  if (now < expiresAt) return { label: '👁 Visible to others', tone: 'visible' };
+  return { label: 'No longer shown', tone: 'expired' };
+}
 
 /**
  * Profile Screen - Same card design as Discover.
@@ -183,6 +188,9 @@ export const ProfileScreen: React.FC = () => {
               <PlacesHistoryView
                 records={checkinHistory}
                 onScanPress={() => (navigation as any).navigate('QRScanner')}
+                onRemove={(checkinId) =>
+                  setCheckinHistory((prev) => prev.filter((r) => r.checkinId !== checkinId))
+                }
               />
             )}
           </View>
@@ -197,9 +205,11 @@ export const ProfileScreen: React.FC = () => {
 // ---------------------------------------------------------------------------
 function PlacesHistoryView({
   records,
+  onRemove,
 }: {
   records: UserCheckinRecord[];
   onScanPress: () => void;
+  onRemove: (checkinId: string) => void;
 }) {
   const grouped = records.reduce<Map<string, UserCheckinRecord[]>>((acc, r) => {
     const key = r.category ?? 'other';
@@ -207,6 +217,29 @@ function PlacesHistoryView({
     acc.get(key)!.push(r);
     return acc;
   }, new Map());
+
+  const handleRemove = (r: UserCheckinRecord): void => {
+    Alert.alert(
+      'Remove this place?',
+      `This removes your check-in at ${r.venueName}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCheckin(r.checkinId);
+              onRemove(r.checkinId);
+            } catch (e) {
+              const message = e instanceof Error ? e.message : 'Failed to remove check-in';
+              Alert.alert('Could not remove', message);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <ScrollView
@@ -228,9 +261,24 @@ function PlacesHistoryView({
                   {formatRelativeTime(r.scannedAt)}
                 </Text>
               </View>
-              <Text style={placesStyles.visibilityLabel}>
-                {VISIBILITY_LABELS[r.visibilityMode] ?? r.visibilityMode}
-              </Text>
+              <View style={placesStyles.rowRight}>
+                <Text
+                  style={[
+                    placesStyles.visibilityLabel,
+                    getCheckinStatus(r).tone === 'visible' && placesStyles.visibilityLabelVisible,
+                  ]}
+                >
+                  {getCheckinStatus(r).label}
+                </Text>
+                <Pressable
+                  onPress={() => handleRemove(r)}
+                  hitSlop={8}
+                  accessibilityLabel={`Remove check-in at ${r.venueName}`}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="trash-outline" size={18} color={theme.colors.textTertiary} />
+                </Pressable>
+              </View>
             </View>
           ))}
         </View>
@@ -269,6 +317,12 @@ const placesStyles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    flexShrink: 0,
+  },
   venueName: {
     fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.medium,
@@ -283,6 +337,10 @@ const placesStyles = StyleSheet.create({
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.textTertiary,
     flexShrink: 0,
+  },
+  visibilityLabelVisible: {
+    color: theme.colors.success,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
 });
 

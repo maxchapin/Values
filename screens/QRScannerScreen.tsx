@@ -24,10 +24,15 @@ export const QRScannerScreen: React.FC = () => {
   // useRef prevents double-fires from the barcode scanner callback
   const scannedRef = useRef(false);
 
-  // Reset on focus so the user can scan again after navigating back
+  // Lock scanning on focus, then re-arm after a short delay so the user has
+  // time to move the camera away from the code before it can scan again.
   useFocusEffect(
     useCallback(() => {
-      scannedRef.current = false;
+      scannedRef.current = true;
+      const timer = setTimeout(() => {
+        scannedRef.current = false;
+      }, 1500);
+      return () => clearTimeout(timer);
     }, [])
   );
 

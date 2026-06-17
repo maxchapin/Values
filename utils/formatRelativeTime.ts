@@ -35,3 +35,14 @@ export function formatRelativeTime(timestamp: Date | number | string): string {
 
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
+
+/**
+ * Format a millisecond duration as a short countdown string.
+ * - Under 1 hour: "Xm"
+ * - 1 hour and over: "Xh"
+ */
+export function formatDuration(ms: number): string {
+  const totalMinutes = Math.max(0, Math.round(ms / 60_000));
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  return `${Math.round(totalMinutes / 60)}h`;
+}

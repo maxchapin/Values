@@ -10,6 +10,7 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { recordCheckin, type RecordCheckinResult } from '../services/supabaseCheckin';
 import { theme } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
@@ -38,8 +39,22 @@ export const CheckinConfirmationScreen: React.FC = () => {
     }
     setLoading(true);
     setError(null);
+
+    let userLat: number | undefined;
+    let userLng: number | undefined;
     try {
-      const res = await recordCheckin({ qrToken, visibilityMode: 'private' });
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        userLat = pos.coords.latitude;
+        userLng = pos.coords.longitude;
+      }
+    } catch (e) {
+      if (__DEV__) console.log('[CheckinConfirmation] Location capture failed:', e);
+    }
+
+    try {
+      const res = await recordCheckin({ qrToken, userLat, userLng });
       if (__DEV__) console.log('[CheckinConfirmation] Check-in result:', JSON.stringify(res));
       setResult(res);
     } catch (e) {
@@ -86,7 +101,7 @@ export const CheckinConfirmationScreen: React.FC = () => {
             <Text style={styles.venueName}>{result.venueName}</Text>
 
             <Text style={styles.successMessage}>
-              {"You'll be able to see others who checked in here, and they'll be able to see you, within 24 hours."}
+              {"Starting 24 hours from now, you'll be visible to — and able to see — others who check in here within the next week."}
             </Text>
 
             {result.gpsMismatch ? (

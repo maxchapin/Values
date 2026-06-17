@@ -9,7 +9,6 @@ import { View, Text, StyleSheet, ScrollView, ScrollViewProps, Pressable } from '
 import { Card } from './Card';
 import { TagPill } from './TagPill';
 import { ProfilePhotoCarousel, type ProfilePhotoCarouselRef } from './ProfilePhotoCarousel';
-import { MatchScoreInfoModal } from './MatchScoreInfoModal';
 import { ValuesExplanationModal } from './ValuesExplanationModal';
 import { cardStyles, CARD_PHOTO_HEIGHT } from '../styles/CardStyles';
 import type { User, Gender } from '../types/user';
@@ -34,24 +33,13 @@ function getCandidateDisplayValues(
   if (candidateValueItems && candidateValueItems.length > 0) {
     return candidateValueItems;
   }
-  if (candidate.valuesProfile?.top5Ids && candidate.valuesProfile.allValues) {
-    return candidate.valuesProfile.top5Ids
-      .slice(0, 10)
-      .map((id) => {
-        const v = candidate.valuesProfile!.allValues.find((item) => item.id === id);
-        return v ? { id: v.id, label: v.label } : null;
-      })
-      .filter((v): v is CandidateValueItem => v !== null);
-  }
-  return [];
+  return candidate.valuesProfile?.selectedValues ?? [];
 }
 
 export interface ProfileCardProps {
   user: User;
   candidateValueItems?: CandidateValueItem[];
   sharedValueIds?: Set<string>;
-  similarityScore?: number;
-  sharedValuesCount?: number;
   explanationLines?: string[];
   distanceMiles?: number | null;
   /** Venue both users recently checked into. Shows a badge when set. */
@@ -70,8 +58,6 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
       user,
       candidateValueItems,
       sharedValueIds = new Set(),
-      similarityScore,
-      sharedValuesCount,
       explanationLines,
       distanceMiles,
       sharedVenueName,
@@ -87,12 +73,6 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
     const displayValues = getCandidateDisplayValues(user, candidateValueItems);
     const photoCarouselRef = useRef<ProfilePhotoCarouselRef>(null);
     const isSelfMode = showEditButton;
-    const showMatchScore =
-      !isSelfMode &&
-      (typeof similarityScore === 'number' || typeof sharedValuesCount === 'number');
-    const score = typeof similarityScore === 'number' ? similarityScore : 0;
-    const matchHeadline = `${score}% Match`;
-    const [showScoreInfoModal, setShowScoreInfoModal] = useState(false);
     const [showValuesExplanationModal, setShowValuesExplanationModal] = useState(false);
     const genderLabel = getGenderDisplayLabel(user.gender);
 
@@ -102,10 +82,6 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
 
     return (
       <Card padding={0} variant="elevated" style={cardStyles.card}>
-        <MatchScoreInfoModal
-          visible={showScoreInfoModal}
-          onClose={() => setShowScoreInfoModal(false)}
-        />
         <ValuesExplanationModal
           visible={showValuesExplanationModal}
           onClose={() => setShowValuesExplanationModal(false)}
@@ -133,21 +109,6 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
                 {user.name || 'Unknown'}
                 {user.age != null ? `, ${user.age}` : ''}
               </Text>
-              {showMatchScore ? (
-                <View style={cardStyles.matchScoreRow}>
-                  <View style={cardStyles.matchScorePill}>
-                    <Text style={cardStyles.matchScoreText}>{matchHeadline}</Text>
-                    <Pressable
-                      style={cardStyles.matchScoreInfoButton}
-                      onPress={() => setShowScoreInfoModal(true)}
-                      accessibilityLabel="Learn how match score is calculated"
-                      accessibilityRole="button"
-                    >
-                      <Text style={cardStyles.matchScoreInfoIcon}>ℹ️</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
               {showEditButton && onEditPress ? (
                 <Pressable
                   style={cardStyles.editButton}
@@ -166,7 +127,7 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
               <View style={cardStyles.venueBadge}>
                 <Text style={cardStyles.venueBadgeIcon}>📍</Text>
                 <Text style={cardStyles.venueBadgeText} numberOfLines={1}>
-                  Both at {sharedVenueName}
+                  You were both at {sharedVenueName} this week
                 </Text>
               </View>
             </View>
@@ -197,6 +158,7 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
             </View>
           </View>
 
+          {isSelfMode || displayValues.length > 0 ? (
           <View style={[cardStyles.section, cardStyles.sectionCard, cardStyles.valuesCard]}>
             {isSelfMode && onValuesPress ? (
               <Pressable
@@ -269,6 +231,7 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
               </>
             )}
           </View>
+          ) : null}
 
           {user.prompts &&
           Array.isArray(user.prompts) &&

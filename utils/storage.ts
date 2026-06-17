@@ -65,6 +65,7 @@ export interface PersistedUserData {
       notifications: {
         newMatch: boolean;
         newMessage: boolean;
+        checkinOverlap: boolean;
       };
     };
     createdAt: string;

@@ -309,8 +309,6 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
             <ProfileCard
               user={otherUser}
               sharedValueIds={sharedValueIds}
-              similarityScore={match.similarityScore}
-              sharedValuesCount={match.sharedValuesCount}
               explanationLines={explanationLines}
               scrollViewProps={{
                 contentContainerStyle: { paddingBottom: theme.spacing.lg },

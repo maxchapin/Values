@@ -43,6 +43,13 @@
         }
       ],
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Values uses your location at check-in to confirm you're at the venue."
+        }
+      ],
+      "expo-notifications",
+      [
         "@sentry/react-native/expo",
         {
           "url": "https://sentry.io/",
@@ -78,8 +85,8 @@
     "extra": {
       "googleClientId": "",
       "policyVersion": "1",
-      "privacyPolicyUrl": "https://example.com/privacy",
-      "termsOfServiceUrl": "https://example.com/terms",
+      "privacyPolicyUrl": "https://wickedvalues.com/privacy",
+      "termsOfServiceUrl": "https://wickedvalues.com/terms",
       "supabaseRedirectTo": "${EXPO_PUBLIC_SUPABASE_URL}/auth/v1/callback",
       "eas": {
         "projectId": "5ba96ab4-b67a-4a67-be1c-547129534a1d"

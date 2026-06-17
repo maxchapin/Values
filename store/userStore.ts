@@ -421,6 +421,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         notifications: {
           newMatch: true,
           newMessage: true,
+          checkinOverlap: true,
         },
       };
 

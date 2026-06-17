@@ -34,6 +34,8 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { MatchDetailScreen } from '../screens/MatchDetailScreen';
 import { QRScannerScreen } from '../screens/QRScannerScreen';
 import { CheckinConfirmationScreen } from '../screens/CheckinConfirmationScreen';
+import { NearbyVenuesScreen } from '../screens/NearbyVenuesScreen';
+import { registerPushToken } from '../services/supabasePushTokens';
 
 // Debug screen (dev mode only)
 import { DebugScreen } from '../screens/DebugScreen';
@@ -260,6 +262,14 @@ export const AppNavigator: React.FC = () => {
     return () => clearTimeout(timer);
   }, [phase]);
 
+  // Register this device's push token once the user reaches the main app.
+  const hasRegisteredPushTokenRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'main' || !authUser || hasRegisteredPushTokenRef.current) return;
+    hasRegisteredPushTokenRef.current = true;
+    registerPushToken(authUser.id).catch(() => {});
+  }, [phase, authUser]);
+
   return (
     <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
@@ -344,6 +354,11 @@ export const AppNavigator: React.FC = () => {
           name={ROUTES.CHECKIN_CONFIRMATION}
           component={CheckinConfirmationScreen}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name={ROUTES.NEARBY_VENUES}
+          component={NearbyVenuesScreen}
+          options={{ title: 'Nearby Venues', headerBackTitle: 'Discover' }}
         />
 
         {/* Debug Screen (dev mode only) */}

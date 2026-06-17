@@ -117,5 +117,6 @@ export interface UserSettings {
   notifications: {
     newMatch: boolean;
     newMessage: boolean;
+    checkinOverlap: boolean;
   };
 }

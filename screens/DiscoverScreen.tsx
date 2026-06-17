@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Pressable, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,7 @@ import { ReportUserModal } from '../components/ReportUserModal';
 import { insertUserBlock, insertUserReport, type ReportReason } from '../services/supabaseSafety';
 import { formatExplanationLines } from '../services/matchingModel';
 import { theme } from '../theme';
+import { ROUTES } from '../navigation/types';
 import {
   navigateToValuesEditorFromProfile,
   type NavigateToValuesEditorNav,
@@ -330,11 +331,16 @@ export const DiscoverScreen: React.FC = () => {
         {showDiscoverCard && candidate && currentMatch && (
           <>
             {discoverMode === 'city' && (
-              <View style={styles.cityBanner}>
+              <Pressable
+                style={styles.cityBanner}
+                onPress={() => (navigation as any).navigate(ROUTES.NEARBY_VENUES)}
+                accessibilityRole="button"
+                accessibilityLabel="View nearby venues"
+              >
                 <Text style={styles.cityBannerText}>
                   Showing city-wide profiles — check in somewhere to see who's nearby
                 </Text>
-              </View>
+              </Pressable>
             )}
             <View style={styles.cardArea}>
               <DiscoverSwipeCard
@@ -347,8 +353,6 @@ export const DiscoverScreen: React.FC = () => {
                   ref={cardScrollRef}
                   user={candidate}
                   sharedValueIds={sharedValueIds}
-                  similarityScore={typeof currentMatch.similarityScore === 'number' ? currentMatch.similarityScore : 0}
-                  sharedValuesCount={typeof currentMatch.sharedValuesCount === 'number' ? currentMatch.sharedValuesCount : 0}
                   explanationLines={
                     currentMatch.valuesExplanation
                       ? formatExplanationLines(currentMatch.valuesExplanation)

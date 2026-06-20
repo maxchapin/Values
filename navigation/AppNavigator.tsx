@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList, MainTabParamList, ROUTES } from './types';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
-import { useValuesOnboardingStore } from '../store/valuesOnboardingStore';
 import { theme } from '../theme';
 
 // Auth screens
@@ -138,27 +137,24 @@ const MainTabNavigatorWithPolicy: React.FC = () => (
  * Phases:
  * 1. 'auth' - No authenticated user → Welcome/Login
  * 2. 'profile' - User authenticated but profile incomplete → ProfileSetupScreen
- * 3. 'values' - Profile complete but values incomplete → ValuesOnboardingScreen
- * 4. 'main' - Profile has is_onboarding_complete → MainTabNavigator
+ * 3. 'main' - Profile complete → MainTabNavigator
+ *
+ * Values selection is not part of the gated onboarding flow — it's optional and can be
+ * filled in (or edited) any time from Profile/Edit Profile/Discover once in the main app.
  */
 export const AppNavigator: React.FC = () => {
   const { user: authUser, profile } = useAuth();
 
   const storeIsProfileComplete = useUserStore((state) => state.isProfileComplete);
-  const storeIsValuesComplete = useUserStore((state) => state.isValuesComplete);
 
   // Fallback chain: Supabase profile row → AuthUser flags (persisted in SecureStore) → UserStore
   const isProfileComplete = profile?.is_profile_complete ?? authUser?.isProfileComplete ?? storeIsProfileComplete;
-  const isValuesComplete = profile?.is_values_complete ?? authUser?.isValuesComplete ?? storeIsValuesComplete;
-  const isOnboardingComplete = profile?.is_onboarding_complete ?? authUser?.isOnboardingComplete ?? (isProfileComplete && isValuesComplete);
 
-  const phase = useMemo<'auth' | 'profile' | 'values' | 'main'>(() => {
+  const phase = useMemo<'auth' | 'profile' | 'main'>(() => {
     if (!authUser) return 'auth';
-    if (isOnboardingComplete) return 'main';
     if (!isProfileComplete) return 'profile';
-    if (!isValuesComplete) return 'values';
     return 'main';
-  }, [authUser, isOnboardingComplete, isProfileComplete, isValuesComplete]);
+  }, [authUser, isProfileComplete]);
 
   const phaseRootRoute = useMemo<keyof RootStackParamList>(() => {
     switch (phase) {
@@ -166,9 +162,6 @@ export const AppNavigator: React.FC = () => {
         return ROUTES.WELCOME;
       case 'profile':
         return ROUTES.PROFILE_SETUP;
-      case 'values':
-        // Use new unified ValuesOnboarding screen
-        return ROUTES.VALUES_ONBOARDING;
       case 'main':
       default:
         return ROUTES.MAIN_APP;

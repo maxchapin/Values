@@ -259,10 +259,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigati
       hometown: profileData.hometown,
     });
 
-    // Navigate to values selection flow
-    // Navigate to new unified values onboarding screen
-    // Navigation will be handled by AppNavigator based on isValuesComplete flag
-    // No explicit navigation needed - AppNavigator will route to ValuesOnboarding automatically
+    // No explicit navigation needed — AppNavigator routes to the main app as soon as
+    // isProfileComplete flips true. Values selection is optional and happens later
+    // (Profile / Edit Profile / Discover), not as part of the gated onboarding flow.
   };
 
   return (

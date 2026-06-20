@@ -346,8 +346,8 @@ export async function upsertSupabaseProfile(
         ? {
             values_profile: userValuesProfileToJson(userData.valuesProfile),
             selected_values:
-              userData.valuesProfile.top5Ids.length > 0
-                ? userData.valuesProfile.top5Ids
+              userData.valuesProfile.selectedValueIds.length > 0
+                ? userData.valuesProfile.selectedValueIds
                 : null,
           }
         : {
@@ -362,7 +362,7 @@ export async function upsertSupabaseProfile(
         !!userData.bio &&
         ((photosForRow?.length ?? userData.photos?.length) || 0) > 0,
       is_values_complete:
-        (userData.valuesProfile?.top5Ids?.length ?? userData.selectedValues?.length ?? 0) >= 5,
+        (userData.valuesProfile?.selectedValueIds?.length ?? userData.selectedValues?.length ?? 0) > 0,
       is_onboarding_complete: false, // Will be computed
     }),
     ...(mergedPreferences !== undefined ? { preferences: mergedPreferences as SupabaseProfile['preferences'] } : {}),
@@ -370,10 +370,10 @@ export async function upsertSupabaseProfile(
     last_login_at: new Date().toISOString(), // So this user appears recently active in others' Discover
   };
 
-  // Compute onboarding completion
+  // Compute onboarding completion — values selection is optional and filled in later,
+  // so it does not gate onboarding completion.
   if (userData) {
-    profileData.is_onboarding_complete =
-      !!profileData.is_profile_complete && !!profileData.is_values_complete;
+    profileData.is_onboarding_complete = !!profileData.is_profile_complete;
   }
 
   if (__DEV__) {
@@ -633,7 +633,7 @@ export async function updateProfileCompletion(
     .update({
       is_profile_complete: isProfileComplete,
       is_values_complete: isValuesComplete,
-      is_onboarding_complete: isProfileComplete && isValuesComplete,
+      is_onboarding_complete: isProfileComplete,
       updated_at: new Date().toISOString(),
     })
     .eq('id', user.id);

@@ -47,7 +47,6 @@ export const DiscoverScreen: React.FC = () => {
     passUser,
     setFilters,
     discoverSwipeMode,
-    discoverMode,
   } = useMatchesStore();
 
   // Guard: store may not have availableMatches on first paint when switching tabs
@@ -330,7 +329,7 @@ export const DiscoverScreen: React.FC = () => {
 
         {showDiscoverCard && candidate && currentMatch && (
           <>
-            {discoverMode === 'city' && (
+            {!currentMatch.sharedVenueName && (
               <Pressable
                 style={styles.cityBanner}
                 onPress={() => (navigation as any).navigate(ROUTES.NEARBY_VENUES)}

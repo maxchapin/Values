@@ -8,7 +8,6 @@ import { ValuesOnboardingStep } from '../types/value';
 import { UserValuesProfile } from '../types/user';
 import { INITIAL_VALUES } from '../data/valuesConstants';
 
-const MIN_SELECTION = 3;
 const MAX_SELECTION = 10;
 
 interface ValuesOnboardingStore {
@@ -17,7 +16,6 @@ interface ValuesOnboardingStore {
 
   // Selectors
   selectedCount: () => number;
-  canProceed: () => boolean;
   isSelected: (id: string) => boolean;
   isAtCap: () => boolean;
 
@@ -35,7 +33,6 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
   currentStep: 'select',
 
   selectedCount: () => get().selectedValueIds.length,
-  canProceed: () => get().selectedValueIds.length >= MIN_SELECTION,
   isSelected: (id) => get().selectedValueIds.includes(id),
   isAtCap: () => get().selectedValueIds.length >= MAX_SELECTION,
 
@@ -86,8 +83,8 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
         totalSteps: 2,
         title: 'Select your values',
         subtitle:
-          count < MIN_SELECTION
-            ? `Pick at least ${MIN_SELECTION} values that matter to you (${count} selected)`
+          count === 0
+            ? 'Pick the values that matter to you'
             : `${count} selected — tap Continue when ready`,
       };
     }
@@ -100,7 +97,7 @@ export const useValuesOnboardingStore = create<ValuesOnboardingStore>((set, get)
   },
 }));
 
-export { MIN_SELECTION, MAX_SELECTION };
+export { MAX_SELECTION };
 
 // Helper: build a UserValuesProfile from the current store selection
 export function buildValuesProfileFromIds(selectedValueIds: string[]): UserValuesProfile {

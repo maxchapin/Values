@@ -122,12 +122,15 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
             </View>
           </View>
 
-          {!isSelfMode && sharedVenueName ? (
+          {!isSelfMode ? (
             <View style={cardStyles.section}>
-              <View style={cardStyles.venueBadge}>
-                <Text style={cardStyles.venueBadgeIcon}>📍</Text>
-                <Text style={cardStyles.venueBadgeText} numberOfLines={1}>
-                  You were both at {sharedVenueName} this week
+              <View style={[cardStyles.venueBadge, !sharedVenueName && cardStyles.venueBadgeMuted]}>
+                <Text style={cardStyles.venueBadgeIcon}>{sharedVenueName ? '📍' : '🏙️'}</Text>
+                <Text
+                  style={[cardStyles.venueBadgeText, !sharedVenueName && cardStyles.venueBadgeTextMuted]}
+                  numberOfLines={1}
+                >
+                  {sharedVenueName ? `You were both at ${sharedVenueName} this week` : 'No shared venue yet'}
                 </Text>
               </View>
             </View>

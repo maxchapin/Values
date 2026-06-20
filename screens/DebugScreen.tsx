@@ -20,7 +20,7 @@ import { Match } from '../types/match';
 export const DebugScreen: React.FC = () => {
   const { currentUser, logout, isAuthenticated, isProfileComplete, isValuesComplete } = useUserStore();
   const { selectedAny, top20, top10, top5, currentStep, reset: resetValues } = useValuesSelectionStore();
-  const { values: onboardingValues, currentStep: onboardingStep, top5Count, top10Count, top20Count, initialCount } = useValuesOnboardingStore();
+  const { currentStep: onboardingStep, selectedCount } = useValuesOnboardingStore();
   const {
     availableMatches,
     currentMatchIndex,
@@ -243,19 +243,19 @@ export const DebugScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Tiered Values Profile (New) */}
+        {/* Values Profile */}
         {currentUser?.valuesProfile && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tiered Values Profile</Text>
+            <Text style={styles.sectionTitle}>Values Profile</Text>
             <View style={styles.card}>
               <View style={styles.valuesRow}>
-                <Text style={styles.label}>Top 5:</Text>
-                <Text style={styles.value}>{currentUser.valuesProfile.top5Ids.length}</Text>
+                <Text style={styles.label}>Selected:</Text>
+                <Text style={styles.value}>{currentUser.valuesProfile.selectedValueIds.length}</Text>
               </View>
-              {currentUser.valuesProfile.top5Ids.length > 0 && (
+              {currentUser.valuesProfile.selectedValueIds.length > 0 && (
                 <View style={styles.valuesList}>
-                  {currentUser.valuesProfile.top5Ids.map((id) => {
-                    const value = currentUser.valuesProfile!.allValues.find((v) => v.id === id);
+                  {currentUser.valuesProfile.selectedValueIds.map((id) => {
+                    const value = currentUser.valuesProfile!.selectedValues.find((v) => v.id === id);
                     return (
                       <Text key={id} style={styles.valueItem}>
                         • {value?.label || id}
@@ -264,18 +264,6 @@ export const DebugScreen: React.FC = () => {
                   })}
                 </View>
               )}
-              <View style={styles.valuesRow}>
-                <Text style={styles.label}>Top 10:</Text>
-                <Text style={styles.value}>{currentUser.valuesProfile.top10Ids.length}</Text>
-              </View>
-              <View style={styles.valuesRow}>
-                <Text style={styles.label}>Top 20:</Text>
-                <Text style={styles.value}>{currentUser.valuesProfile.top20Ids.length}</Text>
-              </View>
-              <View style={styles.valuesRow}>
-                <Text style={styles.label}>Initial:</Text>
-                <Text style={styles.value}>{currentUser.valuesProfile.initialIds.length}</Text>
-              </View>
             </View>
           </View>
         )}
@@ -289,20 +277,8 @@ export const DebugScreen: React.FC = () => {
               <Text style={styles.value}>{onboardingStep}</Text>
             </View>
             <View style={styles.valuesRow}>
-              <Text style={styles.label}>Top 5:</Text>
-              <Text style={styles.value}>{top5Count()}</Text>
-            </View>
-            <View style={styles.valuesRow}>
-              <Text style={styles.label}>Top 10:</Text>
-              <Text style={styles.value}>{top10Count()}</Text>
-            </View>
-            <View style={styles.valuesRow}>
-              <Text style={styles.label}>Top 20:</Text>
-              <Text style={styles.value}>{top20Count()}</Text>
-            </View>
-            <View style={styles.valuesRow}>
-              <Text style={styles.label}>Initial:</Text>
-              <Text style={styles.value}>{initialCount()}</Text>
+              <Text style={styles.label}>Selected:</Text>
+              <Text style={styles.value}>{selectedCount()}</Text>
             </View>
           </View>
         </View>

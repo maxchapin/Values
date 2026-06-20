@@ -422,8 +422,8 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
   }
 
   const top5Values =
-    currentUser.valuesProfile?.top5Ids
-      ?.map((id) => currentUser.valuesProfile!.allValues.find((v) => v.id === id)?.label || id)
+    currentUser.valuesProfile?.selectedValueIds
+      ?.map((id) => currentUser.valuesProfile!.selectedValues.find((v) => v.id === id)?.label || id)
       .filter(Boolean) ?? [];
 
   return (
@@ -452,7 +452,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
             <Text style={styles.sectionTitle}>Your Values</Text>
             {top5Values.length > 0 ? (
               <View style={styles.top5Container}>
-                <Text style={styles.top5Label}>Core 5 Values:</Text>
+                <Text style={styles.top5Label}>Your Values:</Text>
                 <View style={styles.top5Values}>
                   {top5Values.map((label, index) => (
                     <View key={index} style={styles.top5Value}>

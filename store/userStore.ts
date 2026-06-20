@@ -79,9 +79,9 @@ export const useUserStore = create<UserStore>((set, get) => ({
   checkValuesComplete: (user: User | null): boolean => {
     if (!user) return false;
     if (user.valuesProfile?.selectedValueIds) {
-      return user.valuesProfile.selectedValueIds.length >= 3;
+      return user.valuesProfile.selectedValueIds.length > 0;
     }
-    return (user.selectedValues?.length ?? 0) >= 3;
+    return (user.selectedValues?.length ?? 0) > 0;
   },
 
   // Set current user
@@ -93,10 +93,10 @@ export const useUserStore = create<UserStore>((set, get) => ({
       isAuthenticated: true,
       isProfileComplete,
       isValuesComplete,
-      isOnboardingComplete: isProfileComplete && isValuesComplete,
+      isOnboardingComplete: isProfileComplete,
       keepSignedIn,
     });
-    
+
     // Persist user data and auth state
     try {
       await saveUserData(user, isProfileComplete, isValuesComplete);
@@ -128,7 +128,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         isAuthenticated: true,
         isProfileComplete,
         isValuesComplete: false,
-        isOnboardingComplete: false,
+        isOnboardingComplete: isProfileComplete,
         keepSignedIn,
         isLoading: false,
       });
@@ -229,7 +229,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         isAuthenticated: true,
         isProfileComplete,
         isValuesComplete,
-        isOnboardingComplete: isProfileComplete && isValuesComplete,
+        isOnboardingComplete: isProfileComplete,
         keepSignedIn, // Preserve keepSignedIn in store state
         isLoading: false,
       });
@@ -284,7 +284,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         currentUser: updatedUser,
         isProfileComplete,
         isValuesComplete,
-        isOnboardingComplete: isProfileComplete && isValuesComplete,
+        isOnboardingComplete: isProfileComplete,
         keepSignedIn, // Preserve keepSignedIn
         isLoading: false,
       });
@@ -325,7 +325,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
         set({
           currentUser: updatedUser,
           isValuesComplete,
-          isOnboardingComplete: isProfileComplete && isValuesComplete,
+          isOnboardingComplete: isProfileComplete,
           keepSignedIn, // Preserve keepSignedIn
           isLoading: false,
         });
@@ -361,11 +361,11 @@ export const useUserStore = create<UserStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Update user with values profile
-      // Also update selectedValues for backward compatibility (use top5Ids)
+      // Also update selectedValues for backward compatibility
       const updatedUser: User = {
         ...currentUser,
         valuesProfile,
-        selectedValues: valuesProfile.top5Ids, // Legacy compatibility
+        selectedValues: valuesProfile.selectedValueIds, // Legacy compatibility
         updatedAt: new Date().toISOString(),
       };
 
@@ -375,7 +375,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
       set({
         currentUser: updatedUser,
         isValuesComplete,
-        isOnboardingComplete: isProfileComplete && isValuesComplete,
+        isOnboardingComplete: isProfileComplete,
         keepSignedIn,
         isLoading: false,
       });
@@ -565,7 +565,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
       isAuthenticated: true,
       isProfileComplete,
       isValuesComplete,
-      isOnboardingComplete: isProfileComplete && isValuesComplete,
+      isOnboardingComplete: isProfileComplete,
       keepSignedIn,
       isHydrated: true,
     });

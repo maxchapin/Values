@@ -50,15 +50,8 @@ export interface PersistedUserData {
     prompts: Array<{ id: string; question: string; answer: string; isCustom?: boolean }>;
     selectedValues: string[];
     valuesProfile?: {
-      allValues: Array<{
-        id: string;
-        label: string;
-        tier: 'none' | 'initial' | 'top20' | 'top10' | 'top5';
-      }>;
-      top5Ids: string[];
-      top10Ids: string[];
-      top20Ids: string[];
-      initialIds: string[];
+      selectedValueIds: string[];
+      selectedValues: Array<{ id: string; label: string }>;
     };
     settings?: {
       isProfileVisible: boolean;

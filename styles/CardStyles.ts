@@ -188,4 +188,13 @@ export const cardStyles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.success,
   },
+
+  // Muted variant — shown on city-wide Discover cards (no shared venue)
+  venueBadgeMuted: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderColor: theme.colors.borderLight,
+  },
+  venueBadgeTextMuted: {
+    color: theme.colors.textSecondary,
+  },
 });

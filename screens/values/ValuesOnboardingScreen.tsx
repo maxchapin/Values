@@ -11,12 +11,11 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useValuesOnboardingStore, buildValuesProfileFromIds, MIN_SELECTION, MAX_SELECTION } from '../../store/valuesOnboardingStore';
+import { useValuesOnboardingStore, buildValuesProfileFromIds, MAX_SELECTION } from '../../store/valuesOnboardingStore';
 import { useUserStore } from '../../store/userStore';
 import { ValuesCloud } from '../../components/ValuesCloud';
 import { PrimaryButton } from '../../components/PrimaryButton';
@@ -35,7 +34,6 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
   const {
     selectedValueIds,
     currentStep,
-    canProceed,
     isAtCap,
     toggleValue,
     proceedToNextStep,
@@ -140,13 +138,12 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
             style={styles.footerSecondary}
           />
           <PrimaryButton
-            title={saving ? '' : isEditMode ? 'Save' : 'Confirm'}
+            title={isEditMode ? 'Save' : 'Confirm'}
             onPress={handleComplete}
             disabled={saving}
+            loading={saving}
             style={styles.footerPrimary}
-          >
-            {saving ? <ActivityIndicator color={theme.colors.textInverse} size="small" /> : null}
-          </PrimaryButton>
+          />
         </View>
       </ScreenContainer>
     );
@@ -154,7 +151,7 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
 
   // ── Select step (default) ─────────────────────────────────────────────────────
   const count = selectedValueIds.length;
-  const counterColor = count >= MIN_SELECTION ? theme.colors.success : theme.colors.textSecondary;
+  const counterColor = count > 0 ? theme.colors.success : theme.colors.textSecondary;
 
   return (
     <ScreenContainer contentPadding={false}>
@@ -185,7 +182,6 @@ export const ValuesOnboardingScreen: React.FC<ValuesOnboardingScreenProps> = ({ 
         <PrimaryButton
           title="Continue"
           onPress={proceedToNextStep}
-          disabled={!canProceed()}
           style={styles.footerFull}
         />
       </View>

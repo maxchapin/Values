@@ -5,7 +5,7 @@
  */
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org';
-const USER_AGENT = 'ValuesDatingApp/1.0 (React Native; dating app location picker)';
+const USER_AGENT = 'TheLocalDatingApp/1.0 (React Native; dating app location picker)';
 
 export interface GeocodeResult {
   lat: number;

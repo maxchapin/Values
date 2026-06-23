@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Values Dating",
+    "name": "The Local",
     "slug": "values-dating",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -45,7 +45,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Values uses your location at check-in to confirm you're at the venue."
+          "locationWhenInUsePermission": "The Local uses your location at check-in to confirm you're at the venue."
         }
       ],
       "expo-notifications",
@@ -61,7 +61,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.values.app",
-      "associatedDomains": ["applinks:wickedvalues.com"],
+      "associatedDomains": ["applinks:thelocaldating.com"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -85,8 +85,8 @@
     "extra": {
       "googleClientId": "",
       "policyVersion": "1",
-      "privacyPolicyUrl": "https://wickedvalues.com/privacy",
-      "termsOfServiceUrl": "https://wickedvalues.com/terms",
+      "privacyPolicyUrl": "https://thelocaldating.com/privacy",
+      "termsOfServiceUrl": "https://thelocaldating.com/terms",
       "supabaseRedirectTo": "${EXPO_PUBLIC_SUPABASE_URL}/auth/v1/callback",
       "eas": {
         "projectId": "5ba96ab4-b67a-4a67-be1c-547129534a1d"

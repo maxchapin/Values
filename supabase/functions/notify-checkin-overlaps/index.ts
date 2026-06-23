@@ -143,7 +143,7 @@ Deno.serve(async (req: Request) => {
       messages.push({
         to: token,
         title: 'New people to meet nearby',
-        body: `Someone new checked in at ${venueName} — open Values to see who's around.`,
+        body: `Someone new checked in at ${venueName} — open The Local to see who's around.`,
       });
     }
     notifiedUserIds.add(row.user_id);

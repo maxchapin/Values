@@ -171,7 +171,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     if (canCompose) {
       await MailComposer.composeAsync({
         recipients: [supportAddr],
-        subject: 'Values App – Help & Support',
+        subject: 'The Local App – Help & Support',
         body: 'Please describe your question or issue:\n\n',
       });
     } else {

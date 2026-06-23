@@ -61,7 +61,7 @@ export const PolicyAcceptanceGate: React.FC = () => {
       <View style={styles.wrap}>
         <Text style={styles.title}>Welcome</Text>
         <Text style={styles.body}>
-          Values is for adults 18+. By continuing, you agree to our Terms of Service and acknowledge our Privacy
+          The Local is for adults 18+. By continuing, you agree to our Terms of Service and acknowledge our Privacy
           Policy.
         </Text>
         <Pressable style={styles.linkBtn} onPress={() => void openPrivacy()}>

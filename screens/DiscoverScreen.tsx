@@ -253,7 +253,7 @@ export const DiscoverScreen: React.FC = () => {
             accessibilityRole="button"
           >
             <Text style={styles.headerTitle} numberOfLines={1}>
-              Values
+              The Local
             </Text>
           </TouchableOpacity>
           <View style={styles.headerRight}>

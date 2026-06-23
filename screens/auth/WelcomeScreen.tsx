@@ -23,9 +23,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
     <ScreenContainer style={styles.container}>
       <View style={styles.content}>
         <View style={styles.logoMark}>
-          <Text style={styles.logoLetter}>V</Text>
+          <Text style={styles.logoLetter}>L</Text>
         </View>
-        <Text style={styles.title}>Welcome to Values</Text>
+        <Text style={styles.title}>Welcome to The Local</Text>
         <Text style={styles.subtitle}>
           Find meaningful connections based on shared values — not photos.
         </Text>

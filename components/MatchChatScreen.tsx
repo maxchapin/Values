@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ListRenderItem,
+  Alert,
 } from 'react-native';
 import type { Message, MatchChat } from '../types/chatTypes';
 import { theme } from '../theme';
@@ -93,22 +94,25 @@ export const DayHeader: React.FC<DayHeaderProps> = ({ label }) => (
 export interface ChatBubbleProps {
   message: Message;
   isMe: boolean;
+  /** Only offered for messages from the other participant. */
+  onReportMessage?: (message: Message) => void;
 }
 
 /** Text-only bubbles. Legacy imageUrl is not rendered (chat is text-only for safety). */
-export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe }) => {
+export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe, onReportMessage }) => {
   const timeStr = formatMessageTime(new Date(message.timestamp));
   const readReceipt = isMe ? (message.isRead ? '✓✓' : '✓') : null;
   const displayText = message.text ?? (message.imageUrl ? '[Media not available]' : '');
 
   return (
     <View style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowThem]}>
-      <View
+      <Pressable
         style={[
           styles.bubble,
           isMe ? styles.bubbleMe : styles.bubbleThem,
           isMe ? styles.bubbleTailMe : styles.bubbleTailThem,
         ]}
+        onLongPress={!isMe && onReportMessage ? () => onReportMessage(message) : undefined}
       >
         {displayText ? (
           <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{displayText}</Text>
@@ -119,7 +123,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isMe }) => {
             <Text style={[styles.readReceipt, isMe && styles.readReceiptMe]}>{readReceipt}</Text>
           ) : null}
         </View>
-      </View>
+      </Pressable>
     </View>
   );
 };
@@ -139,6 +143,8 @@ export interface MatchChatScreenServiceProps {
   threadMatchUuid?: string;
   /** Optional: simulate send failure for testing (e.g. __DEV__). */
   simulateSendFailure?: boolean;
+  /** Long-press a message from the other participant to flag it specifically. */
+  onReportMessage?: (message: Message) => void;
 }
 
 /** Controlled mode: parent owns data and onSendMessage. Text only; no attachments. */
@@ -211,8 +217,10 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
       chatService
         .sendMessage(matchId, currentUserId, { text }, sendOpts)
         .then(() => setInputText(''))
-        .catch(() => {
+        .catch((err: unknown) => {
           // Optimistic message was rolled back by service; UI already updated via subscription
+          const message = err instanceof Error ? err.message : 'Failed to send message';
+          Alert.alert('Message not sent', message);
         });
       return;
     }
@@ -221,15 +229,17 @@ export const MatchChatScreen: React.FC<MatchChatScreenProps> = (props) => {
     setInputText('');
   }, [inputText, isService, matchId, currentUserId, props, threadMatchUuid]);
 
+  const onReportMessage = isService ? props.onReportMessage : undefined;
+
   const renderItem: ListRenderItem<ListItem> = useCallback(
     ({ item }) => {
       if (item.type === 'date') {
         return <DayHeader label={item.label} />;
       }
       const isMe = item.message.senderId === currentUserId;
-      return <ChatBubble message={item.message} isMe={isMe} />;
+      return <ChatBubble message={item.message} isMe={isMe} onReportMessage={onReportMessage} />;
     },
-    [currentUserId]
+    [currentUserId, onReportMessage]
   );
 
   return (

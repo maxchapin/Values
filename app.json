@@ -77,6 +77,20 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "thelocaldating.com",
+              "pathPrefix": "/checkin"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "web": {

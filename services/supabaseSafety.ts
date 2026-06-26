@@ -52,8 +52,10 @@ export async function insertUserReport(params: {
   reason: ReportReason;
   details?: string;
   matchId?: string | null;
+  messageId?: string | null;
+  reportedPhotoUrl?: string | null;
 }): Promise<void> {
-  const { reporterId, reportedUserId, reason, details, matchId } = params;
+  const { reporterId, reportedUserId, reason, details, matchId, messageId, reportedPhotoUrl } = params;
   if (!reporterId || !reportedUserId || reporterId === reportedUserId) {
     throw new Error('Invalid report');
   }
@@ -64,6 +66,8 @@ export async function insertUserReport(params: {
     reason,
     details: details?.trim() || null,
     match_id: matchId ?? null,
+    message_id: messageId ?? null,
+    reported_photo_url: reportedPhotoUrl ?? null,
   });
 
   if (error) {

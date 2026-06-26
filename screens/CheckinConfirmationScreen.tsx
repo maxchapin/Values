@@ -32,6 +32,7 @@ export const CheckinConfirmationScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<RecordCheckinResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [locationUnavailable, setLocationUnavailable] = useState(false);
 
   const handleCheckin = async () => {
     if (__DEV__) {
@@ -39,6 +40,7 @@ export const CheckinConfirmationScreen: React.FC = () => {
     }
     setLoading(true);
     setError(null);
+    setLocationUnavailable(false);
 
     let userLat: number | undefined;
     let userLng: number | undefined;
@@ -48,9 +50,12 @@ export const CheckinConfirmationScreen: React.FC = () => {
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         userLat = pos.coords.latitude;
         userLng = pos.coords.longitude;
+      } else {
+        setLocationUnavailable(true);
       }
     } catch (e) {
       if (__DEV__) console.log('[CheckinConfirmation] Location capture failed:', e);
+      setLocationUnavailable(true);
     }
 
     try {
@@ -72,6 +77,7 @@ export const CheckinConfirmationScreen: React.FC = () => {
   const handleTryAgain = () => {
     setError(null);
     setResult(null);
+    setLocationUnavailable(false);
   };
 
   return (
@@ -108,6 +114,14 @@ export const CheckinConfirmationScreen: React.FC = () => {
               <View style={styles.flagBanner}>
                 <Text style={styles.flagText}>
                   ⚠️ You appear to be far from this venue
+                </Text>
+              </View>
+            ) : null}
+
+            {locationUnavailable ? (
+              <View style={styles.flagBanner}>
+                <Text style={styles.flagText}>
+                  Location access was unavailable, so we couldn't confirm your distance from this venue. You can enable location in Settings for faster verification next time.
                 </Text>
               </View>
             ) : null}

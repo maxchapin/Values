@@ -36,7 +36,7 @@ CREATE TABLE checkins (
   venue_id        uuid        NOT NULL REFERENCES venues      ON DELETE CASCADE,
   scanned_at      timestamptz NOT NULL DEFAULT now(),
   check_in_date   date        NOT NULL DEFAULT CURRENT_DATE, -- UTC date of scan; used for the unique constraint
-  visible_after   timestamptz,                   -- scanned_at + 10 hrs; set by edge function
+  visible_after   timestamptz,                   -- scanned_at + 24 hrs; set by edge function
   visibility_mode text        NOT NULL DEFAULT 'public'
                               CHECK (visibility_mode IN ('public', 'matches_only', 'private')),
   created_at      timestamptz DEFAULT now()

@@ -30,6 +30,7 @@ import { trackUserBlocked, trackUserReported } from '../services/analytics';
 import { formatExplanationLines } from '../services/matchingModel';
 import type { RootStackParamList } from '../navigation/types';
 import type { Match } from '../types/match';
+import type { Message } from '../types/chatTypes';
 import { theme } from '../theme';
 
 type MatchDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'MatchDetail'>;
@@ -57,6 +58,7 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
   const setMessagesForMatch = useChatStore((s) => s.setMessagesForMatch);
   const [resolvedThreadId, setResolvedThreadId] = useState<string | null>(null);
   const [reportVisible, setReportVisible] = useState(false);
+  const [reportedMessageId, setReportedMessageId] = useState<string | null>(null);
   const [sharedVenueName, setSharedVenueName] = useState<string | null>(null);
 
   const likedMatches = useMemo(() => {
@@ -244,11 +246,18 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
         reason,
         details,
         matchId: threadMatchUuid ?? null,
+        messageId: reportedMessageId,
       });
-      trackUserReported(matchUserId, { reason, source: 'match_detail' });
+      trackUserReported(matchUserId, { reason, source: reportedMessageId ? 'match_message' : 'match_detail' });
+      setReportedMessageId(null);
     },
-    [matchUserId, currentUserId, threadMatchUuid]
+    [matchUserId, currentUserId, threadMatchUuid, reportedMessageId]
   );
+
+  const handleReportMessage = useCallback((message: Message) => {
+    setReportedMessageId(message.id);
+    setReportVisible(true);
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -300,6 +309,7 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
             matchId={matchUserId}
             currentUserId={currentUserId}
             threadMatchUuid={threadMatchUuid}
+            onReportMessage={handleReportMessage}
           />
         </View>
       ) : (
@@ -326,9 +336,13 @@ export const MatchDetailScreen: React.FC<MatchDetailScreenProps> = () => {
       )}
       <ReportUserModal
         visible={reportVisible}
-        onClose={() => setReportVisible(false)}
+        onClose={() => {
+          setReportVisible(false);
+          setReportedMessageId(null);
+        }}
         onSubmit={handleReportSubmit}
         reportedDisplayName={displayName}
+        contextLabel={reportedMessageId ? 'Reporting a specific message' : undefined}
       />
     </SafeAreaView>
   );

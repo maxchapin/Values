@@ -24,6 +24,7 @@ export const NearbyVenuesScreen: React.FC = () => {
     setLoading(true);
     getNearbyVenues(coords.latitude, coords.longitude)
       .then(setVenues)
+      .catch(() => setVenues([]))
       .finally(() => setLoading(false));
   }, [coords?.latitude, coords?.longitude]);
 

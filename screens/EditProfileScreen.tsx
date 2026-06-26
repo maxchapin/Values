@@ -36,6 +36,7 @@ import { upsertSupabaseProfile } from '../services/supabaseProfile';
 import { LocationPicker, type LocationCoordinates } from '../components/LocationPicker';
 import { BirthdayPicker } from '../components/BirthdayPicker';
 import { calculateAge, birthdayToISOString } from '../utils/dateUtils';
+import { containsBlockedContent } from '../utils/contentFilter';
 
 type EditProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
@@ -258,7 +259,16 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation
         setPromptsError('Please add at least one prompt and answer');
         return false;
       }
+      if (validPrompts.some((p) => containsBlockedContent(p.answer) || containsBlockedContent(p.question))) {
+        setPromptsError('One of your prompts contains language that isn\'t allowed');
+        return false;
+      }
       setPromptsError(null);
+
+      if (containsBlockedContent(formValues.bio)) {
+        Alert.alert('Bio not saved', 'Your bio contains language that isn\'t allowed. Please edit and try again.');
+        return false;
+      }
 
       if (birthday == null) {
         setBirthdayError('Please select your birthday');

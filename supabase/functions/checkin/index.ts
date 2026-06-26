@@ -154,62 +154,39 @@ Deno.serve(async (req: Request) => {
     console.warn(`Outside hours: user=${userId} venue=${venue.id}`);
   }
 
-  // ── Idempotency: already checked in within the last 8 hours? ─────────────
-  const windowStart = new Date(Date.now() - 8 * 60 * 60 * 1_000);
+  // ── Idempotency + write, atomically ───────────────────────────────────────
+  // atomic_record_checkin (migration 030) takes a per-(user, venue) advisory
+  // lock for the duration of its transaction, so the existing-row check and
+  // the insert can't race against a concurrent duplicate request the way two
+  // separate round trips could.
+  const { data: rpcRows, error: rpcErr } = await userClient.rpc('atomic_record_checkin', {
+    p_venue_id:      venue.id,
+    p_gps_mismatch:  !!flags.gps_mismatch,
+    p_outside_hours: !!flags.outside_hours,
+  });
 
-  const { data: existing } = await userClient
-    .from('checkins')
-    .select('id, visible_after')
-    .eq('user_id', userId)
-    .eq('venue_id', venue.id)
-    .gte('scanned_at', windowStart.toISOString())
-    .order('scanned_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  if (rpcErr || !rpcRows || rpcRows.length === 0) {
+    console.error('Check-in insert failed:', rpcErr);
+    return json({ error: 'Failed to record check-in' }, 500);
+  }
 
-  if (existing) {
+  const result = rpcRows[0] as { id: string; visible_after: string; already_checked_in: boolean };
+
+  if (result.already_checked_in) {
     return json({
       already_checked_in: true,
       venue_name:    venue.name,
       category:      venue.category,
-      visible_after: existing.visible_after,
+      visible_after: result.visible_after,
       ...flags,
     }, 200);
-  }
-
-  // ── Write check-in ────────────────────────────────────────────────────────
-  const scannedAt    = new Date();
-  const visibleAfter = new Date(scannedAt.getTime() + 24 * 60 * 60 * 1_000); // +24 hrs
-
-  // check_in_date stores the UTC calendar date of the scan — kept for
-  // display and analytics. Idempotency is enforced by the 8-hour rolling
-  // window query above, not by a unique index.
-  const checkInDate = scannedAt.toISOString().slice(0, 10); // "YYYY-MM-DD"
-
-  const { data: checkin, error: insertErr } = await userClient
-    .from('checkins')
-    .insert({
-      user_id:       userId,
-      venue_id:      venue.id,
-      scanned_at:    scannedAt.toISOString(),
-      check_in_date: checkInDate,
-      visible_after: visibleAfter.toISOString(),
-      gps_mismatch:  !!flags.gps_mismatch,
-      outside_hours: !!flags.outside_hours,
-    })
-    .select('id, visible_after')
-    .single();
-
-  if (insertErr) {
-    console.error('Check-in insert failed:', insertErr);
-    return json({ error: 'Failed to record check-in' }, 500);
   }
 
   return json({
     success:       true,
     venue_name:    venue.name,
     category:      venue.category,
-    visible_after: checkin.visible_after,
+    visible_after: result.visible_after,
     ...flags,
   }, 200);
 });

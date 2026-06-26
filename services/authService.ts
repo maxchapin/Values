@@ -814,41 +814,18 @@ export const authService = {
   },
 
   /**
-   * Validate and refresh session token
-   * In production, this would call backend to refresh expired tokens
-   * 
-   * Security: Always validate tokens server-side in production
+   * Checks the locally-cached expiry on the legacy SecureStore session
+   * fallback (contexts/AuthContext.tsx loadPersistedSession). This is only
+   * consulted when there's no active Supabase session to restore — real
+   * session refresh for the OAuth flow is handled entirely by the Supabase
+   * client's own autoRefreshToken (lib/supabase.ts) and never goes through
+   * here. There's no separate backend to refresh against, so an expired
+   * legacy session simply forces re-login rather than attempting a refresh.
    */
   async validateSession(session: AuthSessionType): Promise<boolean> {
     if (!session.expiresAt) {
-      return true; // No expiration - still valid (but should be validated server-side)
+      return true; // No expiration recorded - treat as still valid
     }
-
-    const now = Date.now();
-    const expiresAt = session.expiresAt;
-    const timeUntilExpiry = expiresAt - now;
-
-    // If expired, attempt refresh (if refresh token available)
-    if (timeUntilExpiry <= 0) {
-      if (session.refreshToken) {
-        // TODO: In production, call backend to refresh token
-        // const refreshed = await refreshToken(session.refreshToken);
-        // return refreshed !== null;
-        if (__DEV__) {
-          console.log('[authService] Session expired, would refresh token in production');
-        }
-      }
-      return false; // Expired and no refresh token
-    }
-
-    // If expiring soon (within 5 minutes), proactively refresh
-    if (timeUntilExpiry < 5 * 60 * 1000 && session.refreshToken) {
-      // TODO: In production, proactively refresh token
-      if (__DEV__) {
-        console.log('[authService] Session expiring soon, would refresh token in production');
-      }
-    }
-
-    return true; // Still valid
+    return session.expiresAt - Date.now() > 0;
   },
 };

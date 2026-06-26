@@ -4,6 +4,7 @@
 
 import { supabase } from './supabase';
 import type { Message } from '../types/chatTypes';
+import { containsBlockedContent } from '../utils/contentFilter';
 
 export interface ChatMessageRow {
   id: string;
@@ -65,6 +66,9 @@ export async function insertChatMessage(threadMatchId: string, content: string):
   const trimmed = content.trim();
   if (!trimmed) {
     throw new Error('Empty message');
+  }
+  if (containsBlockedContent(trimmed)) {
+    throw new Error('Message contains language that isn\'t allowed. Please rephrase.');
   }
 
   const { data: userRes, error: userErr } = await supabase.auth.getUser();

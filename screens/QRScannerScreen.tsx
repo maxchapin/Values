@@ -5,17 +5,37 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 
-function extractTokenFromData(data: string): string {
-  // QR codes contain a full URL (e.g. https://site.com/checkin?token=abc123).
-  // Extract just the token value; fall back to raw data for plain-token QRs.
-  const match = data.match(/[?&]token=([^&#]+)/);
-  return match ? decodeURIComponent(match[1]) : data;
+// Venue qr_token values are short alphanumeric/underscore/hyphen strings
+// (see supabase/seeds/checkin_venues_seed.sql), never containing whitespace
+// or other punctuation.
+const TOKEN_SHAPE = /^[A-Za-z0-9_-]{3,128}$/;
+
+/**
+ * Extracts a plausible venue token from scanned QR data, or null if the
+ * scanned code clearly isn't a venue check-in code (wifi config, vCard,
+ * an unrelated URL, etc). Real venue QR codes are always a full
+ * `https://.../checkin?token=...` URL; the bare-token fallback exists only
+ * for legacy/plain-token QR codes that look like a real token.
+ */
+function extractTokenFromData(data: string): string | null {
+  const trimmed = data.trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/[?&]token=([^&#]+)/);
+  if (match) {
+    const token = decodeURIComponent(match[1]);
+    return TOKEN_SHAPE.test(token) ? token : null;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) return null; // URL with no token param
+  return TOKEN_SHAPE.test(trimmed) ? trimmed : null;
 }
 
 export const QRScannerScreen: React.FC = () => {
@@ -44,7 +64,17 @@ export const QRScannerScreen: React.FC = () => {
     if (__DEV__) {
       console.log('[QRScanner] Raw scanned data:', data);
       console.log('[QRScanner] Extracted qrToken:', qrToken);
-      console.log('[QRScanner] Was URL?', data !== qrToken);
+    }
+
+    if (!qrToken) {
+      Alert.alert(
+        "That doesn't look like a venue code",
+        'Please scan the QR code posted at the venue.'
+      );
+      // Re-arm immediately so the user can retry without waiting out the
+      // normal post-scan cooldown.
+      scannedRef.current = false;
+      return;
     }
 
     (navigation as any).navigate('CheckinConfirmation', { qrToken });

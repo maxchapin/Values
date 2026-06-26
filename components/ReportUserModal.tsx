@@ -26,6 +26,8 @@ export interface ReportUserModalProps {
   onClose: () => void;
   onSubmit: (reason: ReportReason, details: string) => Promise<void>;
   reportedDisplayName?: string;
+  /** e.g. "Reporting a specific message" — shown when reporting a piece of content rather than the account. */
+  contextLabel?: string;
 }
 
 export const ReportUserModal: React.FC<ReportUserModalProps> = ({
@@ -33,6 +35,7 @@ export const ReportUserModal: React.FC<ReportUserModalProps> = ({
   onClose,
   onSubmit,
   reportedDisplayName,
+  contextLabel,
 }) => {
   const [reason, setReason] = useState<ReportReason>('harassment');
   const [details, setDetails] = useState('');
@@ -75,6 +78,7 @@ export const ReportUserModal: React.FC<ReportUserModalProps> = ({
         <Pressable style={styles.backdropPress} onPress={handleClose} />
         <View style={styles.sheet}>
           <Text style={styles.title}>Report {reportedDisplayName ? reportedDisplayName : 'user'}</Text>
+          {contextLabel ? <Text style={styles.contextLabel}>{contextLabel}</Text> : null}
           <Text style={styles.hint}>Reports are reviewed by our team. This user won’t be notified.</Text>
 
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -147,6 +151,13 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.lg,
+  },
+  contextLabel: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.xs,
   },
   hint: {
     fontSize: theme.typography.fontSize.sm,

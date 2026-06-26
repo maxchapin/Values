@@ -391,8 +391,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Legal</Text>
         <Text style={styles.sectionHint}>
-          Values is for adults 18+. Set live policy URLs via EXPO_PUBLIC_PRIVACY_POLICY_URL and EXPO_PUBLIC_TERMS_OF_SERVICE_URL
-          (EAS secrets) or app.json extras.
+          The Local is for adults 18+. Review our Privacy Policy and Terms of Service below.
         </Text>
         <TouchableOpacity
           style={styles.settingRow}

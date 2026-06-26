@@ -15,7 +15,7 @@ module.exports = {
       termsOfServiceUrl:
         process.env.EXPO_PUBLIC_TERMS_OF_SERVICE_URL ?? appJson.expo.extra?.termsOfServiceUrl ?? '',
       deleteAccountEdgeUrl: process.env.EXPO_PUBLIC_DELETE_ACCOUNT_EDGE_URL ?? '',
-      supportEmail: process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? 'support@example.com',
+      supportEmail: process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? 'contact@thelocaldating.com',
       // Resolve at build time (EAS injects EXPO_PUBLIC_* from secrets)
       supabaseRedirectTo:
         process.env.EXPO_PUBLIC_SUPABASE_URL != null

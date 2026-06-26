@@ -27,7 +27,7 @@ const NOTIFICATION_LABELS: Record<keyof UserSettings['notifications'], string> =
 function supportEmailFromConfig(): string {
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
   const v = extra?.supportEmail;
-  return typeof v === 'string' && v.includes('@') ? v : 'support@example.com';
+  return typeof v === 'string' && v.includes('@') ? v : 'contact@thelocaldating.com';
 }
 
 function legalUrl(key: 'privacyPolicyUrl' | 'termsOfServiceUrl'): string | undefined {

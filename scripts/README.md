@@ -98,3 +98,27 @@ The script is safe to re-run at any time — it overwrites existing PNGs and reg
 - `qr-codes/` is git-ignored (add it to `.gitignore` if not already present) — regenerate from source rather than committing binaries.
 - Error correction level is set to **H** (30 %), so the QR code remains scannable even if partially obscured by a sticker or logo.
 - The anon key works if your Supabase RLS policy allows public reads on `venues`; the service-role key always works regardless of RLS.
+
+---
+
+# Report Review
+
+Lists pending user reports (from the in-app Report flow) and lets you mark them reviewed, dismissed, or actioned. You'll also get a push notification on your own device the instant a report is submitted (see migration `028_report_status_and_notify_trigger.sql` and `supabase/functions/notify-new-report/`) — this script is for actually triaging them afterward.
+
+## Setup
+
+Uses the same `SUPABASE_SERVICE_ROLE_KEY` as the QR script above. The service-role key is required here (not optional) — Row Level Security restricts `user_reports` reads to the reporter's own rows, so the anon key can't list other users' reports.
+
+## Usage
+
+List all pending reports:
+
+```bash
+node scripts/review-reports.js
+```
+
+Mark a report resolved (status must be one of `pending`, `reviewed`, `dismissed`, `actioned`):
+
+```bash
+node scripts/review-reports.js --resolve <report_id> --status reviewed
+```

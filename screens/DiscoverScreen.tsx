@@ -56,6 +56,7 @@ export const DiscoverScreen: React.FC = () => {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const lastLoadedUserIdRef = useRef<string | null>(null);
+  const lastLoadedInterestedInRef = useRef<string | undefined>(undefined);
   const didInitialLoadRef = useRef(false);
   const cardScrollRef = useRef<ScrollView>(null);
   const navigation = useNavigation();
@@ -73,23 +74,32 @@ export const DiscoverScreen: React.FC = () => {
     }
   }, [isDebugMode, navigation]);
 
-  // Load matches on mount
+  // Load matches on mount, and reload if the user or their gender preference changes
   useEffect(() => {
     const userId = currentUser?.id ?? null;
+    const interestedIn = currentUser?.interestedIn;
 
     // Reset guard when user changes
     if (userId && lastLoadedUserIdRef.current !== userId) {
       lastLoadedUserIdRef.current = userId;
+      lastLoadedInterestedInRef.current = interestedIn;
+      didInitialLoadRef.current = false;
+    } else if (userId && lastLoadedInterestedInRef.current !== interestedIn) {
+      // Same user, but their gender preference resolved/changed after the initial load
+      // (e.g. profile finished loading after Discover already fetched once) — refetch
+      // so the deck reflects it immediately instead of only after Filters > Apply.
+      lastLoadedInterestedInRef.current = interestedIn;
       didInitialLoadRef.current = false;
     }
 
-    // Prevent infinite retry loops when backend returns [] (e.g. user not found)
-    if (userId && !didInitialLoadRef.current && matches.length === 0 && !isLoading) {
+    // didInitialLoadRef (set right before calling loadMatches) is what prevents
+    // infinite retries — it only goes false again on a user/preference change above.
+    if (userId && !didInitialLoadRef.current && !isLoading) {
       didInitialLoadRef.current = true;
       loadMatches(userId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id, matches.length, isLoading]);
+  }, [currentUser?.id, currentUser?.interestedIn, matches.length, isLoading]);
 
   const handleLike = (): void => {
     const currentMatch = getCurrentMatch();

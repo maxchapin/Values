@@ -161,6 +161,7 @@ export const ProfileScreen: React.FC = () => {
             <ProfileCard
               user={currentUser}
               showEditButton={false}
+              isOwnProfile
               onValuesPress={handleValuesPress}
               scrollViewProps={{
                 contentContainerStyle: {

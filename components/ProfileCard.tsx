@@ -2,7 +2,7 @@
  * Reusable profile card used by both Discover and Profile screens.
  * Same visual design: photo carousel → name → Details → Values → Prompts.
  * Discover: pass match props (similarityScore, sharedValueIds, etc.); no edit button.
- * Profile: pass showEditButton + onEditPress; no match score.
+ * Profile: pass isOwnProfile (+ showEditButton/onEditPress if a visible Edit button is wanted); no match score.
  */
 import React, { useRef, useEffect, useState, forwardRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, ScrollViewProps, Pressable } from 'react-native';
@@ -47,6 +47,8 @@ export interface ProfileCardProps {
   /** Show Edit button on card (Profile tab). */
   showEditButton?: boolean;
   onEditPress?: () => void;
+  /** Whether this card is showing the viewer's own profile (hides venue badge, enables values tap-to-edit). Defaults to showEditButton. */
+  isOwnProfile?: boolean;
   /** When set, Core Values section is tappable and opens values editor (Profile tab). */
   onValuesPress?: () => void;
   scrollViewProps?: Omit<ScrollViewProps, 'ref'>;
@@ -63,6 +65,7 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
       sharedVenueName,
       showEditButton = false,
       onEditPress,
+      isOwnProfile,
       onValuesPress,
       scrollViewProps,
     },
@@ -72,7 +75,7 @@ export const ProfileCard = forwardRef<ScrollView, ProfileCardProps>(
     const hometown = user.hometown?.trim();
     const displayValues = getCandidateDisplayValues(user, candidateValueItems);
     const photoCarouselRef = useRef<ProfilePhotoCarouselRef>(null);
-    const isSelfMode = showEditButton;
+    const isSelfMode = isOwnProfile ?? showEditButton;
     const [showValuesExplanationModal, setShowValuesExplanationModal] = useState(false);
     const genderLabel = getGenderDisplayLabel(user.gender);
 

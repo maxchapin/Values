@@ -142,7 +142,7 @@ node scripts/seedDemoAccount.js
 Optionally override the generated credentials:
 
 ```bash
-node scripts/seedDemoAccount.js --email appreview@thelocadating.com --password "SomeStrongPass1!"
+node scripts/seedDemoAccount.js --email appreview@thelocaldating.com --password "SomeStrongPass1!"
 ```
 
 (or set `DEMO_ACCOUNT_EMAIL` / `DEMO_ACCOUNT_PASSWORD` in `.env`). The script is safe to re-run — it looks up existing accounts by email instead of recreating them, and skips re-seeding the conversation if messages already exist.

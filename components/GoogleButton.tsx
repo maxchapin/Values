@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { AntDesign } from '@expo/vector-icons';
 import { theme } from '../theme';
 
 export interface GoogleButtonProps {
@@ -40,28 +41,13 @@ export const GoogleButton: React.FC<GoogleButtonProps> = ({
         {loading ? (
           <ActivityIndicator size="small" color="#4285F4" style={styles.loader} />
         ) : (
-          <GoogleIcon />
+          <AntDesign name="google" size={20} color="#4285F4" style={styles.icon} />
         )}
         <Text style={styles.text}>Continue with Google</Text>
       </View>
     </Pressable>
   );
 };
-
-/**
- * Google "G" Icon
- * Simple SVG-like icon using View components
- */
-const GoogleIcon: React.FC = () => (
-  <View style={styles.icon}>
-    <View style={styles.iconInner}>
-      <View style={styles.iconG}>
-        <View style={styles.iconGTop} />
-        <View style={styles.iconGBottom} />
-      </View>
-    </View>
-  </View>
-);
 
 const styles = StyleSheet.create({
   button: {
@@ -93,43 +79,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icon: {
-    width: 20,
-    height: 20,
     marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconInner: {
-    width: 18,
-    height: 18,
-    borderRadius: 2,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  iconG: {
-    width: 12,
-    height: 12,
-    position: 'relative',
-  },
-  iconGTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 6,
-    height: 6,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 1,
-  },
-  iconGBottom: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 8,
-    height: 8,
-    backgroundColor: '#FFFFFF',
-    borderBottomRightRadius: 1,
   },
   text: {
     fontSize: theme.typography.fontSize.base,

@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Alert, Platform, ActivityIndicator, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { SecondaryButton } from '../../components/SecondaryButton';
@@ -20,14 +20,19 @@ import { supabase } from '../../services/supabase';
 
 const ENABLE_APPLE_SIGN_IN = true;   // Required by Apple when offering any third-party OAuth
 const ENABLE_PHONE_SIGN_IN = false;  // Backend is mock-only; enable when SMS provider is wired
+// Sign-in only (no public sign-up UI) — used for the Apple App Review demo account.
+const ENABLE_EMAIL_SIGN_IN = true;
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
-  const { signInWithGoogle, signInWithApple, startPhoneSignIn, confirmPhoneCode, phoneAuthState, loading, clearPhoneAuthState } = useAuth();
+  const { signInWithGoogle, signInWithApple, signInWithEmailPassword, startPhoneSignIn, confirmPhoneCode, phoneAuthState, loading, clearPhoneAuthState } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [showOtpInput, setShowOtpInput] = useState(false);
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   // DEBUG: Test Supabase connection
   const testSupabase = async () => {
@@ -81,6 +86,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const handleAppleSignIn = async () => {
     try {
       await signInWithApple();
+      // Navigation will automatically update based on auth state
+    } catch (error) {
+      logAuthError('LoginScreen', error);
+      showAuthError(error, 'Sign In Error');
+    }
+  };
+
+  const handleEmailSignIn = async () => {
+    try {
+      await signInWithEmailPassword(email, password);
       // Navigation will automatically update based on auth state
     } catch (error) {
       logAuthError('LoginScreen', error);
@@ -190,6 +205,55 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               />
             </View>
 
+            {/* Email sign-in (no sign-up) - for pre-provisioned accounts, e.g. Apple App Review */}
+            {ENABLE_EMAIL_SIGN_IN && (
+              showEmailForm ? (
+                <View style={styles.otpContainer}>
+                  <Text style={styles.otpLabel}>Sign in with email</Text>
+                  <TextInput
+                    style={styles.emailInput}
+                    placeholder="Email"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                  />
+                  <TextInput
+                    style={styles.emailInput}
+                    placeholder="Password"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    autoCapitalize="none"
+                  />
+                  <View style={styles.otpButtons}>
+                    <SecondaryButton
+                      title="Cancel"
+                      onPress={() => {
+                        setShowEmailForm(false);
+                        setEmail('');
+                        setPassword('');
+                      }}
+                      style={styles.cancelButton}
+                    />
+                    <PrimaryButton
+                      title="Sign In"
+                      onPress={handleEmailSignIn}
+                      style={styles.verifyButton}
+                      disabled={!email.trim() || !password}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <Pressable onPress={() => setShowEmailForm(true)} style={styles.emailLinkContainer}>
+                  <Text style={styles.emailLinkText}>Sign in with email</Text>
+                </Pressable>
+              )
+            )}
+
             {/* Phone Sign-In entry point - currently disabled at runtime */}
             {ENABLE_PHONE_SIGN_IN && (
               <>
@@ -258,6 +322,25 @@ const styles = StyleSheet.create({
   },
   appleButton: {
     width: '100%',
+  },
+  emailLinkContainer: {
+    alignItems: 'center',
+    marginBottom: theme.spacing.lg,
+  },
+  emailLinkText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textTertiary,
+    textDecorationLine: 'underline',
+  },
+  emailInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
   },
   divider: {
     flexDirection: 'row',

@@ -27,7 +27,7 @@ export interface SupabaseProfile {
   first_name: string | null;
   last_name: string | null;
   photo_url: string | null;
-  auth_provider: 'google' | 'apple' | 'phone';
+  auth_provider: 'google' | 'apple' | 'phone' | 'email';
   age: number | null;
   /** Date of birth (ISO); used to compute age when present. */
   birthday: string | null;

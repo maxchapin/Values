@@ -30,6 +30,7 @@ interface AuthContextType {
   phoneAuthState: PhoneAuthState | null;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
+  signInWithEmailPassword: (email: string, password: string) => Promise<void>;
   startPhoneSignIn: (phoneNumber: string) => Promise<void>;
   confirmPhoneCode: (code: string) => Promise<void>;
   resendPhoneCode: () => Promise<void>;
@@ -489,6 +490,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [persistAuth]);
 
   /**
+   * Sign in with email/password (pre-provisioned accounts only, e.g. Apple App Review demo)
+   */
+  const signInWithEmailPassword = useCallback(async (email: string, password: string) => {
+    try {
+      setLoading(true);
+      const { user: authUser, session } = await authService.signInWithEmailPassword(email, password);
+      await persistAuth(authUser, session);
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[AuthContext] Email sign-in error:', error);
+      }
+      if (error instanceof AuthError) {
+        throw error;
+      }
+      throw new AuthError(
+        error instanceof Error ? error.message : 'Failed to sign in with email',
+        'EMAIL_SIGN_IN_ERROR',
+        'email'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [persistAuth]);
+
+  /**
    * Start phone number sign-in (send OTP)
    */
   const startPhoneSignIn = useCallback(async (phoneNumber: string) => {
@@ -670,6 +696,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     phoneAuthState,
     signInWithGoogle,
     signInWithApple,
+    signInWithEmailPassword,
     startPhoneSignIn,
     confirmPhoneCode,
     resendPhoneCode,

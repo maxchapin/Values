@@ -132,6 +132,45 @@ function buildAppleAuthFromSupabaseSession(
   return { user: authUser, session: authSession };
 }
 
+function buildEmailAuthFromSupabaseSession(session: Session): {
+  user: AuthUser;
+  session: AuthSessionType;
+} {
+  const userMetadata = session.user.user_metadata || {};
+  const fullName = userMetadata.full_name || userMetadata.name || '';
+  const firstName =
+    userMetadata.given_name ||
+    userMetadata.first_name ||
+    (fullName ? fullName.trim().split(/\s+/)[0] : undefined) ||
+    session.user.email?.split('@')[0];
+  const lastName =
+    userMetadata.family_name ||
+    userMetadata.last_name ||
+    (fullName ? fullName.trim().split(/\s+/).slice(1).join(' ') : undefined);
+  const authUser: AuthUser = {
+    id: session.user.id,
+    displayName: fullName || session.user.email?.split('@')[0],
+    firstName: firstName || undefined,
+    lastName: lastName || undefined,
+    email: session.user.email || undefined,
+    photoUrl: userMetadata.avatar_url,
+    authProvider: 'email',
+    createdAt: session.user.created_at,
+    updatedAt: session.user.updated_at,
+    isOnboardingComplete: userMetadata.isOnboardingComplete,
+    isProfileComplete: userMetadata.isProfileComplete,
+    isValuesComplete: userMetadata.isValuesComplete,
+  };
+  const authSession: AuthSessionType = {
+    userId: authUser.id,
+    authProvider: authUser.authProvider,
+    token: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresAt: session.expires_at ? session.expires_at * 1000 : undefined,
+  };
+  return { user: authUser, session: authSession };
+}
+
 /** Extract Supabase OAuth params from hash, query, or regex fallback. */
 function parseOAuthParamsFromUrl(urlString: string): {
   accessToken: string | null;
@@ -714,6 +753,35 @@ export const authService = {
 
       throw new AuthError('An unexpected error occurred during Apple sign-in', 'UNKNOWN_ERROR', 'apple');
     }
+  },
+
+  /**
+   * Sign in with a pre-provisioned email/password account via Supabase Auth.
+   * There is no self-serve sign-up UI for this — it only works for accounts created
+   * out-of-band (e.g. the Apple App Review demo account), so it's safe to leave enabled.
+   */
+  async signInWithEmailPassword(email: string, password: string): Promise<{ user: AuthUser; session: AuthSessionType }> {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      throw new AuthError('Enter an email and password', 'INVALID_CREDENTIALS', 'email');
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
+    });
+
+    if (error || !data.session) {
+      throw new AuthError(
+        error?.message || 'Supabase did not return a session',
+        'EMAIL_SIGN_IN_ERROR',
+        'email',
+      );
+    }
+
+    if (__DEV__) console.log('[authService] Email sign-in complete:', data.session.user.id);
+
+    return buildEmailAuthFromSupabaseSession(data.session);
   },
 
   /**

@@ -122,3 +122,29 @@ Mark a report resolved (status must be one of `pending`, `reviewed`, `dismissed`
 ```bash
 node scripts/review-reports.js --resolve <report_id> --status reviewed
 ```
+
+---
+
+# Apple App Review Demo Account
+
+Creates (or refreshes) a fully-onboarded demo account — complete profile, a mutual match, and a sample conversation — so Apple App Review can sign in and see a populated app immediately, without needing a real Google/Apple account or going through onboarding. The app has no public sign-up flow for email/password; this is the only way such an account gets created.
+
+## Setup
+
+Uses the same `SUPABASE_SERVICE_ROLE_KEY` as the scripts above. Also requires the **Email** provider to be enabled in **Supabase Dashboard → Authentication → Providers** (off by default in some projects).
+
+## Usage
+
+```bash
+node scripts/seedDemoAccount.js
+```
+
+Optionally override the generated credentials:
+
+```bash
+node scripts/seedDemoAccount.js --email appreview@thelocadating.com --password "SomeStrongPass1!"
+```
+
+(or set `DEMO_ACCOUNT_EMAIL` / `DEMO_ACCOUNT_PASSWORD` in `.env`). The script is safe to re-run — it looks up existing accounts by email instead of recreating them, and skips re-seeding the conversation if messages already exist.
+
+When it finishes, it prints the credentials to paste into **App Store Connect → App Review Information → Sign-In Information**.

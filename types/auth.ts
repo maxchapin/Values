@@ -3,7 +3,7 @@
  * Unified auth layer supporting Google, Apple, and Phone authentication
  */
 
-export type AuthProvider = 'google' | 'apple' | 'phone';
+export type AuthProvider = 'google' | 'apple' | 'phone' | 'email';
 
 /**
  * Core authenticated user type

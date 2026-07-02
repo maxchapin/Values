@@ -11,7 +11,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
-import { supabaseProfileToUser } from '../services/supabaseProfile';
+import { supabaseProfileToUser, updateSupabasePreferences } from '../services/supabaseProfile';
 import type { User } from '../types/user';
 
 /**
@@ -43,7 +43,18 @@ export function useAuthUserSync(): void {
     let user: User;
 
     if (profile) {
-      user = supabaseProfileToUser(profile);
+      const profileUser = supabaseProfileToUser(profile);
+      const recoveredInterestedIn = profileUser.interestedIn ?? currentUser?.interestedIn;
+      user = {
+        ...profileUser,
+        // If the Supabase profile pre-dates interested_in tracking in preferences,
+        // preserve whatever is already in the store rather than overwriting with undefined.
+        interestedIn: recoveredInterestedIn,
+      };
+      // Backfill into Supabase so it's there on next sign-in.
+      if (!profileUser.interestedIn && recoveredInterestedIn) {
+        updateSupabasePreferences({ interested_in: recoveredInterestedIn }).catch(() => {});
+      }
     } else {
       user = {
         id: authUser.id,

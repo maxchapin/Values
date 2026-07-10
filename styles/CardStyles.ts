@@ -189,7 +189,7 @@ export const cardStyles = StyleSheet.create({
     color: theme.colors.success,
   },
 
-  // Muted variant — shown on city-wide Discover cards (no shared venue)
+  // Muted variant — shown when a matched venue name isn't available
   venueBadgeMuted: {
     backgroundColor: theme.colors.backgroundSecondary,
     borderColor: theme.colors.borderLight,

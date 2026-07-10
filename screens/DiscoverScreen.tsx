@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +26,6 @@ import { ReportUserModal } from '../components/ReportUserModal';
 import { insertUserBlock, insertUserReport, type ReportReason } from '../services/supabaseSafety';
 import { formatExplanationLines } from '../services/matchingModel';
 import { theme } from '../theme';
-import { ROUTES } from '../navigation/types';
 import {
   navigateToValuesEditorFromProfile,
   type NavigateToValuesEditorNav,
@@ -339,18 +338,6 @@ export const DiscoverScreen: React.FC = () => {
 
         {showDiscoverCard && candidate && currentMatch && (
           <>
-            {!currentMatch.sharedVenueName && (
-              <Pressable
-                style={styles.cityBanner}
-                onPress={() => (navigation as any).navigate(ROUTES.NEARBY_VENUES)}
-                accessibilityRole="button"
-                accessibilityLabel="View nearby venues"
-              >
-                <Text style={styles.cityBannerText}>
-                  Showing city-wide profiles — check in somewhere to see who's nearby
-                </Text>
-              </Pressable>
-            )}
             <View style={styles.cardArea}>
               <DiscoverSwipeCard
                 onLike={handleLike}
@@ -486,21 +473,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.primary,
-  },
-  cityBanner: {
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.xs,
-    backgroundColor: theme.colors.primaryLight + '18',
-    borderRadius: theme.borderRadius.base,
-    borderWidth: 1,
-    borderColor: theme.colors.primary + '30',
-  },
-  cityBannerText: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.primary,
-    textAlign: 'center',
   },
   cardArea: {
     flex: 1,

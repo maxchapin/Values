@@ -527,7 +527,7 @@ function buildMatchesForUser(
   return candidates
     .filter((user) => {
       if (user.id === currentUser.id) return false;
-      if (ageRange) {
+      if (Array.isArray(ageRange) && ageRange.length === 2) {
         const [minAge, maxAge] = ageRange;
         if (user.age < minAge || user.age > maxAge) return false;
       }

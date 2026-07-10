@@ -192,12 +192,11 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
         interestedIn: (filters ?? get().filters)?.interestedIn ?? currentUser?.interestedIn ?? undefined,
       };
 
-      const { getDiscoveryProfiles, discoveryProfileRowToUser, getDiscoveryProfileRowsByIds } = await import('../services/supabaseProfile');
+      const { discoveryProfileRowToUser, getDiscoveryProfileRowsByIds } = await import('../services/supabaseProfile');
       const { buildMatchListForDiscover } = await import('../services/mockBackend');
 
-      // Check-in overlap matches are ranked first; city-wide candidates fill the rest of the
-      // queue once check-in matches run out. Both segments respect the same gender/age/radius
-      // filters (buildMatchListForDiscover applies them uniformly).
+      // Discover is check-in only: only people who scanned the same venue QR code are
+      // shown, so the deck never falls back to broader city-wide/range-based discovery.
       const { getCheckinFeed } = await import('../services/supabaseCheckin');
       const feedRows = await getCheckinFeed(userId); // never throws
 
@@ -219,18 +218,7 @@ export const useMatchesStore = create<MatchesStore>((set, get) => ({
           });
       }
 
-      // City-wide candidates always fill the tail of the deck, minus anyone already
-      // surfaced via check-in overlap (avoid showing the same person twice).
-      const checkinIds = new Set(checkinMatches.map((m) => m.user.id));
-      const cityRows = await getDiscoveryProfiles(userId, { interestedIn: mergedFilters.interestedIn });
-      const cityCandidates = cityRows
-        .map(discoveryProfileRowToUser)
-        .filter((u) => !checkinIds.has(u.id));
-      const cityMatches = buildMatchListForDiscover(currentUser, cityCandidates, mergedFilters, {
-        applyRelaxedFallback: mockDiscoverAllowed,
-      });
-
-      let matches: Match[] = [...checkinMatches, ...cityMatches];
+      let matches: Match[] = checkinMatches;
 
       let usedMockFallback = false;
       if (matches.length === 0 && mockDiscoverAllowed) {
